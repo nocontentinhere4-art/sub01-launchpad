@@ -169,14 +169,13 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    // Pocket park (third ring): lawn, gravel path, 2–3 trees, a bench and a low fence along the street.
    F('roofs',0,.03,-s.depth/2,s.width-.3,.06,s.depth-.3,'#7E9A63');F('roofs',0,.065,-s.depth*.45,1.1,.02,s.depth*.85,'#C9C3B4');
    fine(()=>{for(const u of [-1,1])F('walls',u*(s.width/2-.2),.35,-.1,s.width/2-.9,.5,.08,'#8C8F86');});
-   const n=2+(r()<.5?1:0);for(let i=0;i<n;i++){const u=(i-(n-1)/2)*1.7+(r()-.5)*.4,v=-1.4-r()*(s.depth-2.4),h=1.6+r()*.8;
-    F('walls',u,h/2,v,.22,h,.22,'#6B5443');F('walls',u,h+.7,v,1.5,1.3,1.5,r()<.5?'#6F8F5E':'#8FA66B');}
+   // Trees are drawn by city-green.js (real species with wind); the park keeps its lawn, path, fence and bench.
    F('walls',(r()<.5?-1:1)*1.4,.3,-.9,1.2,.12,.4,'#9A7A60');
   }else if(s.kind==='shrine'){
    F('roofs',0,.02,-s.depth/2,s.width-.3,.04,s.depth-.3,'#C9C3B4');F('roofs',0,.05,-s.depth*.45,.9,.02,s.depth*.8,'#9C998F');
    for(const u of [-.9,.9])F('walls',u,1.6,-.6,.22,3.2,.22,'#C8452D');F('walls',0,3.25,-.6,2.7,.22,.32,'#C8452D');F('walls',0,3.4,-.6,2.9,.1,.36,'#2B2B2B');F('walls',0,2.65,-.6,2.1,.14,.18,'#C8452D');
    F('walls',0,.3,-s.depth+1,1.2,.6,1.0,'#9C998F');F('walls',0,1.05,-s.depth+1,.9,.9,.8,'#7A5A3C');add('roofs',0,0,0,0,0,0,'#4E5864',{m:shaped(s.x,y0+1.5,s.frontZ-fz*(s.depth-1),[1.3,.9,.9],[Math.PI/4,0,0],[1,.8,1])});
-   const tu=(r()<.5?-1:1)*(s.width/2-1.2);F('walls',tu,1.2,-s.depth*.6,.3,2.4,.3,'#6B5443');F('walls',tu,3.0,-s.depth*.6,2.4,1.6,2.4,'#6F8F5E');F('walls',tu,4.2,-s.depth*.6,1.7,1.2,1.7,'#8FA66B',{ry:Math.PI/4});
+   // The shrine grove comes from city-green.js.
   }
  }
  // Construction phases at the new storey scale (3.0 ground + 2.5 per floor).
