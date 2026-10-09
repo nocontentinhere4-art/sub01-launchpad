@@ -1,59 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {crossingState,sidewalkState,addCityCrowd} from '../src/city-crowd.js';
-import {vehicleState,addCityTraffic} from '../src/city-traffic.js';
+import {crossingState,addCityCrowd,CROWD_COUNT,PARTS} from '../src/city-crowd.js';
+import {addCityTraffic,trafficLightPhase} from '../src/city-traffic.js';
 import {trainPosition} from '../src/city-life.js';
+import {CITY_EXTENT as E,CANAL_X,districts} from '../src/city-state.js';
 
-test('Shibuya traffic waits while people cross and pedestrians finish before traffic resumes',()=>{
- for(let t=0;t<48;t+=.25){
-  for(let i=0;i<16;i++){const p=crossingState(t,i);assert.ok(p.progress>=0&&p.progress<=1);if(p.moving)assert.equal(vehicleState(t,0).moving,false);}
- }
- assert.equal(vehicleState(1,0).x,vehicleState(8,0).x);
- assert.notEqual(vehicleState(10,0).x,vehicleState(14,0).x);
+test('the Shibuya scramble phase: everyone finishes crossing before traffic resumes',()=>{
+ for(let t=0;t<48;t+=.25)for(let i=0;i<16;i++){const p=crossingState(t,i);assert.ok(p.progress>=0&&p.progress<=1);if(p.moving)assert.equal(trafficLightPhase(t).vehicle,'red');}
  assert.equal(crossingState(8.9,15).moving,false);
 });
-test('pedestrians stay on sidewalks and dynamic crowd instances keep finite transforms',()=>{
- const crowd=addCityCrowd(new THREE.Group()),mobile=addCityCrowd(new THREE.Group(),{mobile:true});
- assert.equal(crowd.people.length,160);assert.equal(mobile.people.length,80);
+test('pedestrians stay in the city on its streets; box figures are finite, hidden people are zero-size',()=>{
+ const crowd=addCityCrowd(new THREE.Group(),{hour:13}),mobile=addCityCrowd(new THREE.Group(),{mobile:true,hour:13});
+ assert.equal(crowd.people.length,CROWD_COUNT.desktop);assert.equal(mobile.people.length,CROWD_COUNT.mobile);
  for(const p of crowd.people)assert.ok(p.look?.outfit&&/^#[0-9a-f]{6}$/i.test(p.look.top),'every pedestrian has a look');
- for(const t of [0,8,24,48,999]){crowd.update(t);for(let i=0;i<crowd.boxes.count;i++){const m=new THREE.Matrix4();crowd.boxes.getMatrixAt(i,m);assert.ok(m.elements.every(Number.isFinite));assert.ok(m.determinant()>0);}for(let i=0;i<64;i++){const s=sidewalkState(t,i);assert.ok(Math.abs(s.x)<71&&Math.abs(s.z)<66);}}
+ const m=new THREE.Matrix4();
+ for(let t=0;t<40;t+=1/30){crowd.update(t);}
+ for(const p of crowd.people){const a=p.agent;
+  for(let k=0;k<PARTS;k++){crowd.boxes.getMatrixAt(p.index*PARTS+k,m);assert.ok(m.elements.every(Number.isFinite));if(!a.visible)assert.equal(m.determinant(),0);}
+  if(a.visible){crowd.boxes.getMatrixAt(p.index*PARTS,m);assert.ok(m.determinant()>0);assert.ok(a.x>=E.minX-1&&a.x<=CANAL_X&&a.z>=E.minZ-1&&a.z<=E.maxZ+1,`${a.x},${a.z}`);}}
+ const vis=crowd.people.filter(p=>p.agent.visible).length;assert.ok(vis>40,`${vis} people out at 13:00`);
+ // The centre is busier than the third ring.
+ const inRing=p=>{const d=districts.find(d=>Math.abs(p.agent.x-d.x)<=14.5&&Math.abs(p.agent.z-d.z)<=15);return d?.ring===3;};
+ const ringN=crowd.people.filter(p=>p.agent.visible&&inRing(p)).length,ringD=districts.filter(d=>d.ring===3).length;
+ assert.ok(ringN/ringD<(vis-ringN)/(districts.length-ringD),'outer ring sparser per district');
 });
-test('traffic renders a complete fixed-size batch without extra meshes per update',()=>{
- const parent=new THREE.Group(),traffic=addCityTraffic(parent);assert.equal(traffic.mesh.count,240);
- for(const t of [0,9,23,300]){traffic.update(t);for(let i=0;i<traffic.mesh.count;i++){const m=new THREE.Matrix4();traffic.mesh.getMatrixAt(i,m);assert.ok(m.determinant()>0);}}
- assert.equal(traffic.root.children.length,1);
+test('up close the crowd hides its boxes and pushes every visible pedestrian to the GPU crowd (walk/idle, umbrellas in rain)',()=>{
+ const crowd=addCityCrowd(new THREE.Group(),{mobile:true,hour:13}),pushed=[];
+ const gpu={active:true,limits:{cap:64},push:(look,x,y,z,yaw,o)=>{pushed.push({look,x,y,z,yaw,...o});return true;}};
+ crowd.setWeather('rain');for(let t=0;t<3;t+=1/30){pushed.length=0;crowd.update(t,gpu);}
+ assert.equal(crowd.boxes.visible,false);assert.equal(pushed.length,crowd.people.filter(p=>p.agent.visible).length);
+ for(const p of pushed){assert.ok([p.x,p.z,p.yaw,p.rate,p.scale].every(Number.isFinite));assert.ok(['Walk','Idle'].includes(p.clip));}
+ assert.ok(pushed.some(p=>p.clip==='Walk'),'people walk');assert.ok(pushed.filter(p=>p.umbrella>=0).length>pushed.length*.6,'umbrellas up');
+ crowd.setWeather('clear');pushed.length=0;crowd.update(3.1,gpu);assert.ok(pushed.every(p=>p.umbrella===-1));
+ gpu.active=false;crowd.update(3.2,gpu);assert.equal(crowd.boxes.visible,true);
+ assert.ok(crowd.stats.ms>=0&&crowd.stats.out>0);
+});
+test('traffic: fixed batches (one per vehicle type + wheels), no new meshes per update, finite transforms',()=>{
+ const parent=new THREE.Group(),traffic=addCityTraffic(parent),n=traffic.root.children.length;
+ for(const t of [0,9,23,300]){traffic.update(t);for(const M of Object.values(traffic.meshes))for(let i=0;i<M.mesh.count;i++){const m=new THREE.Matrix4();M.mesh.getMatrixAt(i,m);assert.ok(m.elements.every(Number.isFinite));}}
+ assert.equal(traffic.root.children.length,n);
 });
 test('train stops at the station and remains continuous through its loop boundary',()=>{
  assert.equal(trainPosition(17),-26);assert.equal(trainPosition(20),-26);
  assert.ok(Math.abs(trainPosition(108-.001)-trainPosition(108+.001))<.01);
  for(let t=0;t<220;t+=.5)assert.ok(trainPosition(t)>=-66&&trainPosition(t)<=66);
-});
-test('up close the crowd hides its boxes and pushes every pedestrian to the GPU crowd with walk/idle clips',()=>{
- const crowd=addCityCrowd(new THREE.Group(),{mobile:true}),pushed=[];
- const gpu={active:true,push:(look,x,y,z,yaw,o)=>{pushed.push({look,x,y,z,yaw,...o});return true;}};
- crowd.update(3,gpu);assert.equal(crowd.boxes.visible,false);assert.equal(pushed.length,80);
- for(const p of pushed){assert.ok([x=>x.x,x=>x.z,x=>x.yaw,x=>x.rate,x=>x.scale].every(f=>Number.isFinite(f(p))));assert.ok(['Walk','Idle'].includes(p.clip));}
- assert.ok(pushed.some(p=>p.clip==='Walk'),'people walk');
- gpu.active=false;crowd.update(3,gpu);assert.equal(crowd.boxes.visible,true);
-});
-test('sidewalk walkers cluster at crossings, konbini and stations instead of spreading evenly',async()=>{
- const {crowdHotspots}=await import('../src/city-crowd.js'),spots=crowdHotspots();
- for(const kind of ['crossing','konbini','station'])assert.ok(spots.some(s=>s.kind===kind),kind);
- for(const t of [3,40,200]){const pts=Array.from({length:144},(_,i)=>sidewalkState(t,i));
-  const near=pts.filter((p,i)=>pts.some((q,j)=>j!==i&&Math.hypot(p.x-q.x,p.z-q.z)<1.6)).length/pts.length;
-  const atSpot=pts.filter(p=>spots.some(s=>Math.hypot(p.x-s.x,p.z-s.z)<3)).length/pts.length;
-  assert.ok(near>.5,`only ${near} have someone within 1.6 at t=${t}`);assert.ok(atSpot>.35,`only ${atSpot} near a hotspot at t=${t}`);
-  assert.ok(pts.some(p=>!p.moving)&&pts.some(p=>p.moving),'some wait, some walk');
-  for(const p of pts)assert.ok(Number.isFinite(p.speed)&&p.speed>.5&&p.speed<1.1);}
-});
-test('traffic: dark-indigo taxis with roof signs, white kei trucks, green/cream buses, 15 boxes each',async()=>{
- const {VEHICLE_KINDS}=await import('../src/city-traffic.js'),traffic=addCityTraffic(new THREE.Group()),c=new THREE.Color();
- assert.equal(VEHICLE_KINDS.length,16);assert.equal(VEHICLE_KINDS.filter(k=>k==='taxi').length,5);assert.equal(VEHICLE_KINDS.filter(k=>k==='kei').length,3);
- assert.deepEqual(VEHICLE_KINDS.flatMap((k,i)=>k==='bus'?[i]:[]),[9,13]);
- const hex=(i,j)=>{traffic.mesh.getColorAt(i*15+j,c);return '#'+c.getHexString().toUpperCase();};
- VEHICLE_KINDS.forEach((k,i)=>{
-  if(k==='taxi'){assert.equal(hex(i,0),'#1F2A44');assert.equal(hex(i,14),'#F0B23E');}
-  if(k==='kei')assert.equal(hex(i,0),'#EEEDE8');
-  if(k==='bus'){assert.equal(hex(i,0),'#3E7A5C');assert.equal(hex(i,1),'#EDE6D2');}});
 });

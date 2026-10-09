@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import {OUTFITS,HEIGHT,lookMaterials,hiddenMaterials} from './characters.js';
 import {CLOTHES,SKINS,HAIRS,HAIR_STYLES} from './creator.js';
-import {RAMP} from './toon.js';
+import {RAMP,toon} from './toon.js';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 // Instanced skinned crowd: street pedestrians, residents and party guests drawn as the same rigged people the creator makes.
 // Per outfit, every skinned mesh of its glb is merged into ONE geometry (aTint.w = look slot); ONE float texture holds the
 // baked bone matrices (bone.matrixWorld × boneInverse) of the shared 62-bone rig for Idle/Walk/Run/Wave; the vertex shader
@@ -16,6 +17,14 @@ export const CLIP_FRAMES=[['Idle',24],['Walk',16],['Run',12],['Wave',24]];
 export const CROWD_PX=14;          // below this many CSS pixels per character the box figures stand in
 export const CROWD_CAP={mobile:64,desktop:160},CROWD_TRIS={mobile:4e5,desktop:1e6};   // instances and skinned triangles per frame
 const TEXELS=4;
+// Umbrellas (wave 4C): vinyl white, navy, black, red, beige, green. push(..., {umbrella: index}) draws one over that person.
+export const UMBRELLA_COLORS=['#E9EEF0','#1F2A44','#2B2B2B','#B33A32','#C9B79A','#3E7A5C'];
+// One geometry: an open 8-panel canopy (top at y 0.27) and a stick down to the hand (y −0.62). Origin = canopy rim centre.
+export function umbrellaGeometry(){
+ const canopy=new THREE.ConeGeometry(.62,.27,8,1,true).translate(0,.135,0),stick=new THREE.CylinderGeometry(.013,.013,.9,4,1,true).translate(0,-.17,0),tip=new THREE.CylinderGeometry(.02,.012,.06,4).translate(0,.3,0);
+ for(const g of [canopy,stick,tip])g.deleteAttribute('uv');
+ return mergeGeometries([canopy,stick,tip]);
+}
 
 const hash=s=>{let h=2166136261;for(const c of String(s))h=Math.imul(h^c.charCodeAt(0),16777619)>>>0;return h;};
 const rng=seed=>()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
@@ -141,7 +150,11 @@ export function createCrowdGPU(parent,{mobile=false,lights=null,cap=mobile?CROWD
  const shared={uBones:{value:null},uTime:{value:0},uSky:{value:new THREE.Color()},uGround:{value:new THREE.Color()},
   uL0:{value:new THREE.Vector3(0,1,0)},uC0:{value:new THREE.Color(0,0,0)},uL1:{value:new THREE.Vector3(0,1,0)},uC1:{value:new THREE.Color(0,0,0)},
   uRamp:{value:RAMP.map(h=>new THREE.Color(h))},...THREE.UniformsUtils.clone(THREE.UniformsLib.fog)};
- const pool=Array.from({length:Math.max(cap*2,360)},()=>({look:null,x:0,y:0,z:0,yaw:0,scale:1,clip:'Idle',phase:0,rate:1,bias:1,d:0}));
+ const pool=Array.from({length:Math.max(cap*2,360)},()=>({look:null,x:0,y:0,z:0,yaw:0,scale:1,clip:'Idle',phase:0,rate:1,bias:1,d:0,umbrella:-1}));
+ // Umbrellas: one instanced mesh for every drawn person who carries one (one draw call, only while it rains).
+ const umbrellas=new THREE.InstancedMesh(umbrellaGeometry(),toon({side:THREE.DoubleSide}),cap);umbrellas.name='crowd umbrellas';
+ umbrellas.instanceMatrix.setUsage(THREE.DynamicDrawUsage);umbrellas.count=0;umbrellas.visible=false;umbrellas.frustumCulled=false;umbrellas.raycast=()=>{};
+ umbrellas.setColorAt(0,_c.set('#ffffff'));root.add(umbrellas);const umbrellaColors=UMBRELLA_COLORS.map(h=>new THREE.Color(h));
  const packed=new WeakMap(),visible=[],perOutfit=new Map();let n=0,meshes=[],bake=null,loading=null,failedAt=-Infinity,ready=false,stats={instances:0,triangles:0,drawCalls:0};
  // Linear colours for the four slots; buzz shows skin where the hair would be. Cached per look object.
  function pack(look){let p=packed.get(look);if(p)return p;const c=new Float32Array(12),col=(v,d)=>_c.set(typeof v==='string'&&/^#([0-9a-f]{3}){1,2}$/i.test(v)?v:d);
@@ -175,9 +188,10 @@ export function createCrowdGPU(parent,{mobile=false,lights=null,cap=mobile?CROWD
  // seconds is not wrapped: callers time one-off clips (a wave) against the same clock; float32 stays frame-exact for days.
  function begin(seconds){n=0;time=seconds;}
  // clip: Idle | Walk | Run | Wave; rate scales the clip's own speed; phase in loops (0..1). bias < 1 wins the cap (residents).
- function push(look,x,y,z,yaw,{clip='Idle',rate=1,phase=0,scale=1,bias=1}={}){
+ // umbrella: an index into UMBRELLA_COLORS (−1 none).
+ function push(look,x,y,z,yaw,{clip='Idle',rate=1,phase=0,scale=1,bias=1,umbrella=-1}={}){
   if(!ready||n>=pool.length)return false;const it=pool[n++];
-  it.look=look;it.x=x;it.y=y;it.z=z;it.yaw=yaw;it.clip=clip;it.rate=rate;it.phase=phase;it.scale=scale;it.bias=bias;return true;
+  it.look=look;it.x=x;it.y=y;it.z=z;it.yaw=yaw;it.clip=clip;it.rate=rate;it.phase=phase;it.scale=scale;it.bias=bias;it.umbrella=umbrella;return true;
  }
  function end(target,radius){
   if(!ready){stats={instances:0,triangles:0,drawCalls:0};return stats;}
@@ -186,21 +200,28 @@ export function createCrowdGPU(parent,{mobile=false,lights=null,cap=mobile?CROWD
    for(let i=0;i<2;i++){const d=lights.dirs?.[i];if(d){shared['uL'+i].value.subVectors(d.position,d.target.position).normalize();shared['uC'+i].value.copy(d.color).multiplyScalar(d.intensity);}else shared['uC'+i].value.setRGB(0,0,0);}}
   cullInstances(pool,n,target,radius,limit,visible);
   for(const b of perOutfit.values())b.count=0;
-  let used=0,calls=0,drawn=0;
+  let used=0,calls=0,drawn=0,u=0;const ue=umbrellas.instanceMatrix.array;
   // Nearest first until the triangle budget is spent (the outfits differ: 5.2k–6.6k triangles each).
   for(const i of visible){const it=pool[i],p=pack(it.look),b=perOutfit.get(p.outfit);if(used+b.triangles>tris)break;used+=b.triangles;drawn++;
    const k=b.count++,ci=bake.clips[it.clip]||bake.clips.Idle;
    const c=Math.cos(it.yaw)*it.scale,s=Math.sin(it.yaw)*it.scale,e=b.mesh.instanceMatrix.array,o=k*16;
    e[o]=c;e[o+1]=0;e[o+2]=-s;e[o+3]=0;e[o+4]=0;e[o+5]=it.scale;e[o+6]=0;e[o+7]=0;e[o+8]=s;e[o+9]=0;e[o+10]=c;e[o+11]=0;e[o+12]=it.x;e[o+13]=it.y;e[o+14]=it.z;e[o+15]=1;
    const a=b.anim.array;a[k*4]=ci.start;a[k*4+1]=ci.frames;a[k*4+2]=(it.phase%1)*ci.frames;a[k*4+3]=ci.fps*it.rate;
-   const [c0,c1,c2]=b.cols,q=p.c;c0.array.set([q[0],q[1],q[2],q[3]],k*4);c1.array.set([q[4],q[5],q[6],q[7]],k*4);c2.array.set([q[8],q[9],q[10],q[11]],k*4);}
+   const [c0,c1,c2]=b.cols,q=p.c;c0.array.set([q[0],q[1],q[2],q[3]],k*4);c1.array.set([q[4],q[5],q[6],q[7]],k*4);c2.array.set([q[8],q[9],q[10],q[11]],k*4);
+   // The umbrella: canopy rim over the head, tilted a little into the walk; the stick ends by the right hand.
+   if(it.umbrella>=0&&u<cap){const S=it.scale,t=it.clip==='Walk'?.16:.06,ct=Math.cos(t),st=Math.sin(t),cy=Math.cos(it.yaw),sy=Math.sin(it.yaw),o2=u*16;
+    // R = Ry(yaw)·Rx(t): columns (cy,0,−sy), (sy·st,ct,cy·st), (sy·ct,−st,cy·ct)
+    ue[o2]=cy*S;ue[o2+1]=0;ue[o2+2]=-sy*S;ue[o2+3]=0;ue[o2+4]=sy*st*S;ue[o2+5]=ct*S;ue[o2+6]=cy*st*S;ue[o2+7]=0;ue[o2+8]=sy*ct*S;ue[o2+9]=-st*S;ue[o2+10]=cy*ct*S;ue[o2+11]=0;
+    const lx=.1*S,lz=.12*S;ue[o2+12]=it.x+cy*lx+sy*lz;ue[o2+13]=it.y+HEIGHT*1.17*S;ue[o2+14]=it.z-sy*lx+cy*lz;ue[o2+15]=1;
+    umbrellas.setColorAt(u,umbrellaColors[it.umbrella%umbrellaColors.length]);u++;}}
+  umbrellas.count=u;umbrellas.visible=u>0;if(u){calls++;umbrellas.instanceMatrix.needsUpdate=true;umbrellas.instanceColor.needsUpdate=true;}
   for(const b of perOutfit.values()){const m=b.mesh;m.count=b.count;m.visible=b.count>0;if(!b.count)continue;calls++;
    for(const a of [m.instanceMatrix,b.anim,...b.cols]){a.clearUpdateRanges();a.addUpdateRange(0,b.count*a.itemSize);a.needsUpdate=true;}}
-  stats={instances:drawn,pushed:n,triangles:used,drawCalls:calls};return stats;
+  stats={instances:drawn,pushed:n,triangles:used,drawCalls:calls,umbrellas:u};return stats;
  }
- function hide(){for(const m of meshes)m.visible=false;stats={instances:0,triangles:0,drawCalls:0};}
+ function hide(){for(const m of meshes)m.visible=false;umbrellas.visible=false;umbrellas.count=0;stats={instances:0,triangles:0,drawCalls:0};}
  // active: set by the caller each frame (LOD); sources push only while it is true.
- return {active:false,root,load,begin,push,end,hide,cap,budget,setLimits,get limits(){return {cap:limit,budget:tris};},get ready(){return ready;},get stats(){return stats;},get bake(){return bake;},get meshes(){return meshes;},
+ return {active:false,root,umbrellas,load,begin,push,end,hide,cap,budget,setLimits,get limits(){return {cap:limit,budget:tris};},get ready(){return ready;},get stats(){return stats;},get bake(){return bake;},get meshes(){return meshes;},
   // Seconds of one loop of a clip at rate 1 (callers time a one-off Wave with it).
   clipSeconds:name=>bake?.clips[name]?.duration||1};
 }

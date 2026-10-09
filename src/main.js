@@ -4,6 +4,7 @@ import {toon,toonify,night as nightAmount,weather as wxUniforms} from './toon.js
 import {createWeather,createAmbience,weatherAt,LEVELS,nextMode,approach,atmosphere,wind,tokyoClock,skyGradient,phaseMix} from './weather.js';
 import {crossingState} from './city-crowd.js';
 import {trainPosition,setCityWorld,setCityFocus} from './city-life.js';
+import {setTrafficQuality} from './city-traffic.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { places, residence } from './state.js';
@@ -593,6 +594,7 @@ function weatherFrame(now,dt,seconds){
   const isNight=n>=.5;if(isNight!==WX.isNight){WX.isNight=night=isNight;roomLight.intensity=isNight?7:0;cityRenderer?.setNight(isNight);cityEvents.setNight(isNight);document.body.classList.toggle('is-night',isNight);}
   // The CSS sky (style.css #world) is left alone in plain day or night; otherwise main.js writes the mixed gradient.
   const sky=(n===0||n===1)&&l.overcast<.004&&!flash?'':skyGradient(n,l.overcast,flash);if(sky!==WX.sky){WX.sky=sky;$('world').style.background=sky;}
+  cityRenderer?.crowd?.setHour?.(clockNow.hours);cityRenderer?.crowd?.setWeather?.(WX.state);
   const caption=WX.dayMode==='auto'?` · Tokyo ${clockNow.label} · ${clockNow.phase}`:'';if(caption!==WX.caption){WX.caption=caption;clockCaption.textContent=caption;}
   const px=renderer.getPixelRatio()*innerHeight*camera.zoom/(camera.top-camera.bottom);
   wxView.update({seconds,now,camera,target:controls.target,px,levels:l,night:n,wind:wind(now*.001,l.wind)});
@@ -621,7 +623,7 @@ const liteButton=control('lite-mode','LITE',()=>setLite(governor.auto));
 function setLite(on){local.set(LITE_KEY,on?'1':'0');governor.auto=!on;governor.set(on?0:START,performance.now());applyQuality();notify(on?'Lite mode: the lightest city, always.':'Lite mode off: the city adjusts to this device.');}
 function applyQuality(){
   const q=settingsFor(governor.level,{mobile,dpr:devicePixelRatio||1});Q=q;
-  wxView.setQuality(q);crowdGPU.setLimits({cap:q.crowdCap,budget:q.crowdTris});cityEvents.setQuality(q);cityRenderer?.setQuality?.(q);
+  wxView.setQuality(q);crowdGPU.setLimits({cap:q.crowdCap,budget:q.crowdTris});cityEvents.setQuality(q);cityRenderer?.setQuality?.(q);setTrafficQuality(governor.level);
   if(q.shadow&&q.shadow!==SHADOW_MAP){SHADOW_MAP=q.shadow;sunlight.shadow.mapSize.set(SHADOW_MAP,SHADOW_MAP);sunlight.shadow.map?.dispose();sunlight.shadow.map=null;shadowHalf=0;}
   if(roomView)ratioDirty=true;else renderer.setPixelRatio(q.pixelRatio);
   renderer.domElement.dataset.quality=`${q.level} ${governor.auto?'auto':'manual'} ${q.name}`;

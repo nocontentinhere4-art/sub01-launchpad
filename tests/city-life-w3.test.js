@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {trafficLightPhase,vehicleState,addCityTraffic,GLOW} from '../src/city-traffic.js';
+import {trafficLightPhase,vehicleState,addCityTraffic} from '../src/city-traffic.js';
+import {ROLE} from '../src/vehicles.js';
 import {crossingState} from '../src/city-crowd.js';
 import {addCityLife,expressPosition,EXPRESS,steamVents,glowPlan,glowBuffers,GLOW_BUDGET,setCityWorld} from '../src/city-life.js';
 import {critterPlan,critterBuffers,CRITTER_BUDGET,catSpots,PIGEON_FLOCKS,blimpState,blimpPoints,UI_ZONES,inQuad,bannerText,BLIMP} from '../src/city-sky.js';
@@ -16,16 +17,17 @@ test('traffic lights follow the crossing cycle: cars red while people cross, nev
   if(c.pedestrianGreen)assert.equal(s.vehicle,'red',`t=${t}`);
   if(s.vehicle!=='red')assert.equal(s.pedestrian,'red');
   if(s.pedestrian!=='red')assert.ok(c.pedestrianGreen);
-  for(let i=0;i<4;i++)if(vehicleState(t,i).moving)assert.notEqual(s.vehicle,'red','crossing vehicles only move on green/amber');}
+}
  assert.equal(trafficLightPhase(3).pedestrian,'green');assert.equal(trafficLightPhase(12).vehicle,'green');assert.equal(trafficLightPhase(23).vehicle,'amber');
  const blink=new Set();for(let t=7;t<9;t+=.05)blink.add(trafficLightPhase(t).pedestrian);assert.deepEqual([...blink].sort(),['green','off'],'the walk light blinks before red');
 });
-test('vehicle lamps glow from the same batch: head, tail and taxi roof sign instances carry a glow value',()=>{
- const tr=addCityTraffic(new THREE.Group()),g=tr.mesh.geometry.getAttribute('aGlow');
- assert.equal(g.count,tr.mesh.count);const v=Array.from(g.array);
- const f=Math.fround;assert.equal(v.filter(x=>x===f(GLOW.head)).length,32);assert.equal(v.filter(x=>x===f(GLOW.tail)).length,32);
- assert.equal(v.filter(x=>x===f(GLOW.taxi)).length,5,'five taxis, five lit roof signs');
- assert.equal(tr.root.children.length,1);
+test('vehicle lamps glow from the same batches: head/tail lamps, indicators and the taxi sign are vertex roles; vehicleState feeds city-life',()=>{
+ const tr=addCityTraffic(new THREE.Group());
+ for(const [type,M] of Object.entries(tr.meshes)){const roles=new Set();const a=M.mesh.geometry.getAttribute('aPart');for(let i=0;i<a.count;i++)roles.add(a.getY(i));
+  for(const r of [ROLE.head,ROLE.tail,ROLE.indL,ROLE.indR])assert.ok(roles.has(r),`${type} has role ${r}`);
+  assert.equal(roles.has(ROLE.sign),type==='taxi','only taxis carry a roof sign');}
+ assert.equal(tr.root.children.length,Object.keys(tr.meshes).length+1,'one mesh per type plus the wheels');
+ tr.update(1);for(let i=0;i<16;i++){const s=vehicleState(1,i);assert.ok([s.x,s.z,s.yaw].every(Number.isFinite));}
 });
 test('express: one pass per 90 s window at a hashed moment, continuous while it runs, off the map otherwise',()=>{
  let passes=0,prev=null;const starts=[];

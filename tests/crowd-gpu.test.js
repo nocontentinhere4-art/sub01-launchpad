@@ -108,3 +108,14 @@ test('residents: up close they are pushed with their own looks (hidden ones skip
  assert.equal(r.mesh.visible,false);assert.equal(pushed.length,1);assert.equal(pushed[0].look,looks[0]);assert.equal(pushed[0].clip,'Wave');assert.ok(pushed[0].bias<1);
  gpu.active=false;r.update(101,gpu);assert.equal(r.mesh.visible,true);
 });
+
+test('umbrellas: flagged people get one canopy each in ONE extra instanced mesh, coloured, over their heads; none when dry',async()=>{
+ const {UMBRELLA_COLORS}=await import('../src/crowd-gpu.js');
+ const a=await load(),gpu=createCrowdGPU(new THREE.Group(),{cap:12});await gpu.load(async(kind,name)=>a[name]);
+ gpu.begin(1);for(let i=0;i<6;i++)gpu.push({outfit:'tee'},i*2,.24,0,0,{clip:'Walk',umbrella:i%2?3:-1});
+ let s=gpu.end({x:0,z:0},100);assert.equal(s.umbrellas,3);assert.equal(gpu.umbrellas.count,3);assert.ok(gpu.umbrellas.visible);
+ const m=new THREE.Matrix4(),p=new THREE.Vector3(),c=new THREE.Color();
+ for(let k=0;k<3;k++){gpu.umbrellas.getMatrixAt(k,m);p.setFromMatrixPosition(m);assert.ok(p.y>HEIGHT,'canopy above the head');gpu.umbrellas.getColorAt(k,c);assert.equal('#'+c.getHexString().toUpperCase(),UMBRELLA_COLORS[3].toUpperCase());}
+ gpu.begin(2);for(let i=0;i<6;i++)gpu.push({outfit:'tee'},i,.24,0,0);s=gpu.end({x:0,z:0},100);
+ assert.equal(s.umbrellas,0);assert.equal(gpu.umbrellas.visible,false,'dry: no umbrella draw call');
+});

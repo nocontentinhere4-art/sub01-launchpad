@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {stylePlan,addTokyoStyle,fujiMesh,fujiProfile,ATLAS,SCHEMES,KIND_WEIGHTS,GLOW,NEON_DISTRICTS,panelRect,stripRect,FUJI} from '../src/tokyo-style.js';
+import {stylePlan,addTokyoStyle,fujiMesh,fujiProfile,fujiHaze,fujiGully,ATLAS,SCHEMES,KIND_WEIGHTS,GLOW,NEON_DISTRICTS,panelRect,stripRect,FUJI} from '../src/tokyo-style.js';
 import {cityLayout,CATEGORY,BASE_Y,GROUND,STOREY} from '../src/lots.js';
 import {streetPlan} from '../src/city-street.js';
 import {districts} from '../src/city-state.js';
@@ -70,23 +70,29 @@ test('street layer density and rules: 25–90 small props a district, cones only
  assert.equal(plan.props.filter(p=>p.role==='cone').length,0,'no cones without construction');
  const site=[{plotId:'shinjuku-2',type:'project',color:'orange',phase:'scaffold'}],withSite=stylePlan(site);
  assert.ok(withSite.props.some(p=>p.role==='cone'),'cones at a construction plot');
- for(const p of plan.props.filter(p=>p.role==='tree'))assert.equal(p.district,null,'street trees are boulevard-only');
+ assert.equal(plan.props.filter(p=>p.role==='tree').length,0,'street trees moved to city-green.js');
  assert.ok(plan.props.filter(p=>p.role==='mirror').length>=districts.length*2*3*.8,'about two traffic mirrors per district');
  assert.ok(plan.pools.length>=districts.length*1.5,`${plan.pools.length} vending clusters carry a light pool`);
 });
 
-test('Fuji: 20 segments, concave 35° → 12° profile, snow on the top 30 %, under 400 triangles',()=>{
- const prof=fujiProfile(FUJI.height),H=FUJI.height,slope=(f0,f1)=>Math.atan((f1-f0)*H/(prof.radius(f0)-prof.radius(f1)))*180/Math.PI;
- assert.ok(Math.abs(slope(.985,.995)-35)<3,`summit ${slope(.985,.995)}`);assert.ok(Math.abs(slope(0,.01)-12)<2,`base ${slope(0,.01)}`);
- const m=fujiMesh();assert.ok(m.triangles<=400);assert.equal(FUJI.segments,20);
- const snow=new THREE.Color(FUJI.snowDay);let snowY=Infinity;
- for(let i=0;i<m.position.length/3;i++)if(Math.abs(m.day[i*3]-snow.r*m.day[i*3+2]/snow.b)<.02&&m.day[i*3]>.6)snowY=Math.min(snowY,m.position[i*3+1]);
- assert.ok(snowY>H*.58&&snowY<H*.72,`snow line ${snowY/H}`);
+test('Fuji: concave profile (slope rises with height, ~10° foot → ~31° rim), truncated crater, wide, under 3k triangles',()=>{
+ const H=FUJI.height,prof=fujiProfile(H),slope=(f0,f1)=>Math.atan((f1-f0)*H/(prof.radius(f0)-prof.radius(f1)))*180/Math.PI;
+ const slopes=Array.from({length:20},(_,i)=>slope(i/20,(i+1)/20));
+ for(let i=1;i<slopes.length;i++)assert.ok(slopes[i]>slopes[i-1],`monotonic concavity at ${i}: ${slopes[i-1].toFixed(2)} → ${slopes[i].toFixed(2)}`);
+ assert.ok(Math.abs(slopes[0]-10)<1.5&&Math.abs(slopes.at(-1)-31)<2,`${slopes[0]} … ${slopes.at(-1)}`);
+ assert.ok(prof.rim>0&&prof.rim/prof.R>.03&&prof.rim/prof.R<.06,'a crater rim, not a point');
+ assert.ok(H/prof.R>.2&&H/prof.R<.35,`wide: H/R ${(H/prof.R).toFixed(2)}`);
+ const m=fujiMesh(),h=fujiHaze(m);assert.ok(m.triangles+h.triangles<=FUJI.maxTriangles,`${m.triangles}+${h.triangles}`);
+ for(const a of [m.position,m.lit,m.f,h.position,h.alpha])assert.ok(a.every(Number.isFinite));
+ assert.ok(m.layer.some(v=>v===1),'the Tanzawa ridge is in the body mesh');assert.ok(Math.max(...m.position.filter((_,i)=>i%3===1&&m.layer[Math.floor(i/3)]===1))<H*.5,'ridge stays low');
+ // Snow fingers: gullies (g < 0) hold snow further down than ridges.
+ assert.ok(FUJI.snow>.28&&FUJI.snow<.4);const g=Array.from({length:360},(_,i)=>fujiGully(i/360*Math.PI*2));assert.ok(Math.min(...g)<-.6&&Math.max(...g)>.6);
 });
 
-test('three draw calls, detail LOD by instance count, night switch',()=>{
+test('four draw calls (props, signs, Fuji, Fuji haze), detail LOD by instance count, night switch',()=>{
  const parent=new THREE.Group(),style=addTokyoStyle(parent,[]),st=style.stats();
- assert.equal(st.drawCalls,3);const meshes=[];parent.traverse(o=>{if(o.isMesh)meshes.push(o);});assert.equal(meshes.length,3);
+ assert.equal(st.drawCalls,4);const meshes=[];parent.traverse(o=>{if(o.isMesh)meshes.push(o);});assert.equal(meshes.length,4);
+ const cam=new THREE.OrthographicCamera();cam.zoom=.14;cam.updateMatrixWorld();style.mountain.onBeforeRender(null,null,cam);assert.ok(style.mountain.matrixWorld.elements.every(Number.isFinite));
  assert.ok(st.propsCore<st.props&&st.signsCore<=st.signs);
  style.signMesh.onBeforeRender(null,null,{zoom:.2});assert.equal(style.signMesh.count,st.signsCore);
  style.propMesh.onBeforeRender(null,null,{zoom:1});assert.equal(style.propMesh.count,st.props);
