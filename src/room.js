@@ -8,6 +8,7 @@ import {createSpecial,SPECIAL_ITEMS,SPECIAL_TIERS,SPECIAL_DIMS,SPECIAL_LABELS,SP
 import {createPet,petFollow} from './accessories.js';
 import {EMOTES} from './characters.js';
 import {isUnlocked,tierOf,tierLabel} from './creator.js';
+import {deskModel,hasDesk,SCREEN_ITEMS,screenTexture,screenMesh,screenGeometry,welcomeText,openComputer} from './desk.js';
 // A resident's room: a cutaway studio (floor + left and back walls) furnished with Kenney Furniture Kit pieces.
 // It shares the city's renderer (one WebGL context); while it is open the city pauses.
 // Budget: geometry is shared (glTF templates + a module cache of shell geometry), one 512 shadow map, three lights
@@ -259,7 +260,7 @@ async function enter(plotId,mine,viewer){
  const man=await loadManifest(),SCALE=kitScale(man),measured=new Map();
  const dimsOf=item=>measured.get(item)||specialDims(item)||dimsFrom(man,item,SCALE);
  const tierInfo=await loadTiers(),unlocks=(mine&&viewer?.unlocks)||data.unlocks||null;
- const owner=data.owner,scene=new THREE.Scene(),owned=[];
+ const owner=data.owner,scene=new THREE.Scene(),owned=[],desk=deskModel(data.desk,mine);   // desk.js: the projects on the computer
  let room=upgradeRoom(data.room),saved=JSON.stringify(room),closed=false;
  const own=m=>{owned.push(m);return m;};
  // Shadows are re-rendered only when something changes (furniture, light); the character has a contact quad instead.
@@ -324,6 +325,7 @@ async function enter(plotId,mine,viewer){
   object.traverse(n=>{if(!n.isMesh)return;n.castShadow=!/^rug/.test(entry.item);n.receiveShadow=true;
    if(ACCENT.has(entry.item))n.material=Array.isArray(n.material)?n.material.map(m=>fabric(entry.item,m)?tinted(m):m):fabric(entry.item,n.material)?tinted(n.material):n.material;});
   if(entry.item==='wallWindow'||entry.item==='wallWindowSlide')decorateWindow(wrap,object,entry.item,d);
+  if(SCREEN_ITEMS.has(entry.item))dressScreen(wrap,object,entry,d);
   if(CONTACT.has(entry.item)){const q=addMesh(PLANE,contactMat,[0,.008,0],[d.w*1.25,d.d*1.25,1],0,wrap);q.rotation.x=-Math.PI/2;q.userData.glow=true;q.raycast=()=>{};}
   return wrap;
  }
@@ -338,6 +340,15 @@ async function enter(plotId,mine,viewer){
   for(const k of [-1,1]){const cur=addMesh(BOX,curtainMat,[c.x+k*(s.x/2+.3),c.y-.05,d.d/2+.07],[.2,s.y+.45,.06],0,wrap);cur.castShadow=true;}
   addMesh(BOX,dark,[c.x,c.y+s.y/2+.22,d.d/2+.08],[s.x+1,.035,.035],0,wrap);
   const patch=addMesh(PLANE,glowMat,[c.x,.012,d.d/2+1],[s.x*1.6,1.7,1],0,wrap);patch.rotation.x=-Math.PI/2;patch.userData.glow=true;
+ }
+ // A screen shows a project (screens take the projects in switcher order, round robin), else a wallpaper or a screensaver;
+ // at dusk a soft spill of screen light falls on the surface in front of it.
+ const screenGlow=own(new THREE.MeshBasicMaterial({map:glowTexture(),color:'#8fb8ff',transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
+ function dressScreen(wrap,object,entry,d){
+  const list=room.furniture.filter(f=>SCREEN_ITEMS.has(f.item)),k=Math.max(0,list.indexOf(entry)),p=desk.projects.length?desk.projects[k%desk.projects.length]:null;
+  wrap.userData.project=p;const glass=screenMesh(object),tex=screenTexture(p,mine);if(!glass||!tex)return;
+  glass.geometry=own(screenGeometry(glass.geometry));glass.material=own(new THREE.MeshBasicMaterial({map:tex,toneMapped:false}));glass.castShadow=false;
+  const g=addMesh(PLANE,screenGlow,[0,.006,d.d/2+.18],[d.w*1.7,.55,1],0,wrap);g.rotation.x=-Math.PI/2;g.raycast=()=>{};
  }
  function place(i){
   const p=pieces[i],e=room.furniture[i];if(!p)return;const d=dimsOf(e.item);if(!d)return;
@@ -363,6 +374,7 @@ async function enter(plotId,mine,viewer){
   scene.background=new THREE.Color(L.sky);hemi.color.set(L.hemi[0]);hemi.groundColor.set(L.hemi[1]);hemi.intensity=L.hemi[2];
   sun.color.set(L.sun[0]);sun.intensity=L.sun[1];sun.position.set(...L.sun[2]);
   glowMat.color.set(L.glow[0]);glowMat.opacity=L.glow[1];viewMat();
+  screenGlow.opacity=Math.max(0,(daylight()-.5)*1.1);screenGlow.visible=screenGlow.opacity>0;
   const li=lampIndex(),on=li>=0&&lampsLit;
   if(on){const e=room.furniture[li],d=dimsOf(e.item);const [x,y,z]=d?renderPosition(e,d):[e.x,0,e.z];lamp.position.set(x,y+(d?d.h*.85:1.4),z);}
   lamp.intensity=on?(room.lighting==='night'?5:room.lighting==='evening'?3.5:2.5):0;
@@ -410,19 +422,32 @@ async function enter(plotId,mine,viewer){
    if(act==='look'){me.play('Idle_Neutral');hud.say(ACTION_TEXT.look);done(5000);return;}
    if(act==='leave'){faceCamera();me.play('Wave');hud.say(ACTION_TEXT.leave);later(1900,close);return;}
    if(act==='walk'){me.play('Idle');free=true;return;}
-   me.play('Interact');hud.say(USE_TEXT[e.item]||(act==='work'?ACTION_TEXT.work:`Checking the ${label(e.item).toLowerCase()}.`));if(act!=='work')done(3500);
+   me.play('Interact');hud.say(USE_TEXT[e.item]||(act==='work'?ACTION_TEXT.work:`Checking the ${label(e.item).toLowerCase()}.`));if(act!=='work')done(3500);after?.();
   });
  }
  // Autonomy: when the resident is free (or done with what it was using), it picks the loudest advertisement nearby.
  function autonomy(){
-  if(editing||mv.busy||brain.busy||!(free||me.posed))return;
+  if(editing||pc||mv.busy||brain.busy||!(free||me.posed))return;
   const c=choose(brain,room.furniture.map(f=>{const a=actionFor(f.item);return a==='leave'||a==='toggle'?{item:null}:f;}),me.root.position);
   if(c)actionFor(c.item)==='work'?useForWork(c.i):use(c.i);
  }
  let workAfterSit=false;
  // A desk is used from the chair in front of it, if there is one.
  function nearestSeat(p){let best=-1,dist=1.4;room.furniture.forEach((f,j)=>{if(actionFor(f.item)!=='sit'||/^lounge/.test(f.item))return;const k=Math.hypot(f.x-p.x,f.z-p.z);if(k<dist){dist=k;best=j;}});return best;}
- const useForWork=i=>{const e=room.furniture[i],d=dimsOf(e?.item);if(!d)return;const seat=nearestSeat(approach(e,d));if(seat>=0){workAfterSit=true;use(seat);}else use(i);};
+ const useForWork=(i,after)=>{const e=room.furniture[i],d=dimsOf(e?.item);if(!d)return;const seat=nearestSeat(approach(e,d));if(seat>=0){workAfterSit=true;use(seat,after);}else use(i,after);};
+
+ // ------------------------------------------------ the computer (desk.js): walk over, sit, open the overlay; closing stands up
+ let pc=null,pcPending=null;   // pcPending: the walk to the computer in progress (a token; any other tap cancels it)
+ function getUp(){if(me.posed&&lastSpot){stand();me.root.position.set(lastSpot.x,0,lastSpot.z);mv.set(lastSpot.x,lastSpot.z,me.root.rotation.y);}stand();me.stopEmote?.();me.play('Idle');free=true;}
+ function openPc(project){pcPending=null;if(closed||pc)return;
+  pc=openComputer({model:desk,project,ownerName:owner.name,onIdea:host.openIdea?()=>{close();host.openIdea();}:null,onClose({quiet}={}){pc=null;if(!quiet&&!closed){getUp();hud.say(mine?'Back to the room.':`${owner.name} gets up from the computer.`);}}});}
+ function toComputer(i){
+  if(pc||pcPending)return;const e=i>=0?room.furniture[i]:null;
+  if(!e||!dimsOf(e.item)){const s=room.furniture.findIndex(f=>SCREEN_ITEMS.has(f.item));if(s>=0&&s!==i){toComputer(s);return;}openPc(null);return;}   // no computer in the room: open straight away
+  const project=pieces[i]?.wrap.userData.project??desk.projects[0]??null,token=pcPending={},go=()=>{if(pcPending===token)openPc(project);};
+  later(9000,go);   // never stranded on a blocked path
+  if(actionFor(e.item)==='work')useForWork(i,go);else use(i,go);
+ }
 
  // ------------------------------------------------ emotes and special pieces
  // A show (an emote, a special piece in use, a skate loop) pauses autonomy: free=false until it ends, like use()'s done(ms).
@@ -535,10 +560,11 @@ async function enter(plotId,mine,viewer){
    camera.aspect=aspect;camera.position.copy(VIEW_DIR).multiplyScalar(dist).add(TARGET);camera.lookAt(TARGET);
    const lift=aspect<.8?.16:0;if(lift)camera.setViewOffset(1000*aspect,1000,0,1000*lift,1000*aspect,1000);else camera.clearViewOffset();
    camera.near=dist-12;camera.far=dist+12;camera.updateProjectionMatrix();},
-  click(p){ray.setFromCamera(p,camera);
+  click(p){ray.setFromCamera(p,camera);if(pc)return;pcPending=null;
    if(editing){const i=pieceAt();if(i>=0){select(i);return;}const f=floorAt();if(selected>=0&&f&&Math.abs(f.x)<=HALF&&Math.abs(f.z)<=HALF){moveTo(selected,f.x,f.z);return;}select(-1);return;}
+   const i=pieceAt();if(i>=0&&SCREEN_ITEMS.has(room.furniture[i].item)&&hasDesk(desk)){toComputer(i);return;}   // owner and visitor alike
    if(!mine)return;
-   const i=pieceAt();if(i>=0){if(actionFor(room.furniture[i].item)==='work')useForWork(i);else use(i);return;}
+   if(i>=0){if(actionFor(room.furniture[i].item)==='work')useForWork(i);else use(i);return;}
    const f=floorAt();if(f&&Math.abs(f.x)<=HALF&&Math.abs(f.z)<=HALF)walkTo(f.x,f.z);},
   update(dt){
    const r=me.root.position;
@@ -562,9 +588,10 @@ async function enter(plotId,mine,viewer){
   },
  };
  const hud=roomHud({owner,mine,room,edit,plotId,guestbook:Array.isArray(data.guestbook)?data.guestbook:null,visits:data.visits,unlocks,tierInfo,viewer,onClose:close,onWave(){if(mv.busy)return;stand();faceCamera();me.play('Wave');hud.say(`${owner.name} waves back.`);}});
- function close(){if(closed)return;host.setView(null);hud.remove();view.dispose();}
+ function close(){if(closed)return;pc?.close({quiet:true});host.setView(null);hud.remove();view.dispose();}
  host.setView(view);
- hud.say(mine?`Welcome home, ${owner.name}. Tap the bed, the desk, the window, the door…`:`You are visiting ${owner.name}.`);
+ if(hasDesk(desk)){const b=el('button',{className:'button button-dark room-pc-btn',type:'button',textContent:desk.projects.length?`💻 ${mine?'Your':owner.name+'\u2019s'} computer`:'💻 Computer',onclick:()=>toComputer(room.furniture.findIndex(f=>SCREEN_ITEMS.has(f.item)))});hud.root.append(b);}
+ hud.say(welcomeText({mine,name:owner.name,model:desk}));
  if(lampsLit)applyLook();
 }
 
@@ -576,7 +603,7 @@ function roomHud({owner,mine,room,edit,plotId,guestbook,visits,unlocks,tierInfo=
  const close=el('button',{className:'button button-dark',textContent:'Back to the city ←',onclick:()=>{if(edit.dirty()&&!confirm('Leave without saving your changes?'))return;onClose();}});
  const bubble=el('div',{className:'room-bubble'});bubble.setAttribute('role','status');
  root.append(el('div',{className:'room-top'},title,close),bubble);
- const api2={say(t){bubble.textContent=t;},select(){},count(){},sync(){},remove(){root.remove();}};
+ const api2={root,say(t){bubble.textContent=t;},select(){},count(){},sync(){},remove(){root.remove();}};
  if(guestbook)root.append(guestbookPanel({owner,mine,plotId,entries:guestbook,visits,viewer,say:api2.say}));
  if(!mine){root.append(el('button',{className:'button button-orange room-hi',textContent:`Say hi to ${owner.name}`,onclick:onWave}));document.body.append(root);return api2;}
  // Emote bar: every emote, the locked ones greyed with the tier that opens them.
