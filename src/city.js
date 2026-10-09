@@ -4,8 +4,8 @@ import {addCityLife} from './city-life.js';
 import {addCityCrowd} from './city-crowd.js';
 import {addCityTraffic} from './city-traffic.js';
 import {addTokyoStyle} from './tokyo-style.js';
-import {cityPlots,districts,tower,plotView} from './city-state.js';
-import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial} from './lots.js';
+import {cityPlots,districts,tower,plotView,BOULEVARD_X,ROAD_Z,CITY_EXTENT} from './city-state.js';
+import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial,isRing3,builtHeight} from './lots.js';
 const wallMaterial=params=>(T.wallMaterial||T.toon)(params);
 // Night multipliers are plain 0–1 factors (brief 3.9: walls ×#6F7D99, ground ×#55617A), not sRGB colours.
 const factor=hex=>new THREE.Color().setHex(parseInt(hex.slice(1),16),THREE.LinearSRGBColorSpace);
@@ -13,7 +13,7 @@ const NIGHT_WALL=T.nightColor?T.nightColor('walls'):factor('#6F7D99'),NIGHT_GROU
 const WHITE=new THREE.Color('#ffffff'),BLACK=new THREE.Color('#000000');
 const tint=(hex,f)=>{const c=new THREE.Color(hex);return f>0?c.lerp(WHITE,f):c.lerp(BLACK,-f);};
 const GLASS_LOW='#3D525B',GLASS_HIGH='#5E7881',AC='#E5E1D6';
-const BOULEVARD_X=[-43.5,-14.5,14.5,43.5],ROWS=[...new Set(districts.map(d=>d.z))];
+const ROWS=ROAD_Z,BLVD_Z0=CITY_EXTENT.minZ,BLVD_Z1=CITY_EXTENT.maxZ;
 const CARS=['#E8E6E0','#2F3437','#9AA3A8','#1F2A44','#B33A32','#D9D3C3'];
 // Per-instance night light: an extra vec3 attribute added to the emissive term, so only chosen windows glow.
 function nightLit(material){
@@ -38,7 +38,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  // marks). setDetail(false) at overview zoom just lowers each InstancedMesh's count to its core: no extra draw calls.
  let batches={},details={},detail=false;
  const add=(key,x,y,z,w,h,d,color,o)=>(detail||key==='marks'?details:batches)[key].push(o?{x,y,z,w,h,d,color,...o}:{x,y,z,w,h,d,color});
- const fine=fn=>{detail=true;try{fn();}finally{detail=false;}};
+ const fine=fn=>{const was=detail;detail=true;try{fn();}finally{detail=was;}};
  const dummy=new THREE.Object3D(),col=new THREE.Color();
  function batch(items,parent,material,lit){
   const geo=lit?geometry.clone():geometry,mesh=new THREE.InstancedMesh(geo,material,Math.max(1,items.length)),light=lit?new Float32Array(Math.max(1,items.length)*3):null;
@@ -71,8 +71,9 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   for(const d of districts){const c=isCommercial(d.id);
    if([-29,29].includes(d.x)&&[-28,2,32].includes(d.z))zebra(d.x,d,c);
    for(const bx of BOULEVARD_X)if(Math.abs(bx-d.x)<15)zebra(bx+Math.sign(d.x-bx)*3.2,d,c);}
-  for(const x of BOULEVARD_X){add('roads',x,.17,2,2.6,.05,147,'#646B6C');for(let z=-66;z<=70;z+=6)if(!ROWS.some(r=>Math.abs(z-r)<3.6))add('marks',x,.198,z,.08,.01,.8,'#E6E4DC');
-   for(let z=-64;z<=70;z+=12){add('marks',x+.6,.199,z,.55,.01,.55,'#4B5153',{ry:.39});}}
+  // Boulevards run the whole built area (city-state.js CITY_EXTENT: z −101.5…105.5 for the 7×7 city).
+  for(const x of BOULEVARD_X){add('roads',x,.17,(BLVD_Z0+BLVD_Z1)/2,2.6,.05,BLVD_Z1-BLVD_Z0,'#646B6C');for(let z=BLVD_Z0+5.5;z<=BLVD_Z1-5.5;z+=6)if(!ROWS.some(r=>Math.abs(z-r)<3.6))add('marks',x,.198,z,.08,.01,.8,'#E6E4DC');
+   for(let z=BLVD_Z0+7.5;z<=BLVD_Z1-5.5;z+=12){add('marks',x+.6,.199,z,.55,.01,.55,'#4B5153',{ry:.39});}}
  }
 
  // ---------- Buildings ----------
@@ -82,6 +83,9 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   const r=rng(lot.id+':draw'),home=['T2','T3','T4','T5'].includes(t);
   const glass=(k,o={})=>({...o,light:st.dark?null:bandLight(r,home)});
   const wall=lot.wall,band=tint(wall,.14),sill=tint(wall,.26),floors=lot.floors;
+  // Second LOD (wave 4A): third-ring lots keep only body, roof and glass at overview; floor bands, canopies and all roof
+  // clutter join the detail tail that setDetail(false) hides.
+  const far=isRing3(lot.district)&&!lot.user,Fb=far?(...a)=>fine(()=>F(...a)):F;
   const yk=k=>GROUND+STOREY*(k-1);
   // Body, then coping and a dark roof inside it (no overhang slab, no centred cube).
   if(t==='T5'){
@@ -106,21 +110,21 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    if(shop==='entrance')F('walls',-du*.2-side*.4,1.0,.03,Math.min(1.2,w-1.4),1.1,.06,'#8E9290');
    else if(w>2){F('windows',-side*Math.max(0,w/2-1),1.75,.02,1.0,1.0,.04,GLASS_LOW,glass(0));F('walls',-side*Math.max(0,w/2-1),1.22,.06,1.15,.06,.12,sill);}}
   else if(shop==='konbini'){F('windows',0,1.35,.02,w*.85,2.4,.06,GLASS_HIGH,{light:'#EAF4FF'});lot.stripe.forEach((c,i)=>F('walls',0,3.06+i*.117,.05,w+.02,.117,.1,c));for(const du of [.35,.8])F('walls',w/2-du,.45,.2,.38,.9,.38,'#4B6A8A');pools.push([lot.x,lot.frontZ+fz*.9,'#EAF4FF',Math.min(3.2,w*.6),.6]);}
-  if(lot.awning&&t!=='T4')F('walls',0,lot.awning.y,lot.awning.depth/2,w-.2,.2,lot.awning.depth,lot.awning.color,{rx:fz*.17});
-  if(t==='T4'&&shop!=='house'&&shop!=='pilotis')F('walls',0,2.95,.3,w,.12,.6,'#5B6466',{rx:fz*.17});
+  if(lot.awning&&t!=='T4')Fb('walls',0,lot.awning.y,lot.awning.depth/2,w-.2,.2,lot.awning.depth,lot.awning.color,{rx:fz*.17});
+  if(t==='T4'&&shop!=='house'&&shop!=='pilotis')Fb('walls',0,2.95,.3,w,.12,.6,'#5B6466',{rx:fz*.17});
   // Upper floors: one rhythm per facade (brief 3.4.4).
   for(let k=1;k<floors&&t!=='T6';k++){
    const y=yk(k),g=k<=2?GLASS_LOW:GLASS_HIGH;
-   if(t==='T1'){const lit=glass(k);F('windows',0,y+1.4,.02,w-.3,1.2,.05,g,lit);F('walls',0,y+.72,.05,w+.02,.16,.1,band);}
-   else if(t==='T7'){add('windows',lot.x,y0+y+1.45,lot.frontZ+fz*(.02-.6),w+.04,1.0,1.2,g,glass(k));F('walls',0,y+.87,.05,w+.02,.16,.1,band);}
+   if(t==='T1'){const lit=glass(k);F('windows',0,y+1.4,.02,w-.3,1.2,.05,g,lit);Fb('walls',0,y+.72,.05,w+.02,.16,.1,band);}
+   else if(t==='T7'){add('windows',lot.x,y0+y+1.45,lot.frontZ+fz*(.02-.6),w+.04,1.0,1.2,g,glass(k));Fb('walls',0,y+.87,.05,w+.02,.16,.1,band);}
    else if(t==='T2'){const bal=lot.bays[k-1]?.[0]?.balcony&&w>=1.85,u=bal?-(w/2-.65):0,lit=glass(k);
-    F('windows',u,y+1.45,.02,1.1,1.3,.05,g,lit);F('walls',0,y+.72,.05,w+.02,.16,.1,band);
+    F('windows',u,y+1.45,.02,1.1,1.3,.05,g,lit);Fb('walls',0,y+.72,.05,w+.02,.16,.1,band);
     if(bal){F('windows',w/2-.45,y+1.15,.02,.6,1.9,.04,g);F('walls',w/2-.45,y+.45,.25,.75,.9,.5,band);}}
    else if(t==='T3'){const bays=lot.bays[k-1]||[],n=Math.max(1,bays.length),pitch=w/n,lit=glass(k);
-    F('windows',0,y+1.25,.02,w-.3,2.0,.04,g,lit);F('walls',0,y+.45,.45,w+.02,1.0,.9,band);
+    F('windows',0,y+1.25,.02,w-.3,2.0,.04,g,lit);Fb('walls',0,y+.45,.45,w+.02,1.0,.9,band);
     fine(()=>bays.forEach((b,j)=>{if(b.ac)F('walls',-w/2+pitch*(j+.5)+b.acSide*(pitch/2-.55),y+1.2,.17,.8,.6,.3,AC);}));}
-   else if(t==='T4'){const lit=glass(k);F('windows',0,y+1.45,.02,Math.max(.9,w-.8),1.3,.05,g,lit);if(k>1||shop==='house'||shop==='pilotis')F('walls',0,y+.72,.05,w+.02,.16,.1,band);
-    if(k===1&&r()<.5)F('walls',(r()<.5?-1:1)*w*.2,y+.45,.3,w*.5,.9,.6,band);}
+   else if(t==='T4'){const lit=glass(k);F('windows',0,y+1.45,.02,Math.max(.9,w-.8),1.3,.05,g,lit);if(k>1||shop==='house'||shop==='pilotis')Fb('walls',0,y+.72,.05,w+.02,.16,.1,band);
+    if(k===1&&r()<.5)Fb('walls',(r()<.5?-1:1)*w*.2,y+.45,.3,w*.5,.9,.6,band);}
   }
   if(t==='T5'){const n=w>3.4?2:1;for(let i=0;i<n;i++){const u=(i-(n-1)/2)*w*.45;F('windows',u,GROUND+1.45,.02,1.1,1.1,.04,GLASS_LOW,glass(1));}}
   // Exposed side: blank, with a drain pipe, 0–2 small windows and, on T1/T2, a stack of AC units (brief 3.4.1).
@@ -130,15 +134,15 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    for(let i=0;i<lot.sideWindows;i++){const yy=from+.8+r()*Math.max(0,top-from-2.2);if(yy+.6<top)add('windows',sx+s*.02,y0+yy,lot.z+fz*(r()-.5)*D*.5,.04,.6,.6,GLASS_LOW,glass(0));}
    for(let i=0;i<lot.sideAC;i++){const yy=GROUND+STOREY*(floors-2-i)+1.1;if(yy>from+.3&&yy>.5)add('walls',sx+s*.16,y0+yy,lot.z+fz*(r()-.5)*D*.4,.3,.6,.8,AC);}
   });
-  if(lot.stair){const u=0,c=r()<.5?'#6E7774':'#C9B79A',zc=backZ-fz*.5;
+  if(lot.stair)(far?fine:fn=>fn())(()=>{const u=0,c=r()<.5?'#6E7774':'#C9B79A',zc=backZ-fz*.5;
    for(let k=0;k<floors-1;k++){const ya=k?yk(k):0,yb=yk(k+1),dir=k%2?1:-1,run=Math.min(2.2,w-.4),L=Math.hypot(run,yb-ya),a=Math.atan2(yb-ya,run*dir);
-    add('walls',lot.x+u,y0+(ya+yb)/2,zc,L,.12,.9,c,{rz:a});add('walls',lot.x+dir*(run/2+.45),y0+yb,zc,.9,.12,.9,c);fine(()=>add('walls',lot.x+u,y0+(ya+yb)/2+.9,zc-fz*.43,L,.05,.05,c,{rz:a}));}}
+    add('walls',lot.x+u,y0+(ya+yb)/2,zc,L,.12,.9,c,{rz:a});add('walls',lot.x+dir*(run/2+.45),y0+yb,zc,.9,.12,.9,c);fine(()=>add('walls',lot.x+u,y0+(ya+yb)/2+.9,zc-fz*.43,L,.05,.05,c,{rz:a}));}});
   // Roof clutter in corner slots.
-  if(!st.bare)for(const it of lot.roofItems){
+  if(!st.bare)(far?fine:fn=>fn())(()=>{for(const it of lot.roofItems){
    const x=lot.x+it.u,z=lot.z+fz*it.v,ry=y0+(t==='T5'?lot.eave+.6:H+.1);
    if(it.kind==='bulkhead'){add('roofs',x,ry+.9,z,it.w,1.8,it.d,tint(wall,-.1));fine(()=>add('roofs',x+(it.u>0?-1:1)*Math.max(0,it.w/2-.5),ry+.8,z+fz*(it.d/2+.02),.7,1.6,.04,'#4F5658'));continue;}
    if(it.kind==='billboard'){for(const s2 of [-1,1])add('roofs',x+s2*(it.w/2-.3),ry+.5,z,.1,1,.4,it.color);add('roofs',x,ry+2.1,z,it.w,2.2,.12,it.color);add('roofs',x,ry+2.1,z+fz*.07,it.w-.2,2.0,.02,'#D9D4C7');continue;}
-   detail=true;
+   const was=detail;detail=true;
    if(it.kind==='tank')add('roofs',x,ry+.75,z,it.w,1.3,it.d,it.color);
    else if(it.kind==='tankRound')add('roofs',x,ry+.6,z,it.w*.83,1.2,it.w*.83,it.color,{ry:Math.PI/4});
    else if(it.kind==='condenser'){for(let i=0;i<it.n;i++)add('roofs',x-it.w/2+.35+i*.8,ry+.35,z,.7,.7,.7,it.color);}
@@ -146,8 +150,8 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    else if(it.kind==='antenna'){add('roofs',x,ry+1,z,.04,2,.04,it.color);add('roofs',x,ry+1.6,z,.8,.03,.03,it.color);}
    else if(it.kind==='garden'){const n=3+Math.floor(r()*4);for(let i=0;i<n;i++)add('roofs',x+(r()-.5)*it.w,ry+.2,z+(r()-.5)*it.d,.3+r()*.25,.35+r()*.3,.3+r()*.25,r()<.5?'#6F8F5E':'#8FA66B');}
    else if(it.kind!=='rail')add('roofs',x,ry+it.h/2,z,it.w,it.h,it.d,it.color);
-   detail=false;
-  }
+   detail=was;
+  }});
  }
  function drawSpot(s){
   const fz=s.front==='+z'?1:-1,y0=BASE_Y,F=(key,u,y,v,w,h,d,c,o)=>add(key,s.x+u,y0+y,s.frontZ+fz*v,w,h,d,c,o),r=rng(s.id+':spot');
@@ -160,6 +164,13 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    for(let i=0;i<=n;i++){const u=-(s.width-.3)/2+i*bw;F('roofs',u,.045,-s.depth*.62,.08,.01,s.depth*.62,'#ECEAE2');}
    for(const i of s.cars)if(i<n)car(-(s.width-.3)/2+bw*(i+.5),-s.depth*.6);
    if(s.kind==='coin-parking'){const su=s.width/2-.35;F('walls',su,.6,-.3,.35,1.2,.3,'#E3BE3C');F('walls',-su,1.3,-.25,.08,2.6,.08,'#B7B4AA');F('walls',-su,2.55,-.25,.6,.6,.06,'#D2463C');F('walls',-su,2.55,-.21,.4,.4,.02,'#F4F1EA');}
+  }else if(s.kind==='park'){
+   // Pocket park (third ring): lawn, gravel path, 2–3 trees, a bench and a low fence along the street.
+   F('roofs',0,.03,-s.depth/2,s.width-.3,.06,s.depth-.3,'#7E9A63');F('roofs',0,.065,-s.depth*.45,1.1,.02,s.depth*.85,'#C9C3B4');
+   fine(()=>{for(const u of [-1,1])F('walls',u*(s.width/2-.2),.35,-.1,s.width/2-.9,.5,.08,'#8C8F86');});
+   const n=2+(r()<.5?1:0);for(let i=0;i<n;i++){const u=(i-(n-1)/2)*1.7+(r()-.5)*.4,v=-1.4-r()*(s.depth-2.4),h=1.6+r()*.8;
+    F('walls',u,h/2,v,.22,h,.22,'#6B5443');F('walls',u,h+.7,v,1.5,1.3,1.5,r()<.5?'#6F8F5E':'#8FA66B');}
+   F('walls',(r()<.5?-1:1)*1.4,.3,-.9,1.2,.12,.4,'#9A7A60');
   }else if(s.kind==='shrine'){
    F('roofs',0,.02,-s.depth/2,s.width-.3,.04,s.depth-.3,'#C9C3B4');F('roofs',0,.05,-s.depth*.45,.9,.02,s.depth*.8,'#9C998F');
    for(const u of [-.9,.9])F('walls',u,1.6,-.6,.22,3.2,.22,'#C8452D');F('walls',0,3.25,-.6,2.7,.22,.32,'#C8452D');F('walls',0,3.4,-.6,2.9,.1,.36,'#2B2B2B');F('walls',0,2.65,-.6,2.1,.14,.18,'#C8452D');
@@ -172,7 +183,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   const fz=lot.front==='+z'?1:-1,w=lot.width,D=lot.depth,y0=BASE_Y,F=(key,u,y,v,ww,h,dd,c,o)=>add(key,lot.x+u,y0+y,lot.frontZ+fz*v,ww,h,dd,c,o),back=-D;
   if(b.phase==='thinking'){F('roofs',0,.02,-D/2,w,.04,D,'#B9AE95');for(const [u,v,ww,dd] of [[0,0,w,.08],[0,back,w,.08],[-w/2,-D/2,.08,D],[w/2,-D/2,.08,D]])F('walls',u,1,v,ww,2,dd,'#E9E4D8');F('walls',0,1.9,.05,w,.2,.04,'#f0a35e');
    F('walls',w/2-.6,1.8,.3,.12,3.6,.12,'#46525a');F('windows',w/2-.6,3.3,.36,1.4,.9,.06,'#fb752b',{light:'#fb752b',glow:.6});return 2;}
-  const full=lot.height,h=Math.max(1.2,full*Math.min(1,b.progress/.65)),grey=b.phase==='stopped';
+  const full=lot.height,h=builtHeight(lot,b),grey=b.phase==='stopped';
   F('walls',0,h/2,-D/2,w-.4,h,D-.4,grey?'#8f9393':'#bdb9ad');
   for(let y=1;y<h+1.2;y+=STOREY)for(const v of [.25,back-.25])F('walls',0,y,v,w+.3,.07,.07,'#e9a84f');
   for(const u of [-w/2-.15,w/2+.15])for(const v of [.25,back-.25])F('walls',u,(h+1.2)/2,v,.08,h+1.2,.08,'#e9a84f');

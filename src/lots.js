@@ -28,7 +28,8 @@
 //    slab            true on the one tall building of its district (HEIGHTS[class].slab floors, far row) }
 //
 // Spot (open ground, from cityLayout().spots): { id, plotId|null, district, kind:'alley'|'vending'|'parking'|
-//    'coin-parking'|'shrine', x, z, width, depth, front, frontZ, bays?, cars? }   vacant plots → T8 coin parking or shrine.
+//    'coin-parking'|'shrine'|'park', x, z, width, depth, front, frontZ, bays?, cars? }   vacant plots → T8 coin parking or
+//    shrine; in the third ring mostly a pocket park or shrine.
 //
 // frontFace(plotId) → '+z'|'-z'.  subLotsOf(plotId,buildings) → {front, lots, spots, user} for that plot.
 import {cityPlots,districts,buildingColors} from './city-state.js';
@@ -45,7 +46,12 @@ const between=(r,a,b)=>a+(b-a)*r();
 export const CATEGORY={shinjuku:'neon',shibuya:'neon',akihabara:'neon',roppongi:'neon',ikebukuro:'neon',
  ginza:'office',nihonbashi:'office',shinagawa:'office',tsukiji:'office',odaiba:'office',kanda:'office',
  ebisu:'home',nakameguro:'home',nakano:'home',meguro:'home',harajuku:'home',yoyogi:'home',daikanyama:'home',koenji:'home',
- shiba:'old',asakusa:'old',ueno:'old',sumida:'old',shimokitazawa:'old'};
+ shiba:'old',asakusa:'old',ueno:'old',sumida:'old',shimokitazawa:'old',
+ // Third ring (wave 4A): low and old, two livelier sub-centres (Kichijoji, Gotanda).
+ kichijoji:'neon',gotanda:'office',
+ kiyosumi:'old',ryogoku:'old',oshiage:'old',yanaka:'old',sugamo:'old',kitasenju:'old',nippori:'old',tsukishima:'old',kagurazaka:'old',mejiro:'old',
+ takadanobaba:'home',ogikubo:'home',kinshicho:'home',ochanomizu:'home',toyosu:'home',omotesando:'home',jiyugaoka:'home',sangenjaya:'home',
+ aoyama:'home',shinbashi:'home',akasaka:'home',iidabashi:'home'};
 // Type mix per character (which typologies a district builds) …
 const PROFILE={
  neon:{mix:{T1:6,T4:2,T5:0,T3:2,T7:1}},
@@ -55,7 +61,10 @@ const PROFILE={
 // … and a height class per district (how tall it builds; wave 2B readability, real-13 grain): mostly low houses with
 // exactly ONE slab per district on the far row, so streets and ground floors read from the camera.
 export const HEIGHT_CLASS={shinjuku:'high',shibuya:'high',ginza:'high',shinagawa:'high',odaiba:'high',
- akihabara:'mid',roppongi:'mid',harajuku:'mid',nihonbashi:'mid',kanda:'mid',ikebukuro:'mid'};
+ akihabara:'mid',roppongi:'mid',harajuku:'mid',nihonbashi:'mid',kanda:'mid',ikebukuro:'mid',kichijoji:'mid',gotanda:'mid'};
+// The third ring: districts appended after the first 24 (city-state.js RING3). Low, more old houses, greener vacant plots.
+const RING3_SET=new Set(districts.filter(d=>d.ring===3).map(d=>d.id));
+export const isRing3=id=>RING3_SET.has(id);
 export const HEIGHTS={low:{floors:[2,3],slab:[5,6]},mid:{floors:[3,5],slab:[7,7]},high:{floors:[4,7],slab:[8,9]}};
 export const heightClass=districtId=>HEIGHT_CLASS[districtId]||'low';
 // Which sides of a district street get a raised sidewalk (with curb and tactile strip on commercial ones).
@@ -123,7 +132,7 @@ function sideElements(d,s,buildings){
  const el=[];
  plots.forEach((p,k)=>{
   const b=buildings.find(b=>b.plotId===p.id),r=rng(p.id+':split');
-  if(p.vacant&&!b){const kind=r()<.65?'coin-parking':'shrine';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
+  if(p.vacant&&!b){const x=r(),kind=isRing3(d.id)?(x<.45?'park':x<.8?'shrine':'coin-parking'):x<.65?'coin-parking':'shrine';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
   else{
    let split=pick(r,SPLITS).slice();
    if(b&&split.length===3)split=[1.8,4];
@@ -165,7 +174,7 @@ function layoutDistrict(d,buildings,out){
   for(let i=0;i<side.el.length&&streetFill(side.el,d)<.85;i++){const e=side.el[i];
    if(e.kind==='spot'&&e.pole){const j=side.el[i-1]?.gap==='alley'?i-1:i+1,p=side.el[j];p.x=(p.x+e.x)/2;p.width=1.9;p.gap='pencil';side.el.splice(i,1);i--;}}
  }
- const cls=heightClass(d.id),classLo=HEIGHTS[cls].floors[0];
+ const cls=heightClass(d.id),classLo=HEIGHTS[cls].floors[0],ring3=isRing3(d.id);
  const konbini=hashString(d.id+':konbini')%2===0;
  for(const [si,{front,el}] of sides.entries()){
   const s=si?1:-1,fz=fzOf(front),lotLine=d.z-fz*LOT_LINE;
@@ -182,8 +191,9 @@ function layoutDistrict(d,buildings,out){
    const r=rng(e.seed+':type');
    if(e.user){const t=e.building.type;e.type=t==='project'?'T1':t==='studio'?'T4':'T3';e.fixed=t==='project'?6:t==='studio'?3:5;continue;}
    if(e.kiosk)e.type='T4';
-   else if(e.role==='filler')e.type=cls==='low'?(r()<.3&&e.width>=1.6?'T5':'T4'):r()<.5?'T4':'T2';
-   else{e.type=chooseType(r,e.role==='sub'?e.width+JOINT:e.width,category);if(e.type==='T2'&&cls==='low'&&r()<.6)e.type='T4';}
+   else if(e.role==='filler')e.type=cls==='low'?(r()<(ring3?.55:.3)&&e.width>=1.6?'T5':'T4'):r()<.5?'T4':'T2';
+   else{e.type=chooseType(r,e.role==='sub'?e.width+JOINT:e.width,category);if(e.type==='T2'&&cls==='low'&&r()<.6)e.type='T4';
+    if(ring3&&cls==='low'&&e.type!=='T5'&&e.width>=3.5&&r()<.35)e.type='T5';}
    if(e.type==='T7'&&cls==='low')e.type='T3';
   }
   if(konbini&&s===(hashString(d.id+':kside')&1?1:-1)){
@@ -271,6 +281,13 @@ function layoutDistrict(d,buildings,out){
    leftH:0,rightH:0,bays:[],sideAC:0,sideWindows:Math.floor(r()*2),roofItems:roofRecipe(r,{type,floors,width:h.width,depth},category)});}
 }
 
+// Height a user lot shows for its building phase (city.js draws sites this tall): thinking = a 2 m hoarding, a site
+// rises with progress (full at 65 %), anything else is the finished lot.
+export function builtHeight(lot,b){
+ if(!lot)return 0;if(b?.phase==='thinking')return 2;
+ if(b?.phase==='scaffold'||b?.phase==='stopped')return Math.max(1.2,lot.height*Math.min(1,(Number(b.progress)||0)/.65));
+ return lot.height;
+}
 let cacheKey=null,cache=null;
 export function cityLayout(buildings=[]){
  const key=buildings.map(b=>`${b.plotId}|${b.type}|${b.color}`).sort().join(',');

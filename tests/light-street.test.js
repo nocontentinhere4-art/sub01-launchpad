@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
+import {CITY_EXTENT} from '../src/city-state.js';
 import {RAMP,gradientMap,toon,wallMaterial,night,nightColor} from '../src/toon.js';
 import {streetPlan,cablePositions,streetItems,addStreet,BOULEVARDS,ROWS} from '../src/city-street.js';
 import {skylinePlan,addCityLife,SKYLINE} from '../src/city-life.js';
@@ -26,10 +27,11 @@ test('wall material: toon plus a world-y dirt band at the foot and under the cop
  assert.notEqual(w.customProgramCacheKey(),n.customProgramCacheKey());
 });
 
-test('utility poles: ~170 poles on one side of every street and the boulevards, hashed pitch 8–9, off the roads',()=>{
+test('utility poles: one side of every street and the boulevards, scaling with the grid, hashed pitch 8–9, off the roads of every street and the boulevards, hashed pitch 8–9, off the roads',()=>{
  const plan=streetPlan(),utility=plan.poles,lamps=plan.lamps.filter(l=>l.kind==='led');
- assert.ok(utility.length+lamps.length>=140&&utility.length+lamps.length<=200,`${utility.length}+${lamps.length} poles`);
- for(const p of utility){assert.ok(Math.abs(p.x)<=72&&p.z>=-72&&p.z<=76);
+ // ~7 poles per district street plus the boulevards: 24 districts gave ~170, 48 give ~300.
+ assert.ok(utility.length+lamps.length>=250&&utility.length+lamps.length<=420,`${utility.length}+${lamps.length} poles`);
+ for(const p of utility){assert.ok(p.x>=CITY_EXTENT.minX&&p.x<=CITY_EXTENT.maxX&&p.z>=CITY_EXTENT.minZ&&p.z<=CITY_EXTENT.maxZ);
   if(p.axis==='x'){assert.ok(BOULEVARDS.every(b=>Math.abs(p.x-b)>=3),'not in a boulevard');assert.ok(ROWS.includes(p.c));}
   else assert.ok(ROWS.every(r=>Math.abs(p.z-r)>=3.6),'not in a side street');}
  assert.ok(!utility.some(p=>Math.hypot(p.x-29,p.z-2)<7.5),'the scramble stays clear');
@@ -40,9 +42,9 @@ test('utility poles: ~170 poles on one side of every street and the boulevards, 
  assert.ok(streetItems(plan).every(i=>[i.x,i.y,i.z,i.w,i.h,i.d].every(Number.isFinite)&&i.w>0&&i.h>0&&i.d>0));
 });
 
-test('cable web: one LineSegments of ~1.5–2.5k sagging segments between 5.5 and 9.7, light pools are one night-only mesh',()=>{
+test('cable web: one LineSegments of ~3–5k sagging segments between 5.5 and 9.7, light pools are one night-only mesh',()=>{
  const plan=streetPlan(),pos=cablePositions(plan),segments=pos.length/6;
- assert.ok(segments>=1200&&segments<=2600,segments+' segments');assert.ok(pos.every(Number.isFinite));
+ assert.ok(segments>=2400&&segments<=5200,segments+' segments');assert.ok(pos.every(Number.isFinite));
  for(let i=1;i<pos.length;i+=3)assert.ok(pos[i]>=5.5&&pos[i]<=9.7,'cable height '+pos[i]);
  const root=new THREE.Group(),street=addStreet(root);
  assert.equal(root.children.filter(c=>c.isLineSegments).length,1);assert.equal(root.children.filter(c=>c.isInstancedMesh).length,1);
@@ -54,7 +56,7 @@ test('cable web: one LineSegments of ~1.5–2.5k sagging segments between 5.5 an
 });
 
 test('skyline: three clusters, three value layers, widths 2–6, skewed heights 8–30, ~1 in 6 crowned, no fixed pitch',()=>{
- const s=skylinePlan();assert.ok(s.length>=40&&s.length<=70,s.length+' buildings');
+ const s=skylinePlan();assert.ok(s.length>=40&&s.length<=100,s.length+' buildings');
  for(const b of s){assert.ok(Math.min(b.w,b.d)>=2&&Math.max(b.w,b.d)<=6.01);assert.ok(b.h>=8&&b.h<=30);assert.ok(b.x<-71||b.z<-71,'outside the city');}
  assert.deepEqual([...new Set(s.map(b=>b.layer))].sort(),[0,1,2]);
  const heights=s.map(b=>b.h).sort((a,b)=>a-b);assert.ok(heights[s.length>>1]<19,'skewed toward low');

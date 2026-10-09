@@ -1,10 +1,12 @@
 import * as THREE from 'three';
-import {cityPlots} from './city-state.js';
+import {cityPlots,ROAD_Z,BOULEVARD_X,CITY_EXTENT} from './city-state.js';
 // Street layer (art brief 3.7, 3.10): utility poles with crossarms, transformers and guard sleeves; the whole city's cable
 // web as ONE LineSegments; slim LED lamps on the boulevards and sodium lamps on the side streets; night light pools as
 // ONE additive InstancedMesh of a single 64 px radial sprite. Pole parts are plain boxes returned as items for
 // city-life.js's shared solid batch, so the poles add no draw call of their own.
-export const ROWS=[-58,-28,2,32,62],BOULEVARDS=[-43.5,-14.5,14.5,43.5];
+// Rows and boulevards come from the district grid, so the pole web grows with the city.
+export const ROWS=ROAD_Z,BOULEVARDS=BOULEVARD_X;
+const X0=CITY_EXTENT.minX+.5,X1=CITY_EXTENT.maxX,Z0=CITY_EXTENT.minZ+1.5,Z1=CITY_EXTENT.maxZ;
 export const POLE={h:10.5,w:.24,arms:[9.6,8.6],color:'#B7B4AA',metal:'#5B6466',sleeve:['#E3BE3C','#2B2B2B'],cable:'#2D3134'};
 export const LIGHT={led:'#FFF0D8',sodium:'#FF9E48',lantern:'#FFB066'};
 const STREET_OFFSET=2.3,BOULEVARD_OFFSET=3.3,GROUND=.2;
@@ -22,8 +24,8 @@ export function streetPlan(){
  const poles=[],spans=[],lamps=[];
  const pole=(x,z,axis,side,c)=>{const p={x,z,axis,side,c,transformer:hash(x,z,3)<1/3,sleeve:hash(x,z,4)<.5,lamp:false};poles.push(p);return p;};
  // East-west district streets: one side per district segment, pitch 8–9, never inside a boulevard or the scramble.
- for(const z0 of ROWS){let x=-71+hash(z0,1)*2.5,prev=null;
-  while(x<71.5){
+ for(const z0 of ROWS){let x=X0+hash(z0,1)*2.5,prev=null;
+  while(x<X1){
    const seg=Math.round(x/29),hero=z0===2&&seg===0,side=hero?1:hash(z0,seg,2)<.5?-1:1,z=hero?3.95:z0+side*STREET_OFFSET;
    if(!BOULEVARDS.some(b=>Math.abs(x-b)<3)&&!blocked(x,z)){
     const p=pole(x,z,'x',side,z0);
@@ -33,8 +35,8 @@ export function streetPlan(){
    x+=8+hash(z0,x,6);}
  }
  // North-south boulevards: poles on one side (outward from the hero block), LED lamps every 12 on the other side.
- for(const bx of BOULEVARDS){const side=Math.abs(bx)===14.5?Math.sign(bx):hash(bx,7)<.5?-1:1;let z=-70+hash(bx,8)*2.5,prev=null;
-  while(z<75.5){const x=bx+side*BOULEVARD_OFFSET;
+ for(const bx of BOULEVARDS){const side=Math.abs(bx)===14.5?Math.sign(bx):hash(bx,7)<.5?-1:1;let z=Z0+hash(bx,8)*2.5,prev=null;
+  while(z<Z1){const x=bx+side*BOULEVARD_OFFSET;
    if(!ROWS.some(r=>Math.abs(z-r)<3.6)&&!blocked(x,z)&&!central(x,z)){const p=pole(x,z,'z',side,bx);if(prev&&z-prev.z<19)spans.push([prev,p]);prev=p;}
    z+=8+hash(bx,z,9);}
   for(let z=-66+hash(bx,10)*4;z<74;z+=11.5+hash(bx,z,11)){const x=bx-side*BOULEVARD_OFFSET;

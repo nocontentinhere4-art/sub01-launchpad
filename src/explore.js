@@ -1,12 +1,12 @@
 import {planRoute,frontOf} from './world-sync.js';
-import {cityPlots,districts} from './city-state.js';
+import {cityPlots,districts,ROAD_Z,BOULEVARD_X,CITY_EXTENT as E,CANAL_X,METRO_Z} from './city-state.js';
 // Explore mode: the signed-in resident's own model walks the city (client-only, nothing is sent to the server).
 // Pure helpers plus a small brain; the model, its pet and the stepping live in city-events.js (the one roaming model).
 export const IDLE_S=8,PAUSE_S=[5,12],NEAR=3.5,WALK_SPEED=2.2,RUN_SPEED=4.6,EMOTE_P=.6;
 // Streets mirror world-sync.js: an east-west road per district row (sidewalk fronts at ±2.8), boulevards between columns,
 // and the bridge that continues the z=2 road over the eastern canal.
-const ROAD_Z=[...new Set(districts.map(d=>d.z))].sort((a,b)=>a-b),BOULEVARD_X=[-43.5,-14.5,14.5,43.5];
-const BANDS=[...ROAD_Z.map(z=>({x0:-72,x1:72,z0:z-2.8,z1:z+2.8})),...BOULEVARD_X.map(x=>({x0:x-1.3,x1:x+1.3,z0:-71.5,z1:75.5})),{x0:72,x1:86,z0:.4,z1:3.6}];
+// Bounds come from city-state.js (7×7 city: rows ±101, boulevards z −101.5…105.5, the bridge over the canal at CANAL_X).
+const BANDS=[...ROAD_Z.map(z=>({x0:E.minX+.5,x1:E.maxX-.5,z0:z-2.8,z1:z+2.8})),...BOULEVARD_X.map(x=>({x0:x-1.3,x1:x+1.3,z0:E.minZ,z1:E.maxZ})),{x0:E.maxX-.5,x1:CANAL_X+7,z0:.4,z1:3.6}];
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 // Nearest point on a street or sidewalk.
 export function snapToStreet(p){
@@ -15,7 +15,7 @@ export function snapToStreet(p){
  return best;
 }
 // Floor height for the roaming model: ground, or the canal bridge deck (y 0.93) with a short ramp onto it.
-export function groundY(x,z){const dz=Math.abs(z-2),dx=Math.abs(x-79);return dz>2?.26:.26+.67*clamp((7.8-dx)/.8,0,1);}
+export function groundY(x,z){const dz=Math.abs(z-2),dx=Math.abs(x-CANAL_X);return dz>2?.26:.26+.67*clamp((7.8-dx)/.8,0,1);}
 // Street route from -> to; a walk along one boulevard goes straight instead of detouring through a road row.
 // Road rows are walked on the sidewalk (±2.35, the side it comes from / goes to), clear of the traffic lanes (±0.75)
 // and the parked car; a row that starts or ends the route (the scramble, the bridge) keeps the road centre.
@@ -23,19 +23,23 @@ export const SIDEWALK=2.35;
 export function exploreRoute(from,to){
  const bx=BOULEVARD_X.find(x=>Math.abs(from.x-x)<=1.5&&Math.abs(to.x-x)<=1.5);
  const pts=bx===undefined?planRoute(from,to):[{x:from.x,z:from.z},{x:from.x,z:to.z},{x:to.x,z:to.z}];
- const out=pts.filter((p,i)=>i===0||Math.hypot(p.x-pts[i-1].x,p.z-pts[i-1].z)>.01),last=out.length-1;
+ const out=pts.filter((p,i)=>i===0||p.x!==pts[i-1].x||p.z!==pts[i-1].z),last=out.length-1;
  for(let i=1;i<last;){const r=out[i].z;let j=i;while(j<last&&out[j+1].z===r)j++;
   if(ROAD_Z.includes(r)&&j<last&&out[i-1].z!==r){const side=Math.sign((i===1?from.z:to.z)-r)||1;for(let k=i;k<=j;k++)out[k]={x:out[k].x,z:r+side*SIDEWALK};}i=j+1;}
- return out.filter((p,i)=>i===0||Math.hypot(p.x-out[i-1].x,p.z-out[i-1].z)>.01);
+ return out.filter((p,i)=>i===0||p.x!==out[i-1].x||p.z!==out[i-1].z);
 }
 // Fixed landmarks: where to stand, which way to face, a one-line toast, emotes to try (first unlocked one wins).
 export const LANDMARKS=[
  {id:'tower',kind:'landmark',name:'Tokyo Tower',text:'Tokyo Tower — Shiba. 333 m in real life.',x:-23.8,z:-28,yaw:-Math.PI/2,emotes:['selfie','wave']},
  {id:'shibuya',kind:'landmark',name:'Shibuya crossing',text:'Shibuya crossing — the scramble, every light at once.',x:29,z:2.4,yaw:0,emotes:['dance','celebrate']},
- {id:'canal',kind:'landmark',name:'Nakameguro canal',text:'Nakameguro canal — cherry trees along the water.',x:78,z:2,yaw:0,emotes:['sit','think']},
- {id:'metro',kind:'landmark',name:'Metro station',text:'Metro station — the elevated line along the south edge.',x:-25,z:75,yaw:0,emotes:['think','wave']},
+ {id:'canal',kind:'landmark',name:'Nakameguro canal',text:'Nakameguro canal — cherry trees along the water.',x:CANAL_X-1,z:2,yaw:0,emotes:['sit','think']},
+ {id:'metro',kind:'landmark',name:'Metro station',text:'Metro station — the elevated line along the south edge.',x:-25,z:METRO_Z-3,yaw:0,emotes:['think','wave']},
  {id:'lanterns',kind:'landmark',name:'Roppongi lanterns',text:'Roppongi lantern street.',x:-31,z:2.4,yaw:0,emotes:['karaoke','dance']},
  {id:'broadcast',kind:'landmark',name:'Broadcast tower',text:'Broadcast tower — the second skyline needle.',x:51.5,z:-58,yaw:Math.PI/2,emotes:['selfie','think']},
+ // Third ring (wave 4A): the two sub-centres and an old-town street.
+ {id:'kichijoji',kind:'landmark',name:'Kichijoji',text:'Kichijoji — the west side sub-centre, all arcades and live houses.',x:87,z:-58,yaw:0,emotes:['dance','wave']},
+ {id:'gotanda',kind:'landmark',name:'Gotanda',text:'Gotanda — offices by day, izakaya by night.',x:-87,z:32,yaw:0,emotes:['karaoke','think']},
+ {id:'yanaka',kind:'landmark',name:'Yanaka',text:'Yanaka — old wooden houses, temples and cats.',x:0,z:-88,yaw:0,emotes:['sit','selfie']},
 ];
 // Places to wander to: landmarks, launched buildings, other residents' apartments (standing left of the host's box figure).
 export function cityPois(buildings,minePlotId){
@@ -56,7 +60,7 @@ export function pickPoi(list,lastId,rand=Math.random){
 export function idleTimer(limit=IDLE_S){let t=0,fired=false;
  return {poke(){t=0;fired=false;},tick(dt){t+=dt;if(fired||t<limit)return false;fired=true;return true;},get idle(){return t;}};}
 export function districtAt(x,z){
- if(x>72)return 'the waterfront';if(z>70)return 'the metro line';
+ if(x>E.maxX)return 'the waterfront';if(z>E.maxZ-5.5)return 'the metro line';
  const d=districts.find(d=>Math.abs(x-d.x)<=14.5&&Math.abs(z-d.z)<=15);
  return d?d.name.split(' /')[0]:Math.abs(x)<=14.5&&Math.abs(z-2)<=15?"SUB-01's block":'Tokyo';
 }

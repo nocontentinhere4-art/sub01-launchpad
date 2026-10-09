@@ -3,27 +3,34 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {snapToStreet,exploreRoute,groundY,pickPoi,idleTimer,districtAt,cityPois,createExplorer,LANDMARKS,IDLE_S,PAUSE_S} from '../src/explore.js';
 import {frontOf} from '../src/world-sync.js';
+import {ROAD_Z,BOULEVARD_X,CITY_EXTENT as E,CANAL_X,METRO_Z} from '../src/city-state.js';
 import {createCityEvents} from '../src/city-events.js';
 
-const onStreet=p=>[-58,-28,2,32,62].some(z=>Math.abs(p.z-z)<=2.81&&Math.abs(p.x)<=72)||[-43.5,-14.5,14.5,43.5].some(x=>Math.abs(p.x-x)<=1.31)||p.x>=72&&p.x<=86&&p.z>=.4&&p.z<=3.6;
+// 7×7 city (wave 4A): rows at −88…92, boulevards at ±14.5/±43.5/±72.5, the canal bridge at CANAL_X 108.
+const onStreet=p=>ROAD_Z.some(z=>Math.abs(p.z-z)<=2.81&&Math.abs(p.x)<=E.maxX-.5)||BOULEVARD_X.some(x=>Math.abs(p.x-x)<=1.31&&p.z>=E.minZ&&p.z<=E.maxZ)||p.x>=E.maxX-.5&&p.x<=CANAL_X+7&&p.z>=.4&&p.z<=3.6;
+test('the 7×7 street grid: seven rows, six boulevards, everything inside the city extent',()=>{
+ assert.deepEqual(ROAD_Z,[-88,-58,-28,2,32,62,92]);assert.deepEqual(BOULEVARD_X,[-72.5,-43.5,-14.5,14.5,43.5,72.5]);
+ assert.deepEqual(E,{minX:-101.5,maxX:101.5,minZ:-101.5,maxZ:105.5});assert.equal(CANAL_X,108);assert.equal(METRO_Z,108);
+});
 test('a tap snaps to the nearest street or sidewalk',()=>{
  assert.deepEqual(snapToStreet({x:10,z:2.5}),{x:10,z:2.5},'already on the road');
  assert.deepEqual(snapToStreet({x:-29,z:-36}),{x:-29,z:-30.8},'inside a block: the nearer sidewalk edge');
  assert.deepEqual(snapToStreet({x:16,z:17}),{x:15.8,z:17},'between rows: the boulevard');
- assert.deepEqual(snapToStreet({x:200,z:-300}),{x:72,z:-60.8},'far outside: the city corner');
- assert.deepEqual(snapToStreet({x:80,z:9}),{x:80,z:3.6},'the canal bridge');
- for(let i=0;i<300;i++){const p={x:Math.sin(i*12.9)*90,z:Math.cos(i*7.3)*90},s=snapToStreet(p);assert.ok(onStreet(s),JSON.stringify(s));}
+ assert.deepEqual(snapToStreet({x:200,z:-300}),{x:101,z:-90.8},'far outside: the city corner');
+ assert.deepEqual(snapToStreet({x:109,z:9}),{x:109,z:3.6},'the canal bridge');
+ assert.deepEqual(snapToStreet({x:75,z:-75}),{x:73.8,z:-75},'the new outer boulevard');
+ for(let i=0;i<300;i++){const p={x:Math.sin(i*12.9)*120,z:Math.cos(i*7.3)*120},s=snapToStreet(p);assert.ok(onStreet(s),JSON.stringify(s));}
 });
 test('routes start where the character stands and end at the snapped point, along axis-aligned streets',()=>{
  const cases=[[frontOf('shibuya-5'),snapToStreet({x:-50,z:40})],[{x:14.5,z:15},{x:14.5,z:25}],[LANDMARKS[3],LANDMARKS[0]],[frontOf('ginza-1'),LANDMARKS[2]],[LANDMARKS[2],LANDMARKS[0]],[LANDMARKS[1],LANDMARKS[5]],[{x:0,z:2},{x:10,z:2}]];
  for(const [a,b] of cases){const r=exploreRoute(a,b);assert.deepEqual(r[0],{x:a.x,z:a.z});assert.deepEqual(r.at(-1),{x:b.x,z:b.z});
   for(let i=1;i<r.length;i++)assert.ok(r[i].x===r[i-1].x||r[i].z===r[i-1].z,'axis-aligned');}
  assert.equal(exploreRoute({x:14.5,z:15},{x:14.5,z:25}).length,2,'one boulevard: straight, no detour');
- for(let i=0;i<300;i++){const a=snapToStreet({x:Math.sin(i*3.1)*80,z:Math.cos(i*5.7)*80}),b=i%3?snapToStreet({x:Math.cos(i*1.3)*80,z:Math.sin(i*2.9)*80}):LANDMARKS[i%LANDMARKS.length],r=exploreRoute(a,b);
+ for(let i=0;i<300;i++){const a=snapToStreet({x:Math.sin(i*3.1)*110,z:Math.cos(i*5.7)*110}),b=i%3?snapToStreet({x:Math.cos(i*1.3)*110,z:Math.sin(i*2.9)*110}):LANDMARKS[i%LANDMARKS.length],r=exploreRoute(a,b);
   assert.deepEqual([r[0],r.at(-1)],[{x:a.x,z:a.z},{x:b.x,z:b.z}]);for(let k=1;k<r.length;k++)assert.ok(Math.abs(r[k].x-r[k-1].x)<1e-9||Math.abs(r[k].z-r[k-1].z)<1e-9,JSON.stringify(r));}
  const side=exploreRoute(frontOf('shibuya-1'),LANDMARKS[1]);assert.ok(side.slice(1,-1).every(p=>Math.abs(Math.abs(p.z-2)-2.35)<1e-9),'rows on the sidewalk, off the traffic lanes');
  const bridge=exploreRoute(LANDMARKS[2],LANDMARKS[0]);assert.equal(bridge[1].z,2,'a row that starts the route keeps the centre');
- assert.equal(groundY(0,0),.26);assert.ok(Math.abs(groundY(79,2)-.93)<1e-9,'on the bridge deck');assert.equal(groundY(79,10),.26);
+ assert.equal(groundY(0,0),.26);assert.ok(Math.abs(groundY(CANAL_X,2)-.93)<1e-9,'on the bridge deck');assert.equal(groundY(CANAL_X,10),.26);assert.equal(groundY(79,2),.26,'the old canal is city now');
 });
 test('POI picking never returns the current POI twice in a row',()=>{
  const pois=cityPois([{plotId:'shibuya-2',type:'project',phase:'open',name:'Arc',ticker:'ARC'},{plotId:'ueno-5',type:'apartment',name:'Nao'},{plotId:'nakano-6',type:'apartment',name:'Me'},{plotId:'ginza-1',type:'project',phase:'thinking',name:'X'}],'nakano-6');
@@ -41,7 +48,9 @@ test('idle timer fires once after 8 s without input, and again only after a poke
  assert.equal(IDLE_S,8);
 });
 test('districts by position',()=>{
- assert.equal(districtAt(29,2),'Shibuya');assert.equal(districtAt(-29,-28),'Shiba');assert.equal(districtAt(0,2),"SUB-01's block");assert.equal(districtAt(79,2),'the waterfront');assert.equal(districtAt(-25,75),'the metro line');
+ assert.equal(districtAt(29,2),'Shibuya');assert.equal(districtAt(-29,-28),'Shiba');assert.equal(districtAt(0,2),"SUB-01's block");assert.equal(districtAt(CANAL_X,2),'the waterfront');assert.equal(districtAt(-25,METRO_Z),'the metro line');
+ assert.equal(districtAt(87,-58),'Kichijoji');assert.equal(districtAt(-87,92),'Kita-Senju');assert.equal(districtAt(79,2),'Omotesando');
+ for(const l of LANDMARKS)assert.ok(Math.abs(l.x)<=CANAL_X&&l.z>=E.minZ&&l.z<=METRO_Z,l.id);
 });
 // A fake roaming handle that teleports to the end of each route.
 function fakeRoam(at){const r={x:at.x,z:at.z,routes:[],emotes:[],faced:null,

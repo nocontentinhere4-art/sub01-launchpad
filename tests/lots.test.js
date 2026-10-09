@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET} from '../src/lots.js';
+import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET,isRing3,builtHeight,CATEGORY} from '../src/lots.js';
 import {cityPlots,districts,buildingColors} from '../src/city-state.js';
 import {frontOf} from '../src/world-sync.js';
 import {createCity} from '../src/city.js';
@@ -26,7 +26,7 @@ test('lots: fronts face the district street (plots at d.z+6 face −z) and agree
 });
 test('lots: every plot is covered; vacant plots are T8 spots; the user takes the widest sub-lot in their colour',()=>{
  for(const p of cityPlots){const s=subLotsOf(p.id);
-  if(p.vacant){assert.equal(s.lots.length,0);assert.ok(['coin-parking','shrine'].includes(s.spots[0].kind));}
+  if(p.vacant){assert.equal(s.lots.length,0);assert.ok((isRing3(p.district)?['park','coin-parking','shrine']:['coin-parking','shrine']).includes(s.spots[0].kind));}
   else{assert.ok(s.lots.length>=1&&s.lots.length<=3);for(const l of s.lots)assert.ok(Math.abs(l.x-p.x)<=2.9&&l.width>1.5&&l.height>=3.5&&[l.x,l.z,l.width,l.depth,l.height].every(Number.isFinite));}}
  const u=subLotsOf('shibuya-2',user);assert.equal(u.user.wall,buildingColors.orange);assert.equal(u.user.type,'T1');
  assert.equal(u.user.width,Math.max(...u.lots.map(l=>l.width)));assert.equal(subLotsOf('shibuya-5',user).user.type,'T3');
@@ -77,8 +77,10 @@ test('city: one batch per kind, picks cover the user sub-lot, heightOf follows t
  const scene=new THREE.Scene(),interactive=[],city=createCity(scene,interactive,()=>{},user);
  const st=city.stats();assert.ok(st.drawCalls<=6);assert.ok(st.walls>2000&&st.windows>500&&st.roofs>1000);
  // Budget (wave 2B): the city's own boxes stay under 7,500; overview LOD drops details without extra draw calls.
- assert.ok(st.instances<7500,`city instances ${st.instances}`);
- city.setDetail(false);const far=city.stats();assert.ok(far.instances<st.instances-1000&&!far.detail&&far.drawCalls===st.drawCalls);city.setDetail(true);
+ // Wave 4A, 48 districts: ≈ 2× the 24-district 6.85k; the overview hides the detail tail plus the third ring's bands,
+ // canopies, stairs and roof clutter (second LOD), so it stays ≈ 1.65× the old 4.83k.
+ assert.ok(st.instances<14000,`city instances ${st.instances}`);
+ city.setDetail(false);const far=city.stats();assert.ok(far.instances<8600&&far.instances<st.instances-4000&&!far.detail&&far.drawCalls===st.drawCalls,`overview ${far.instances}`);city.setDetail(true);
  assert.equal(city.stats().instances,st.instances);
  const u=subLotsOf('shibuya-2',user).user;assert.equal(city.heightOf('shibuya-2'),u.height);
  const m=new THREE.Matrix4(),pos=new THREE.Vector3(),q=new THREE.Quaternion(),sc=new THREE.Vector3();
@@ -87,4 +89,23 @@ test('city: one batch per kind, picks cover the user sub-lot, heightOf follows t
  city.redraw([{...user[0],phase:'scaffold',progress:.3}]);assert.ok(city.heightOf('shibuya-2')<u.height);
  city.redraw([{...user[0],phase:'thinking',progress:0}]);assert.equal(city.heightOf('shibuya-2'),2);
  const v=cityPlots.find(p=>p.vacant);assert.equal(city.heightOf(v.id),.5);
+});
+
+// Wave 4A: the third ring.
+test('lots: the third ring is low and old, with two mid sub-centres, greener vacant plots and the same budgets',()=>{
+ const ring=districts.filter(d=>isRing3(d.id));assert.equal(ring.length,24);
+ assert.deepEqual(ring.filter(d=>heightClass(d.id)==='mid').map(d=>d.id).sort(),['gotanda','kichijoji']);
+ assert.ok(ring.every(d=>CATEGORY[d.id]),'every third-ring district has a character');
+ const L=cityLayout([]),share=(ids,t)=>{const lots=L.lots.filter(l=>ids.has(l.district)&&l.role!=='interior');return lots.filter(l=>l.type===t).length/lots.length;};
+ const inner=new Set(districts.filter(d=>!isRing3(d.id)&&heightClass(d.id)==='low').map(d=>d.id)),outer=new Set(ring.filter(d=>heightClass(d.id)==='low').map(d=>d.id));
+ assert.ok(share(outer,'T5')>share(inner,'T5')*1.3,`T5 ${share(outer,'T5').toFixed(3)} vs ${share(inner,'T5').toFixed(3)}`);
+ const vacant=L.spots.filter(s=>s.plotId&&isRing3(s.district)&&cityPlots.find(p=>p.id===s.plotId).vacant);
+ assert.equal(vacant.length,24);assert.ok(vacant.filter(s=>s.kind!=='coin-parking').length>=14,'mostly parks and shrines');assert.ok(vacant.some(s=>s.kind==='park'));
+ const a=strip(cityLayout([])),n=L.lots.length;assert.equal(strip(cityLayout([{plotId:'kichijoji-2',type:'project',color:'mint'}])).length>0,true);assert.equal(strip(cityLayout([])),a,'deterministic');
+ assert.ok(n>780&&n<920,`lots ${n} ≈ 2× the 24-district 426`);
+});
+test('lots: builtHeight follows the construction phase',()=>{
+ const lot=subLotsOf('kichijoji-2',[{plotId:'kichijoji-2',type:'project',color:'mint'}]).user;assert.ok(lot);
+ assert.equal(builtHeight(lot,{phase:'thinking'}),2);assert.equal(builtHeight(lot,{phase:'open'}),lot.height);
+ assert.equal(builtHeight(lot,{phase:'scaffold',progress:.65}),lot.height);assert.equal(builtHeight(lot,{phase:'scaffold',progress:0}),1.2);assert.equal(builtHeight(null,{}),0);
 });

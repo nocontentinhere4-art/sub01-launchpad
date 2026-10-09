@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {phaseOf,worldBuildings,planRoute,frontOf,sub01Goal,HOME_DESK} from '../src/world-sync.js';
+import {cityPlots,ROAD_Z,BOULEVARD_X} from '../src/city-state.js';
 import {addResidents} from '../src/residents.js';
 import {createCity} from '../src/city.js';
 
@@ -30,4 +31,22 @@ test('residents are one instanced mesh with finite transforms; the city draws ev
  assert.equal(r.mesh.count,12);const m=new THREE.Matrix4();for(let i=0;i<r.mesh.count;i++){r.mesh.getMatrixAt(i,m);assert.ok(m.elements.every(Number.isFinite));}
  const city=createCity(new THREE.Group(),[],()=>{},[]);
  for(const phase of ['thinking','scaffold','stopped','review','launch','open'])city.redraw([{plotId:'shibuya-2',type:'project',phase,progress:.5,name:'Arc',color:'orange'}]);
+});
+
+test('routes between far districts (third ring corner to corner) stay on rows and boulevards',()=>{
+ const onGrid=p=>ROAD_Z.includes(p.z)||BOULEVARD_X.includes(p.x);
+ for(const [a,b] of [['kiyosumi-1','mejiro-6'],['ogikubo-3','kitasenju-4'],['kichijoji-2','gotanda-5'],['shiba-1','sangenjaya-6'],['yanaka-6','shinbashi-1']]){
+  const fa=frontOf(a),fb=frontOf(b),r=planRoute(fa,fb);assert.deepEqual([r[0],r.at(-1)],[fa,fb]);
+  for(let i=1;i<r.length;i++)assert.ok(r[i].x===r[i-1].x||r[i].z===r[i-1].z,`${a}→${b} axis-aligned`);
+  for(const p of r.slice(1,-1))assert.ok(onGrid(p)||p.x===fa.x||p.x===fb.x,`${a}→${b} ${JSON.stringify(p)}`);
+  for(let i=1;i<r.length;i++)if(r[i].z!==r[i-1].z)assert.ok(BOULEVARD_X.includes(r[i].x)||i===1||i===r.length-1,'changes rows only on a boulevard');}
+ // Every one of the 288 fronts reaches the home desk.
+ for(const p of cityPlots){const r=planRoute(frontOf(p.id),HOME_DESK);for(let i=1;i<r.length;i++)assert.ok(r[i].x===r[i-1].x||r[i].z===r[i-1].z,p.id);}
+});
+test('world projects carry public art only; private projects carry nothing but their name and stage',()=>{
+ const b=worldBuildings({plots:[
+  {plotId:'kichijoji-2',kind:'project',project:{slug:'kichi',name:'Kichi',ticker:'KICHI',stage:'approved',progress:.7,logoUrl:'/meta/kichi/logo-v1.png',bannerUrl:'/meta/kichi/banner-v1.svg'}},
+  {plotId:'yanaka-3',kind:'project',project:{slug:null,name:'Private project',ticker:null,stage:'generating',progress:.4,logoUrl:null,bannerUrl:null,mint:null}}]});
+ assert.deepEqual(b.map(x=>[x.plotId,x.phase,x.private,x.logoUrl]),[['kichijoji-2','review',false,'/meta/kichi/logo-v1.png'],['yanaka-3','scaffold',true,null]]);
+ assert.equal(b[1].ticker,null);
 });

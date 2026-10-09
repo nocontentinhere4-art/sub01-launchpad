@@ -86,7 +86,8 @@ export const PIGEON_FLOCKS=[{x:25.6,z:-.85,yaw:.4},{x:32.6,z:4.95,yaw:2.9},{x:-4
 const CROW_FLOCKS=[{x:-29,z:-30,y:24},{x:44,z:-58,y:21},{x:-56,z:-58,y:22}];
 export function catSpots(buildings=[],{mobile=false}={}){
  const out=[],lots=cityLayout(buildings).lots;
- for(const d of districts){if(!['home','old'].includes(CATEGORY[d.id]||'home'))continue;
+ // The outer ring keeps its budget for the inner city: cats sit where people look.
+ for(const d of districts){if(d.ring===3||!['home','old'].includes(CATEGORY[d.id]||'home'))continue;
   // Classic block wall at the lot line of a set-back house, on the side away from its door.
   const cand=lots.filter(l=>l.district===d.id&&!l.user&&['T5','T4','T3'].includes(l.type)&&l.setback>=.55&&l.width>=2.2)
    .map(l=>({l,k:hash(l.x,l.z,71)})).sort((a,b)=>a.k-b.k).slice(0,mobile?1+(hash(d.x,d.z,72)<.5?1:0):2+(hash(d.x,d.z,72)<.5?1:0));
