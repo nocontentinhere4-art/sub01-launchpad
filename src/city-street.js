@@ -110,13 +110,21 @@ export function addStreet(root,{capacity=640}={}){
  const poolMat=new THREE.MeshBasicMaterial({map:poolSprite(),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
  const pools=new THREE.InstancedMesh(quad,poolMat,capacity);pools.name='light pools';pools.count=0;pools.visible=false;pools.raycast=()=>{};pools.frustumCulled=false;root.add(pools);
  const list=[],dummy=new THREE.Object3D(),c=new THREE.Color();
- function upload(){list.forEach((p,i)=>{dummy.position.set(p.x,p.y,p.z);dummy.scale.set(p.r*2,1,p.r*2);dummy.updateMatrix();pools.setMatrixAt(i,dummy.matrix);pools.setColorAt(i,c.set(p.color).multiplyScalar(p.strength));});
+ function upload(){list.forEach((p,i)=>{dummy.position.set(p.x,p.y,p.z);dummy.scale.set(p.r*2,1,p.r*2);dummy.updateMatrix();pools.setMatrixAt(i,dummy.matrix);pools.setColorAt(i,c.set(p.color).multiplyScalar(p.strength*(p.dim??1)));});
   pools.count=list.length;pools.instanceMatrix.needsUpdate=true;if(pools.instanceColor)pools.instanceColor.needsUpdate=true;}
  // Public: a pool of `colour` light on the ground at (x,z). group lets a caller replace its own pools on redraw.
- function addLightPool(x,z,colour,radius=2.5,{y=.235,strength=.55,group=''}={}){if(list.length>=capacity)return -1;list.push({x,y,z,color:colour,r:radius,strength,group});upload();return list.length-1;}
+ // Konbini interiors read a little brighter than the brief's first pass (wave 3A night polish).
+ function addLightPool(x,z,colour,radius=2.5,{y=.235,strength=.55,group=''}={}){if(list.length>=capacity)return -1;list.push({x,y,z,color:colour,r:radius,strength:strength*(group==='konbini'?1.3:1),group});upload();return list.length-1;}
  function clearLightPools(group){for(let i=list.length-1;i>=0;i--)if(list[i].group===group)list.splice(i,1);upload();}
  for(const l of plan.lamps){const col=LIGHT[l.kind],[r,s]=l.kind==='led'?[3.4,.55]:[3.2,.7];
   addLightPool(l.x,l.z,col,r,{strength:s,group:'street'});addLightPool(l.x,l.z,col,.5,{y:l.y-.07,strength:1,group:'street'});}
  return {cables,pools,plan,items,addLightPool,clearLightPools,
-  setNight(v){pools.visible=v;cableMat.color.set(v?'#161B22':POLE.cable);}};
+  setNight(v){pools.visible=v;cableMat.color.set(v?'#161B22':POLE.cable);},
+  // Rare vending flicker (night only; small cool-white pools are the vending displays): in each hashed 9 s window about 1 cool-white pool in 12 stutters for ~1.5 s.
+  // Instance colours are re-uploaded only when some pool changes state.
+  tick(seconds){if(!pools.visible)return;const w=Math.floor(seconds/9),f=seconds/9-w;let changed=false;
+   list.forEach((p,i)=>{if(!['props','konbini'].includes(p.group)||p.r>2.2||p.y>1)return;const cool=c.set(p.color).b>c.r;if(!cool)return;
+    const on=hash(i,w,41)<1/12&&f>hash(i,w,42)*.8&&f<hash(i,w,42)*.8+.17,dim=on?(Math.sin(seconds*47+i)>.1?.25:1):1;
+    if(dim!==(p.dim??1)){p.dim=dim;changed=true;}});
+   if(changed)upload();}};
 }

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import {toon,toonify,night as nightAmount,weather as wxUniforms} from './toon.js';
 import {createWeather,createAmbience,weatherAt,LEVELS,nextMode,approach,atmosphere,wind,tokyoClock,skyGradient,phaseMix} from './weather.js';
 import {crossingState} from './city-crowd.js';
-import {trainPosition} from './city-life.js';
+import {trainPosition,setCityWorld,setCityFocus} from './city-life.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { places, residence } from './state.js';
@@ -478,7 +478,7 @@ function residentList(){return cityBuildings.filter(b=>b.type==='apartment').map
 function setServer(up){if(up===serverUp)return;serverUp=up;$('server-status').textContent=up?'LIVE CITY':'SERVER OFFLINE';$('activity-label').textContent=up?'SUB-01 · LIVE':'SUB-01 · OFFLINE';$('server-badge').classList.toggle('is-offline',!up);if(!up)$('activity-text').textContent='The city server is offline. Nothing here is live right now.';}
 async function pollWorld(){
  let next;try{next=await api('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions){lookOptions=await api('/api/world/options');cityRenderer.crowd.setLookOptions(lookOptions);}setServer(true);}catch{setServer(false);return;}
- world=next;const items=worldBuildings(world),key=JSON.stringify(items);let flipped=[];
+ world=next;setCityWorld(world);const items=worldBuildings(world),key=JSON.stringify(items);let flipped=[];
  if(key!==worldKey){worldKey=key;
   // A party only for a site seen building and now open, not for one that was already open when first seen.
   flipped=items.filter(b=>b.phase==='open'&&cityBuildings.some(o=>o.plotId===b.plotId&&o.type==='project'&&o.phase!=='open'));
@@ -578,7 +578,7 @@ function animate(now){
   if(cityTour){cityTour.elapsed+=dt;if(cityTour.elapsed>5){cityTour.elapsed=0;cityTour.index++;if(cityTour.index>=cityViews.length){cityTour=null;resetView();$('activity-text').textContent='Your idea. Your city. Choose an address.';}else nextCityView();}}
   // Overview LOD: below zoom 0.3 the city skips AC units, small roof items, side pipes and road marks.
   cityRenderer?.setDetail(camera.zoom>=.3);
-  weatherFrame(now,dt,seconds);controls.update();updateSunAndFog();crowdEnd(now);renderer.render(scene,camera);
+  weatherFrame(now,dt,seconds);controls.update();updateSunAndFog();crowdEnd(now);setCityFocus(cityEvents.visitor?.position||character?.position||null);renderer.render(scene,camera);
   document.body.classList.toggle('is-close',camera.zoom>.42);
   for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
 }

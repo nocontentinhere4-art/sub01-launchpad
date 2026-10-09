@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {toon,toonify} from './toon.js';
+import {toon,night} from './toon.js';
 
 export function vehicleState(seconds,index){
  if(index<4){
@@ -11,21 +11,39 @@ export function vehicleState(seconds,index){
  const progress=((seconds*(2+(index%3)*.3)+index*13)%140+140)%140;
  return {x:reverse?70-progress:progress-70,z:row+(reverse?-.75:.75),yaw:reverse?-Math.PI/2:Math.PI/2,moving:true};
 }
+// Scramble signals (tested): vehicles see red while people cross, green while they drive, amber for the last 2.5 s;
+// the pedestrian light blinks green for the last 2 s of its phase, as Tokyo's do. Same 24 s cycle as crossingState.
+export function trafficLightPhase(seconds){
+ const phase=((seconds%24)+24)%24;
+ return {vehicle:phase<9?'red':phase<21.5?'green':'amber',pedestrian:phase<7?'green':phase<9?(Math.floor(phase*4)%2?'off':'green'):'red',phase};
+}
 // Vehicle kinds by index (hand-mixed so no kind repeats on a fixed rhythm): 5 taxis, 3 kei trucks, 6 cars, 2 buses.
 export const VEHICLE_KINDS=['car','taxi','car','kei','taxi','car','taxi','kei','car','bus','taxi','car','kei','bus','car','taxi'];
 const CAR_COLORS=['#E8E6E0','#2F3437','#9AA3A8','#5B6466','#D9D3C3','#8C2F2A','#E8E6E0'];
 const hashUnit=(...v)=>{let h=2166136261;for(const x of v){h=Math.imul(h^x,16777619);h^=h>>>13;}h=Math.imul(h,1540483477);h^=h>>>15;return (h>>>0)/4294967296;};
+// Night lights in the same batch: a per-instance glow (head lamps, tail lamps, taxi roof sign) adds the box's own colour
+// as emission, scaled by toon.js's shared night amount. No extra draw call; the light cones and pools under the
+// vehicles live in city-life.js's additive glow batch.
+export const GLOW={head:2.2,tail:1.6,taxi:1.3};
+function trafficMaterial(){
+ const m=toon({roughness:.55});
+ m.onBeforeCompile=sh=>{sh.uniforms.uTrafficNight=night;
+  sh.vertexShader='attribute float aGlow;varying float vTrafficGlow;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvTrafficGlow=aGlow;');
+  sh.fragmentShader='uniform float uTrafficNight;varying float vTrafficGlow;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n totalEmissiveRadiance+=diffuseColor.rgb*vTrafficGlow*uTrafficNight;');};
+ m.customProgramCacheKey=()=>'city-traffic-glow';
+ return m;
+}
 export function addCityTraffic(parent){
  const root=new THREE.Group();parent.add(root);
- const count=16,parts=15,mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),toon({roughness:.55}),count*parts);
+ const count=16,parts=15,mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),trafficMaterial(),count*parts);
  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,1,0),105);root.add(mesh);
  const dummy=new THREE.Object3D(),actor=new THREE.Object3D(),v=new THREE.Vector3();
  // Tokyo traffic (plan item 10): dark-indigo taxis with a roof sign, white kei trucks, green/cream buses, muted cars.
  // Same 15 boxes per vehicle (one batch, fixed count); index 9 and 13 stay the buses.
  const specs=[];
  for(let i=0;i<count;i++){
-  const kind=VEHICLE_KINDS[i],a=[],put=(x,y,z,w,h,d,c)=>a.push({x,y,z,w,h,d,c}),glass='#33505C',tyre='#263a43';
-  const lights=(z)=>{for(const side of [-1,1]){put(side*.34,.58,z,.2,.17,.025,'#ffedb4');put(side*.34,.56,-z,.18,.12,.025,'#d96450');}};
+  const kind=VEHICLE_KINDS[i],a=[],put=(x,y,z,w,h,d,c,g=0)=>a.push({x,y,z,w,h,d,c,g}),glass='#33505C',tyre='#263a43';
+  const lights=(z)=>{for(const side of [-1,1]){put(side*.34,.58,z,.2,.17,.025,'#ffedb4',GLOW.head);put(side*.34,.56,-z,.18,.12,.025,'#d96450',GLOW.tail);}};
   if(kind==='bus'){
    put(0,.62,0,1.2,.84,3.7,'#3E7A5C');put(0,1.36,0,1.18,.66,3.66,'#EDE6D2');put(0,1.3,1.84,.9,.42,.025,glass);put(0,1.3,-1.84,.9,.3,.025,glass);
    for(const side of [-1,1]){put(side*.6,1.32,-.05,.025,.36,3.1,glass);for(const z of [-1.2,1.2])put(side*.56,.3,z,.16,.34,.38,tyre);}
@@ -40,10 +58,11 @@ export function addCityTraffic(parent){
    for(const side of [-1,1]){put(side*.48,1.02,-.06,.025,.3,.96,glass);for(const z of [-.68,.68])put(side*.56,.34,z,.16,.32,.35,tyre);}
    lights(1.065);
    // Taxi: the amber roof sign. Other cars hide the 15th box inside the cabin roof.
-   taxi?put(0,1.26,-.05,.34,.14,.2,'#F0B23E'):put(0,1.1,-.1,.5,.1,.6,c);
+   taxi?put(0,1.26,-.05,.34,.14,.2,'#F0B23E',GLOW.taxi):put(0,1.1,-.1,.5,.1,.6,c);
   }
   specs.push(a);a.forEach((p,j)=>mesh.setColorAt(i*parts+j,new THREE.Color(p.c)));
  }
+ mesh.geometry.setAttribute('aGlow',new THREE.InstancedBufferAttribute(new Float32Array(specs.flatMap(a=>a.map(p=>p.g))),1));
  function update(seconds){for(let i=0;i<count;i++){const s=vehicleState(seconds,i);actor.position.set(s.x,.22,s.z);actor.rotation.y=s.yaw;actor.updateMatrix();specs[i].forEach((p,j)=>{v.set(p.x,p.y,p.z).applyQuaternion(actor.quaternion).add(actor.position);dummy.position.copy(v);dummy.quaternion.copy(actor.quaternion);dummy.scale.set(p.w,p.h,p.d);dummy.updateMatrix();mesh.setMatrixAt(i*parts+j,dummy.matrix);});}mesh.instanceMatrix.needsUpdate=true;}
- update(0);return {root,mesh,update};
+ update(0);return {root,mesh,update,specs};
 }
