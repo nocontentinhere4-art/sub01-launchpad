@@ -16,14 +16,31 @@ export const NIGHT_TINT={walls:'#6F7D99',ground:'#55617A'};
 // ~0.2 and ACES's toe crushes the walls to black. nightColor('walls') gives the factor; material.color.copy(it) at night.
 export const nightColor=role=>new THREE.Color().setHex(parseInt(NIGHT_TINT[role].slice(1),16),THREE.LinearSRGBColorSpace);
 const KEEP=['color','map','emissive','emissiveIntensity','emissiveMap','vertexColors','transparent','opacity','side','alphaTest','name'];
-export function toon(params={}){const {roughness,metalness,...rest}=params;return new THREE.MeshToonMaterial({gradientMap,...rest});}
+// Weather (weather.js, main.js): shared 0–1 amounts. wet darkens and cools up-facing ground (the low, flat surfaces) and
+// a little of everything else; snow whitens up-facing faces, roofs more than the ground. One chunk injected into every
+// toon material; amounts at 0 cost a few ALU ops. main.js zeroes them while a room is open (rooms share these materials).
+export const weather={wet:{value:0},snow:{value:0}};
+const weatherVert=['#include <project_vertex>',`#include <project_vertex>
+ vec4 wxP=vec4(transformed,1.);
+ #ifdef USE_INSTANCING
+ wxP=instanceMatrix*wxP;
+ #endif
+ vWxY=(modelMatrix*wxP).y;`];
+const weatherFrag=['#include <emissivemap_fragment>',`float wxUp=clamp((vec4(normal,0.)*viewMatrix).y,0.,1.),wxLow=1.-smoothstep(.6,1.4,vWxY),wxG=step(.85,wxUp)*wxLow;
+ diffuseColor.rgb*=(1.-uWxWet*(.1+.4*wxG))*mix(vec3(1.),vec3(.88,.93,1.04),uWxWet*wxG);
+ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.92,.94,.97),uWxSnow*smoothstep(.55,.9,wxUp)*mix(.88,.42,wxLow));
+#include <emissivemap_fragment>`];
+export function addWeather(shader){Object.assign(shader.uniforms,{uWxWet:weather.wet,uWxSnow:weather.snow});
+ shader.vertexShader='varying float vWxY;\n'+shader.vertexShader.replace(...weatherVert);
+ shader.fragmentShader='uniform float uWxWet,uWxSnow;varying float vWxY;\n'+shader.fragmentShader.replace(...weatherFrag);}
+export function toon(params={}){const {roughness,metalness,...rest}=params;const m=new THREE.MeshToonMaterial({gradientMap,...rest});m.onBeforeCompile=addWeather;return m;}
 // Walls: the toon material plus age and dirt for free (brief 3.4.9): the bottom `foot` units above `ground` darken by
 // `dirt` (18%), and the top `cap` units of each box by `capDirt` (8%), measured per box so it works on instanced walls.
 // night:true also multiplies by NIGHT_TINT.walls as the shared night amount rises (leave it off if the caller tints).
 export function wallMaterial({ground=.24,foot=1,dirt=.18,cap=.3,capDirt=.08,night:nightTint=false,...params}={}){
  const m=toon(params),u={uGround:{value:ground},uFoot:{value:foot},uDirt:{value:dirt},uCap:{value:cap},uCapDirt:{value:capDirt},uNight:night,uNightTint:{value:nightColor('walls')}};
  m.userData.wall=u;
- m.onBeforeCompile=shader=>{Object.assign(shader.uniforms,u);
+ m.onBeforeCompile=shader=>{addWeather(shader);Object.assign(shader.uniforms,u);
   shader.vertexShader='varying float vWallY;varying float vWallTop;\n'+shader.vertexShader.replace('#include <project_vertex>',`#include <project_vertex>
  vec4 wallP=vec4(transformed,1.);float wallSy=length(modelMatrix[1].xyz);
  #ifdef USE_INSTANCING

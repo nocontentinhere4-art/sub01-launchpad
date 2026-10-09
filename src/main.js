@@ -1,6 +1,9 @@
 import './style.css';
 import * as THREE from 'three';
-import {toon,toonify,night as nightAmount} from './toon.js';
+import {toon,toonify,night as nightAmount,weather as wxUniforms} from './toon.js';
+import {createWeather,createAmbience,weatherAt,LEVELS,nextMode,approach,atmosphere,wind,tokyoClock,skyGradient,phaseMix} from './weather.js';
+import {crossingState} from './city-crowd.js';
+import {trainPosition} from './city-life.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { places, residence } from './state.js';
@@ -62,7 +65,7 @@ const LOOK = {
   day: { hemi: ['#CFDDF0', '#B9A88E', 1.1], sun: ['#FFE6C4', 2.6], fill: ['#9DB3D6', .45], fog: '#E6DFD2', shadows: true },
   night: { hemi: ['#2E4A86', '#2A2630', 3.2], sun: ['#9DB0E0', .5], fill: ['#9DB3D6', 0], fog: '#1C2638', shadows: false },
 };
-const SUN_DIR = new THREE.Vector3(-.45, .62, .64).normalize(), SUN_DISTANCE = 70;
+const SUN_DIR = new THREE.Vector3(-.45, .62, .64).normalize(), SUN_DISTANCE = 70, sunDir = SUN_DIR.clone();
 const hemi = new THREE.HemisphereLight(...LOOK.day.hemi); scene.add(hemi);
 const sunlight = new THREE.DirectionalLight(...LOOK.day.sun);
 sunlight.castShadow = true; scene.add(sunlight, sunlight.target);
@@ -74,19 +77,19 @@ sunlight.shadow.bias = -.0006;
 sunlight.shadow.intensity = .8;
 const fill = new THREE.DirectionalLight(...LOOK.day.fill); fill.position.set(.45, .3, -.64); scene.add(fill);
 // Fog is measured from the camera; the ortho camera sits a fixed distance from its target, so fog is set relative to it.
-const FOG = { near: 12, far: 230 };
+const FOG = { near: 12, far: 230 }, fogMul = { near: 1, far: 1 };
 scene.fog = new THREE.Fog(LOOK.day.fog, 100, 300);
 // One shadow map near what the camera looks at: the light follows controls.target (snapped to whole texels so edges do
 // not crawl while panning) and its box grows with the visible area, from ±18 up close to ±62 in the overview.
 let shadowHalf = 0;
 function updateSunAndFog() {
-  const d = camera.position.distanceTo(controls.target); scene.fog.near = d + FOG.near; scene.fog.far = d + FOG.far;
+  const d = camera.position.distanceTo(controls.target); scene.fog.near = d + FOG.near * fogMul.near; scene.fog.far = d + FOG.far * fogMul.far;
   if (!sunlight.castShadow) return;
   const half = THREE.MathUtils.clamp(Math.max(camera.right, camera.top) / camera.zoom * 1.1, 18, 62);
   if (Math.abs(half - shadowHalf) > .5) { shadowHalf = half; Object.assign(sunlight.shadow.camera, { left: -half, right: half, top: half, bottom: -half }); sunlight.shadow.camera.updateProjectionMatrix(); sunlight.shadow.normalBias = half * 2 / SHADOW_MAP * .9; }
   const texel = shadowHalf * 2 / SHADOW_MAP, t = controls.target;
   sunlight.target.position.set(Math.round(t.x / texel) * texel, 0, Math.round(t.z / texel) * texel);
-  sunlight.position.copy(sunlight.target.position).addScaledVector(SUN_DIR, SUN_DISTANCE);
+  sunlight.position.copy(sunlight.target.position).addScaledVector(sunDir, SUN_DISTANCE);
 }
 const roomLight = new THREE.PointLight('#ffb366', 0, 12); roomLight.position.set(-6, 3, -4); scene.add(roomLight);
 // Pedestrians, residents and party guests up close: rigged characters drawn by instanced GPU skinning (crowd-gpu.js).
@@ -453,14 +456,6 @@ function cityEvent(e){
  if(e.kind==='accepted'){markerFlash=performance.now()+2500;notify(`SUB-01 took ${e.name||'a new idea'}.`);}
  else if(e.kind==='launched'){const id=e.plotId||cityBuildings.find(b=>b.type==='project'&&(e.ticker&&b.ticker===e.ticker||b.name===e.name))?.plotId;if(id)party(id,e);}
 }
-$('day-night').onclick=()=>{
-  night=!night;applyLook(night);roomLight.intensity=night?7:0;cityRenderer?.setNight(night);cityEvents.setNight(night);
-  $('day-night').textContent=night?'☀':'☾';$('day-night').setAttribute('aria-label',night?'Switch to day':'Switch to night');document.body.classList.toggle('is-night',night);
-};
-// Night (brief 3.9/3.10): saturated blue ambient, the sun down to a faint moon, dark fog, no shadow map (a cost with no
-// visible benefit); toon.js's shared night amount lets the city's materials apply their own night multipliers.
-function applyLook(isNight){const L=isNight?LOOK.night:LOOK.day;hemi.color.set(L.hemi[0]);hemi.groundColor.set(L.hemi[1]);hemi.intensity=L.hemi[2];
-  sunlight.color.set(L.sun[0]);sunlight.intensity=L.sun[1];fill.color.set(L.fill[0]);fill.intensity=L.fill[1];sunlight.castShadow=L.shadows;scene.fog.color.set(L.fog);nightAmount.value=isNight?1:0;}
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();let down;
 renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};});
 renderer.domElement.addEventListener('pointerup',e=>{
@@ -478,7 +473,7 @@ for(const d of districts){const element=document.createElement('button');element
 // Shared world: the server is the source of truth; the city redraws only when something changed.
 const residents=addResidents(scene),worldLabels=[],cityEvents=createCityEvents(scene,{mobile,reducedMotion,gpu:crowdGPU});
 // Rooms borrow this renderer; the city stops updating while one is open.
-attachRoomHost({template,notify,setView(view){roomView=view;controls.enabled=!view;document.body.classList.toggle('in-room',!!view);if(view)view.resize(innerWidth/innerHeight);}});
+attachRoomHost({template,notify,openIdea(){openBuildForm();},setView(view){roomView=view;controls.enabled=!view;document.body.classList.toggle('in-room',!!view);if(view)view.resize(innerWidth/innerHeight);}});
 function residentList(){return cityBuildings.filter(b=>b.type==='apartment').map(b=>{const f=frontOf(b.plotId);const look=b.resident.look||{};return f&&{x:f.x+1.2,z:f.z,look,key:b.plotId+JSON.stringify(look)};}).filter(Boolean);}
 function setServer(up){if(up===serverUp)return;serverUp=up;$('server-status').textContent=up?'LIVE CITY':'SERVER OFFLINE';$('activity-label').textContent=up?'SUB-01 · LIVE':'SUB-01 · OFFLINE';$('server-badge').classList.toggle('is-offline',!up);if(!up)$('activity-text').textContent='The city server is offline. Nothing here is live right now.';}
 async function pollWorld(){
@@ -500,13 +495,77 @@ async function pollWorld(){
  if(character&&(!goal||g.x!==goal.x||g.z!==goal.z)){walker={points:planRoute(character.position,g),index:1};}
  goal=g;const latest=world.news?.[0]?.text.replace(/\b([a-z]+)-([1-6])\b/g,m=>cityPlots.find(p=>p.id===m)?.name||m);if(serverUp&&!explorer)$('activity-text').textContent=latest?`${g.text} · ${latest}`:g.text;
 }
+// ---------- Weather, Tokyo clock, camera life, ambient sound (art direction wave 3B, weather.js) ----------
+// Day/night is a continuous amount n (0 day, .5 dusk, 1 night): manual day or night, or "auto" on the real Tokyo clock with
+// 40-minute dawn/dusk blends. Lights, fog and the CSS sky are mixed day → dusk → night every frame; the city's own
+// materials (city.js, city-events) still switch once, at n = 0.5. Weather levels then dim the sun, thicken the fog,
+// grey the sky and wet the streets (toon.js shared uniforms). Night (brief 3.9/3.10): saturated blue ambient, a faint
+// moon, dark fog and no shadow map.
+const LOOK_DUSK={hemi:['#8E9AC8','#B88A74',1.6],sun:['#FF9C5E',2.1],fill:['#9DB3D6',.3],fog:'#C7A79C'};
+const SUN_LOW=new THREE.Vector3(-.62,.22,.75).normalize(),GREY=new THREE.Color('#B8C0C8'),FLASH=new THREE.Color('#E8E6FF'),_wc=new THREE.Color(),_wd=new THREE.Color();
+const WX={mode:'auto',state:'clear',levels:{...LEVELS.clear},fast:0,flashAt:-1e9,nextFlash:0,dayMode:'day',clockOverride:null,n:0,isNight:false,sky:'',caption:'',amp:0,green:false,audioAt:0,statsAt:0};
+const wxView=createWeather(scene,{mobile}),ambience=createAmbience(),drift=new THREE.Vector3(),driftNext=new THREE.Vector3();let lastInput=performance.now();
+for(const type of ['pointerdown','wheel','keydown','touchstart'])addEventListener(type,()=>{lastInput=performance.now();},{passive:true,capture:true});
+// Two buttons made here (index.html is not touched): ☂ cycles the city weather, ♪ toggles the procedural sound (off).
+const control=(id,text,onclick)=>{const b=Object.assign(document.createElement('button'),{className:'icon-button',id,type:'button',textContent:text,onclick});$('day-night').before(b);return b;};
+const label=(b,text)=>{b.title=text;b.setAttribute('aria-label',text);};
+const weatherButton=control('weather-mode','☂',()=>setWeather(nextMode(WX.mode),true));
+const soundButton=control('city-sound','♪',()=>{const on=ambience.toggle();soundButton.setAttribute('aria-pressed',String(on));label(soundButton,on?'City sounds: on':'City sounds: off');notify(on?'City sounds on (made in the browser, quiet).':'City sounds off.');});
+soundButton.setAttribute('aria-pressed','false');label(soundButton,'City sounds: off');
+const clockCaption=Object.assign(document.createElement('span'),{className:'tokyo-clock',hidden:true});$('activity-label').after(clockCaption);
+function setWeather(mode,announce=false){WX.mode=mode;WX.fast=announce?10:0;weatherButton.dataset.mode=mode;
+  label(weatherButton,mode==='auto'?'City weather: auto (a shared schedule, not real Tokyo weather)':`City weather: ${mode}`);
+  if(announce)notify(mode==='auto'?'City weather: auto. The same for everyone, changing every few minutes. Not real Tokyo weather.':`City weather: ${mode}.`);}
+const DAY_MODES=['auto','day','night'];
+// The button shows what the next tap does: day → night → Tokyo clock (auto) → day.
+function setDayMode(mode){WX.dayMode=mode;const b=$('day-night');b.textContent=mode==='day'?'☾':mode==='night'?'◐':'☀';
+  label(b,mode==='day'?'Switch to night':mode==='night'?'Follow the Tokyo clock':'Switch to day');clockCaption.hidden=mode!=='auto';}
+$('day-night').onclick=()=>setDayMode(DAY_MODES[(DAY_MODES.indexOf(WX.dayMode)+1)%3]);
+setWeather('auto');setDayMode('day');
+// Screenshot/debug hooks (rendering only): __cityWeather.set('rain'), .day('auto'), .clock(Date.parse(...)), .snap().
+window.__cityWeather={set:m=>setWeather(m),day:setDayMode,clock(ms){WX.clockOverride=ms??null;},snap(){Object.assign(WX.levels,LEVELS[WX.mode==='auto'?weatherAt(Date.now()).state:WX.mode]);},get state(){return {...WX,levels:{...WX.levels},clock:tokyoClock(WX.clockOverride??Date.now()),drawCalls:wxView.drawCalls};},view:wxView};
+const mix3=(n,a,b,c)=>n<.5?a+(b-a)*n*2:b+(c-b)*(n*2-1);
+function weatherFrame(now,dt,seconds){
+  const clockNow=tokyoClock(WX.clockOverride??Date.now()),n=WX.dayMode==='auto'?clockNow.night:WX.dayMode==='night'?1:0;WX.n=n;
+  WX.state=WX.mode==='auto'?weatherAt(Date.now()).state:WX.mode;
+  const l=approach(WX.levels,LEVELS[WX.state],dt,WX.fast>0?8:1),A=atmosphere(l);WX.fast-=dt;
+  // Lightning (storm only, never with reduced motion): two short pulses of hemisphere + sun light and a pale sky.
+  if(l.storm>.5&&!reducedMotion){if(!WX.nextFlash)WX.nextFlash=now+3e3+Math.random()*8e3;if(now>WX.nextFlash){WX.flashAt=now;WX.nextFlash=now+6e3+Math.random()*14e3;}}else WX.nextFlash=0;
+  const fa=now-WX.flashAt,flash=fa<70?1:fa<130?0:fa<190?.7:0,D=LOOK_DUSK,Ld=LOOK.day,Ln=LOOK.night;
+  phaseMix(n,Ld.hemi[0],D.hemi[0],Ln.hemi[0],hemi.color).lerp(GREY,l.overcast*.5*(1-n));phaseMix(n,Ld.hemi[1],D.hemi[1],Ln.hemi[1],hemi.groundColor);
+  hemi.intensity=mix3(n,Ld.hemi[2],D.hemi[2],Ln.hemi[2])*A.hemi+flash*3;
+  phaseMix(n,Ld.sun[0],D.sun[0],Ln.sun[0],sunlight.color);if(flash)sunlight.color.lerp(FLASH,.8);
+  sunlight.intensity=mix3(n,Ld.sun[1],D.sun[1],Ln.sun[1])*A.sun+flash*4;fill.intensity=mix3(n,Ld.fill[1],D.fill[1],Ln.fill[1])*A.fill;
+  sunDir.copy(SUN_DIR).lerp(SUN_LOW,1-Math.abs(2*n-1)).normalize();
+  const shadows=n<.62;if(sunlight.castShadow!==shadows)sunlight.castShadow=shadows;sunlight.shadow.intensity=.8*A.shadow;
+  phaseMix(n,Ld.fog,D.fog,Ln.fog,scene.fog.color).lerp(phaseMix(n,'#B4BAC0','#8E8A90','#1A2130',_wc).lerp(phaseMix(n,'#DCE1E5','#A9A3AE','#28324A',_wd),Math.min(1,l.snow*1.25)),l.overcast*.7);
+  fogMul.near=A.fogNear;fogMul.far=A.fogFar;nightAmount.value=n;wxUniforms.wet.value=l.wet;wxUniforms.snow.value=l.cover;
+  const isNight=n>=.5;if(isNight!==WX.isNight){WX.isNight=night=isNight;roomLight.intensity=isNight?7:0;cityRenderer?.setNight(isNight);cityEvents.setNight(isNight);document.body.classList.toggle('is-night',isNight);}
+  // The CSS sky (style.css #world) is left alone in plain day or night; otherwise main.js writes the mixed gradient.
+  const sky=(n===0||n===1)&&l.overcast<.004&&!flash?'':skyGradient(n,l.overcast,flash);if(sky!==WX.sky){WX.sky=sky;$('world').style.background=sky;}
+  const caption=WX.dayMode==='auto'?` · Tokyo ${clockNow.label} · ${clockNow.phase}`:'';if(caption!==WX.caption){WX.caption=caption;clockCaption.textContent=caption;}
+  const px=renderer.getPixelRatio()*innerHeight*camera.zoom/(camera.top-camera.bottom);
+  wxView.update({seconds,now,camera,target:controls.target,px,levels:l,night:n,wind:wind(now*.001,l.wind)});
+  // Camera life: after 20 s without input and with nothing driving the camera, the target drifts ±0.15 over ~12 s.
+  const still=!reducedMotion&&!cameraTween&&!follow&&!cityTour&&!explorer&&now-lastInput>20e3,a=now*.001*Math.PI*2/12;
+  WX.amp+=((still?.15:0)-WX.amp)*Math.min(1,dt*1.5);driftNext.set(Math.sin(a),0,Math.sin(a*2)*.5).multiplyScalar(WX.amp);
+  const step=driftNext.sub(drift);controls.target.add(step);camera.position.add(step);drift.add(step);
+  renderer.toneMappingExposure=EXPOSURE.city+(reducedMotion?0:.02*Math.sin(now*.001*Math.PI*2/9));
+  if(now-WX.statsAt>500){WX.statsAt=now;renderer.domElement.dataset.weather=`${WX.mode} ${WX.state} wet ${l.wet.toFixed(2)} n ${n.toFixed(2)} +${wxView.drawCalls}`;}
+  // Sound: hum louder up close, rain with the rain, a rumble while a train moves near the station, murmur in Roppongi's
+  // lantern street when zoomed in, the crossing chirp when Shibuya's lights turn green near the camera.
+  if(!ambience.on||now-WX.audioAt<250)return;WX.audioAt=now;
+  const t=controls.target,near=(x,z,r)=>Math.max(0,1-Math.hypot(t.x-x,t.z-z)/r),zoomIn=THREE.MathUtils.clamp((camera.zoom-.3)/.8,0,1),s=now*.001;
+  let train=0;for(const off of [0,54]){const x0=trainPosition(s,off),v=Math.abs(trainPosition(s+.5,off)-x0)*2;train=Math.max(train,Math.min(1,v/8)*Math.max(0,1-Math.abs(x0+26)/30));}
+  const green=crossingState(s).pedestrianGreen;if(green&&!WX.green&&camera.zoom>.4&&near(29,2,30)>0)ambience.chirp(near(29,2,30));WX.green=green;
+  ambience.update({hum:.5+.5*zoomIn,rain:Math.min(1,l.rain*1.2),train:train*(.35+.65*near(-26,78,70)),murmur:camera.zoom>.6?zoomIn*near(-29,2,16):0});
+}
 const clock=new THREE.Clock();let lastRender=0;
 function animate(now){
   requestAnimationFrame(animate);
   if(document.hidden||now-lastRender<(mobile?1000/30:1000/45))return;
   lastRender=now;
-  if(roomView){renderer.toneMappingExposure=EXPOSURE.room;roomView.update(Math.min(clock.getDelta(),.08));renderer.render(roomView.scene,roomView.camera);return;}
-  renderer.toneMappingExposure=EXPOSURE.city;
+  if(roomView){renderer.toneMappingExposure=EXPOSURE.room;wxUniforms.wet.value=wxUniforms.snow.value=0;roomView.update(Math.min(clock.getDelta(),.08));renderer.render(roomView.scene,roomView.camera);return;}
   const seconds=reducedMotion?0:now*.001;crowdBegin(seconds);cityRenderer?.update(seconds);const dt=Math.min(clock.getDelta(),.08);sub01?.update(dt);residents.update(seconds,crowdGPU);cityEvents.update(dt,renderer.getPixelRatio()*innerHeight*camera.zoom/(camera.top-camera.bottom));if(explorer&&cityEvents.visitor)explorer.update(dt);if(cityEvents.visitor){roamTag.position.copy(cityEvents.visitor.position);roamTag.position.y+=2.05;}
   if(goal?.activity==='party'&&!walker&&now>partyWaveAt&&partyWaveAt){play('Idle');play('Wave');partyWaveAt=now+6e3;}
   if(walker&&character){
@@ -519,7 +578,7 @@ function animate(now){
   if(cityTour){cityTour.elapsed+=dt;if(cityTour.elapsed>5){cityTour.elapsed=0;cityTour.index++;if(cityTour.index>=cityViews.length){cityTour=null;resetView();$('activity-text').textContent='Your idea. Your city. Choose an address.';}else nextCityView();}}
   // Overview LOD: below zoom 0.3 the city skips AC units, small roof items, side pipes and road marks.
   cityRenderer?.setDetail(camera.zoom>=.3);
-  controls.update();updateSunAndFog();crowdEnd(now);renderer.render(scene,camera);
+  weatherFrame(now,dt,seconds);controls.update();updateSunAndFog();crowdEnd(now);renderer.render(scene,camera);
   document.body.classList.toggle('is-close',camera.zoom>.42);
   for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
 }

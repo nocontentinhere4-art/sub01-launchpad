@@ -185,3 +185,10 @@
  .pc-x{flex-wrap:wrap}.pc-x .button{margin-left:0;width:100%;justify-content:center}
 }
 /* ===== end room computer ===== */
+
+/* Weather and atmosphere (art direction wave 3B, main.js): ☂ weather / ♪ sound buttons, the Tokyo clock caption. */
+#weather-mode,#city-sound{position:relative;font-size:19px}
+#weather-mode:not([data-mode=auto])::after,#city-sound[aria-pressed=true]::after{content:'';position:absolute;right:5px;top:5px;width:5px;height:5px;border-radius:50%;background:var(--orange)}
+.tokyo-clock{font:inherit;letter-spacing:inherit;color:inherit;white-space:nowrap}
+#world{transition:none}
+@media(max-width:600px){#weather-mode,#city-sound{font-size:16px}.activity .eyebrow{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
