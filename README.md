@@ -25,9 +25,10 @@ Open http://127.0.0.1:8791. For production, run `npm run build` and serve `dist/
 - Created buildings appear in the city and recover from local storage after reload; duplicate claims are prevented in the current browser.
 - District navigation, home/Tokyo Tower shortcuts and safe text rendering. Legacy idea briefs remain readable.
 - Elevated metro with two moving trains, waterfront canal and three bridges, dense horizon towers, a second broadcast-tower silhouette and Shibuya feature tower with a large original billboard.
-- City tour button (▷) visits five landmarks and returns to the overview; manual navigation cancels the tour. Reduced-motion preference stops the trains.
-- Original Fuji silhouette with a jagged snow cap, a taller skyline, Shibuya crossing, shop canopies, small cars, vending machines and vertical Japanese/English signs inspired by the supplied references.
+- City tour button (▷) visits five landmarks and returns to the overview; manual navigation cancels the tour. Reduced-motion preference freezes ambient motion.
+- Original Fuji silhouette with a jagged snow cap, a taller skyline, Shibuya crossing, shop canopies, vending machines and vertical Japanese/English signs inspired by the supplied references.
 - Day/night presentation with lit windows and a dark interface; a single generated 1024 × 1024 atlas serves the storefront signs.
+- Street life: 80 articulated pedestrians (48 on small viewports), walking, resting and waving; Shibuya crossing signals coordinate with 16 moving taxis/cars/buses. Trains ease into station stops. Lanterns sway and petals drift along the cherry-lined canal.
 - Shared instanced geometry batches the surrounding city, windows, roofs and tower lattice without new downloaded assets.
 - Responsive desktop/mobile interface, capped pixel ratio, 30 FPS target on mobile and reduced shadow resolution.
 - A private GitHub repository. No credentials, private keys or authenticated browser state are part of this project.

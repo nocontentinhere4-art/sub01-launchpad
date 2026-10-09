@@ -32,3 +32,7 @@ The cutaway shell, street surface, trees, signs, inexpensive desk monitor, UI an
 ## Dependencies
 
 Three.js is MIT-licensed. Its notices are included under `licenses/Three.js-MIT.txt`. Versions are pinned and reproducible through `package-lock.json`.
+
+## Tokyo street-life pass
+
+Articulated background pedestrians, vehicles, lanterns, blossom trees and petals are original procedural geometry; no new third-party models were downloaded. The existing Quaternius character remains the detailed central avatar. Research references: GO TOKYO Shibuya, Shinjuku and Meguro River guides; their photos are not bundled.

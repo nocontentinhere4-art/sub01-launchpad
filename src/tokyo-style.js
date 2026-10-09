@@ -31,12 +31,7 @@ export function addTokyoStyle(parent,buildings=[]){
  for(const [x,z] of [[-27,-1],[-37,7],[35,-24],[21,8]]){
   item(solids,x,.95,z,.8,1.5,.6,'#f2eee0');item(glow,x,.98,z+.31,.54,.87,.02,'#55b7c5');
  }
- // A few low-cost cars: bodies and bright headlights share two mesh batches.
- for(const [i,x,z,r] of [[0,24,2,0],[1,33,2,0],[2,-14.5,-20,Math.PI/2],[3,14.5,26,Math.PI/2],[4,-34,32,0]]){
-  item(solids,x,.58,z,1.8,.7,.95,['#283f4c','#ea8b50','#d9ded2'][i%3],r);
-  item(solids,x,.95,z,1,.32,.85,'#789aa3',r);
-  for(const side of [-1,1])item(glow,x+Math.cos(r),.55,z+Math.sin(r)+side*.27,.15,.17,.16,'#fff0b6');
- }
+ // Moving traffic is handled separately, avoiding parked cars inside the crossing.
  batch(solids,stone);let lights;
  // Skyline variation rather than a wall of identical cubes.
  const highrise=[];

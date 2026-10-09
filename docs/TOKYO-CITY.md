@@ -48,3 +48,12 @@ Orange Apartments → Try your own apartment → name, color and concept ticker.
 ## Next concrete milestone
 
 Two real users log in, obtain different server-assigned apartments, see each other’s bounded movement, and open one project building with its working site. Connect the brain to visible world events. Add token creation only after identity, authorization and deployment recovery are verified.
+
+## Tokyo research and street life
+
+- Shibuya crowd/crossing reference: https://www.gotokyo.org/en/destinations/western-tokyo/shibuya/index.html
+- Neon shopping/station atmosphere: https://www.gotokyo.org/en/destinations/western-tokyo/shinjuku/index.html
+- Cherry-lined river inspiration: https://www.gotokyo.org/en/spot/103/index.html
+- Verified existing detailed character source: https://quaternius.com/packs/ultimatemodularcharacters.html (CC0).
+
+Implemented a stylized interpretation: articulated procedural crowds, a shared pedestrian/traffic cycle, moving vehicles, eased station dwell, lanterns and cherry petals. Layout and seasonal foliage are artistic choices, not a geographic map or current Tokyo conditions. Background pedestrians are local scripted scenery, with no user ownership or autonomous project decisions.

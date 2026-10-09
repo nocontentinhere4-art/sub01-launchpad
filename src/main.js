@@ -289,7 +289,7 @@ $('idea-form').onsubmit=e=>{
 };
 $('tour-button').onclick=startTour;
 $('follow-button').onclick=()=>{if(!character)return;follow=!follow;if(follow){camera.zoom=1.7;camera.updateProjectionMatrix();}notify(follow?'Following SUB-01.':'Free camera.');};
-for(const [id,factor] of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{camera.zoom=THREE.MathUtils.clamp(camera.zoom*factor,.07,2.8);camera.updateProjectionMatrix();};
+for(const [id,factor] of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{cityTour=null;camera.zoom=THREE.MathUtils.clamp(camera.zoom*factor,.07,2.8);camera.updateProjectionMatrix();};
 $('reset-view').onclick=resetView;
 $('day-night').onclick=()=>{
   night=!night;scene.background.set(night?'#112638':'#eee9df');hemi.intensity=night?1.5:2.5;hemi.color.set(night?'#8bbacd':'#fff9e9');sunlight.intensity=night?.7:3.2;roomLight.intensity=night?7:0;cityRenderer?.setNight(night);
@@ -303,7 +303,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
   const hit=raycaster.intersectObjects(interactive,false)[0];if(hit&&cityRenderer?.select(hit))return;if(hit?.object.userData.place)showPlace(hit.object.userData.place);
 });
 $('district-select').replaceChildren();const all=document.createElement('option');all.value='';all.textContent='Entire city';$('district-select').append(all);for(const d of districts){const option=document.createElement('option');option.value=d.id;option.textContent=d.name;$('district-select').append(option);}
-addEventListener('resize',resize);resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings);addLabel(tower,32);
+addEventListener('resize',resize);resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings,{mobile});addLabel(tower,32);
 for(const b of cityBuildings){const p=plotView(cityPlots.find(p=>p.id===b.plotId),cityBuildings);addLabel(p,b.type==='project'?8.7:b.type==='studio'?4.7:6.7);}
 for(const d of districts){const element=document.createElement('button');element.className='world-label district-label';element.textContent=d.name.toUpperCase();element.onclick=()=>{$('district-select').value=d.id;$('district-select').onchange();};$('labels').append(element);labels.push({element,district:true,position:new THREE.Vector3(d.x,.4,d.z+11.4)});}
 
