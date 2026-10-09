@@ -11,3 +11,9 @@
 @media(max-width:600px){.project-panel{flex-wrap:wrap;bottom:100px;max-height:none;gap:8px}#district-select{width:calc(100% - 126px);margin:0;font-size:10px;padding:8px}.city-shortcuts{width:118px;margin:0}.city-shortcuts button{font-size:8px;padding:6px}.project-panel>.button{order:4}#project-list{max-height:none;flex-basis:60%;overflow-y:hidden}.world-controls{bottom:216px}.intro h1{font-size:31px}.intro p{max-width:250px}}
 
 .district-label{font-size:8px;background:#ece5d4e8;letter-spacing:1px;border:1px solid #cdc7b9;box-shadow:none}.district-label::after{display:none}
+
+.is-night{--muted:#9fb2bd;color:#e9f0ee;--line:#49616c}.is-night .topbar{background:linear-gradient(#112638f5,#11263888);border-color:#44607166}.is-night .intro{filter:none}.is-night .intro p{color:#c0ccd0}.is-night .project-panel,.is-night .activity,.is-night .world-controls{background:#193346ef;border-color:#49667488}.is-night .project-row{border-color:#49616c}.is-night .project-status,.is-night .panel-footnote,.is-night .world-hint{color:#aec2c8}.is-night .icon-button{color:#e8e4d5}.is-night #district-select{background:#254254;color:#e8e4d5;border-color:#536c78}.is-night .city-shortcuts button{background:#2c4857;color:#eee9da}.is-night .preview-badge{background:#193346;color:#d7e5e4;border-color:#496674}.is-night .button-dark{background:#f7833f;color:#1d2e34}.is-night .detail-card,.is-night .idea-card{color:#242722}.is-night .world-label{background:#e6e8dce8;color:#2e4956}.is-night .activity-avatar{background:#112638}.is-night .brand small{color:#b1c5cc}
+
+.project-row{color:inherit}.is-night .icon-button:hover{background:#395462}.is-night .world-controls .icon-button:focus{background:#395462}
+
+@media(max-width:600px){.is-night .intro{background:#112638b8;border-radius:10px;padding:8px 11px;left:10px;top:111px;backdrop-filter:blur(5px)}.is-night .intro h1{font-size:27px;margin:7px 0}.is-night .intro p{font-size:9px;margin-bottom:3px}}

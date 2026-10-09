@@ -237,7 +237,7 @@ function focusPlace(p) {
 function notify(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;toastTimer=setTimeout(()=>{$('toast').hidden=true;},4500);}
 function startTour(){if(!character)return;tour={ index:0, elapsed:0, from:character.position.clone() };$('tour-button').disabled=true;play('Wave');$('activity-text').textContent=tourStops[0].text;follow=false;}
 function resize(){const w=innerWidth,h=innerHeight,aspect=w/h;const half=mobile?18:16.5;camera.left=-half*aspect;camera.right=half*aspect;camera.top=half;camera.bottom=-half;camera.updateProjectionMatrix();renderer.setSize(w,h);}
-function resetView(){follow=false;cameraTween=null;camera.position.set(85,100,110);controls.target.set(0,4,2);camera.zoom=mobile?.15:.33;camera.updateProjectionMatrix();controls.update();}
+function resetView(){follow=false;cameraTween=null;camera.position.set(85,100,110);controls.target.set(0,6,-6);camera.zoom=mobile?.14:.29;camera.updateProjectionMatrix();controls.update();}
 
 function openBuildForm(plot){
  selectedLot=plot||cityPlots.find(p=>!cityBuildings.some(b=>b.plotId===p.id));
@@ -287,7 +287,7 @@ $('follow-button').onclick=()=>{if(!character)return;follow=!follow;if(follow){c
 for(const [id,factor] of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{camera.zoom=THREE.MathUtils.clamp(camera.zoom*factor,.12,2.8);camera.updateProjectionMatrix();};
 $('reset-view').onclick=resetView;
 $('day-night').onclick=()=>{
-  night=!night;scene.background.set(night?'#b9bcb2':'#eee9df');hemi.intensity=night?1.1:2.5;sunlight.intensity=night?.5:3.2;roomLight.intensity=night?7:0;
+  night=!night;scene.background.set(night?'#112638':'#eee9df');hemi.intensity=night?1.5:2.5;hemi.color.set(night?'#8bbacd':'#fff9e9');sunlight.intensity=night?.7:3.2;roomLight.intensity=night?7:0;cityRenderer?.setNight(night);
   $('day-night').textContent=night?'☀':'☾';$('day-night').setAttribute('aria-label',night?'Switch to day':'Switch to night');document.body.classList.toggle('is-night',night);
 };
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();let down;

@@ -16,3 +16,9 @@
 - Chrome 390 x 844: selected an existing Shinjuku building, submitted Orange Collective as apartments and saw the facade and balconies change. The creation form fits within a scrollable mobile dialog.
 - The added city renderer has 9 mesh batches/targets, regardless of whether the tested address is built. This excludes the original furnished center, character meshes and projected HTML labels; it is not a real-device FPS result.
 - No new downloaded assets. Initial bundle remains about 164 kB gzip JavaScript. City geometry is procedural; all blocks currently load together. Ownership is limited to local preview state.
+
+## Photo-reference visual pass
+
+Original procedural Fuji, skyline additions, storefront canopies, cars, lamps, vending machines and one generated sign atlas. The city module now uses 14 meshes in the browser (13 without the DOM-generated sign atlas in Node tests), rather than the previous 9. Windows support night emission and the interface uses a dark palette. The reference photos themselves are not bundled. Existing 10 state/render tests and production build pass. Resource counts exclude the furnished center and characters and are not measured FPS.
+
+Chrome desktop and 390 x 844 viewport: sign atlas shader compiled with no logged warnings/errors; night toggle, district navigation and project inspection remained available. Smartphone viewport checks are not real iPhone performance measurements.

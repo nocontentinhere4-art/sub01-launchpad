@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import {addTokyoStyle} from './tokyo-style.js';
 import {cityPlots,districts,tower,plotView,buildingColors} from './city-state.js';
 export function createCity(scene,interactive,showPlace,buildings){
  const root=new THREE.Group();scene.add(root);
  const geometry=new THREE.BoxGeometry(1,1,1),mat=new THREE.MeshStandardMaterial({roughness:1});
+ const windowMat=new THREE.MeshStandardMaterial({roughness:.7,emissive:'#ffc378',emissiveIntensity:0});
  const batches={walls:[],windows:[],roofs:[],roads:[],marks:[]};
  const add=(key,x,y,z,w,h,d,color)=>batches[key].push({x,y,z,w,h,d,color});
  // A 3 x 3 grid. Only the original central block contains detailed furniture/rigs.
@@ -15,9 +17,9 @@ export function createCity(scene,interactive,showPlace,buildings){
  // Vertical connecting boulevards and crosswalks.
  for(const x of [-14.5,14.5]){add('roads',x,.17,2,2.6,.05,87,'#6d786f');for(let z=-36;z<=40;z+=3)add('marks',x,.21,z,.08,.01,.8,'#ddd8c7');}
  for(const x of [-29,29])for(const z of [-28,2,32])for(let i=-3;i<=3;i++)add('marks',x+i*.48,.21,z,.25,.015,3.2,'#f1ead7');
- let renderGroups=[];
+ let renderGroups=[],style,currentNight=false;
  const dummy=new THREE.Object3D();
- function batch(items,parent=root){if(!items.length)return;const mesh=new THREE.InstancedMesh(geometry,mat,items.length);items.forEach((v,i)=>{dummy.position.set(v.x,v.y,v.z);dummy.scale.set(v.w,v.h,v.d);dummy.rotation.set(0,0,0);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,new THREE.Color(v.color));});mesh.instanceMatrix.needsUpdate=true;mesh.receiveShadow=true;mesh.castShadow=false;parent.add(mesh);return mesh;}
+ function batch(items,parent=root,material=mat){if(!items.length)return;const mesh=new THREE.InstancedMesh(geometry,material,items.length);items.forEach((v,i)=>{dummy.position.set(v.x,v.y,v.z);dummy.scale.set(v.w,v.h,v.d);dummy.rotation.set(0,0,0);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,new THREE.Color(v.color));});mesh.instanceMatrix.needsUpdate=true;mesh.receiveShadow=true;mesh.castShadow=false;parent.add(mesh);return mesh;}
  for(const key of ['roads','marks'])batch(batches[key]);
  // One raycast target per address, all drawn in a single instanced call.
  const picks=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial({visible:false}),cityPlots.length);
@@ -28,7 +30,7 @@ export function createCity(scene,interactive,showPlace,buildings){
   for(const [index,p] of cityPlots.entries()){const b=buildings.find(b=>b.plotId===p.id),height=b?(b.type==='project'?8:b.type==='studio'?4:6):p.height;
    const pickHeight=p.vacant&&!b?1:height;dummy.position.set(p.x,pickHeight/2+.24,p.z);dummy.scale.set(5.8,pickHeight,5.4);dummy.rotation.set(0,0,0);dummy.updateMatrix();picks.setMatrixAt(index,dummy.matrix);
    if(p.vacant&&!b){add('roofs',p.x,.25,p.z,5.8,.12,5.4,'#e1c594');for(const dx of [-2.5,2.5])for(const dz of [-2.3,2.3])add('walls',p.x+dx,.7,p.z+dz,.12,1,.12,'#f9e9c5');continue;}
-   const color=b?buildingColors[b.color]:p.color;
+   const color=b?buildingColors[b.color]:['#91a7ae','#79969f','#b6a89a','#78908c'][index%4];
    add('walls',p.x,height/2+.24,p.z,5,height,4.8,color);
    add('roofs',p.x,height+.35,p.z,5.4,.22,5.2,'#e8e2ce');
    add('roofs',p.x+1,height+.75,p.z-.8,1.5,.65,1.2,'#a5b0a4');
@@ -41,7 +43,8 @@ export function createCity(scene,interactive,showPlace,buildings){
    add('windows',p.x,.7,p.z+2.49,3,.25,.1,b?'#fb752b':'#ead7b9');
   }
   picks.instanceMatrix.needsUpdate=true;picks.computeBoundingSphere();
-  for(const key of ['walls','windows','roofs'])renderGroups.push(batch(batches[key]));
+  for(const key of ['walls','windows','roofs'])renderGroups.push(batch(batches[key],root,key==='windows'?windowMat:mat));
+  if(style){style.dispose();style=addTokyoStyle(root,buildings);style.setNight(currentNight);}
  }
  redraw(buildings);
  // Landmark is original geometry. Instanced beams form an orange/white lattice.
@@ -62,5 +65,6 @@ export function createCity(scene,interactive,showPlace,buildings){
  const lattice=new THREE.InstancedMesh(beamGeom,mat,beams.length);beams.forEach((b,i)=>{lattice.setMatrixAt(i,b.matrix);lattice.setColorAt(i,new THREE.Color(b.color));});root.add(lattice);
  batch([{x:tower.x,y:8.8,z:tower.z,w:3.7,h:.8,d:3.7,color:'#fff1de'},{x:tower.x,y:9,z:tower.z,w:3.8,h:.28,d:3.8,color:'#df6530'},{x:tower.x,y:14,z:tower.z,w:2,h:.6,d:2,color:'#f9dec4'},{x:tower.x,y:.2,z:tower.z,w:9,h:.12,d:9,color:'#e3d8c1'}]);
  const towerPick=new THREE.Mesh(new THREE.BoxGeometry(7,20,7),new THREE.MeshBasicMaterial({visible:false}));towerPick.position.set(tower.x,10,tower.z);towerPick.userData.place=tower;root.add(towerPick);interactive.push(towerPick);
- return {redraw,select(hit){if(hit.object.userData.cityPlot&&hit.instanceId!==undefined){showPlace(plotView(cityPlots[hit.instanceId],buildings));return true;}return false;}};
+ style=addTokyoStyle(root,buildings);
+ return {redraw,setNight(value){currentNight=value;windowMat.emissiveIntensity=value?.45:0;style.setNight(value);mat.color.set(value?'#bdcedd':'#ffffff');},select(hit){if(hit.object.userData.cityPlot&&hit.instanceId!==undefined){showPlace(plotView(cityPlots[hit.instanceId],buildings));return true;}return false;}};
 }

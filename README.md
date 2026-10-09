@@ -24,6 +24,8 @@ Open http://127.0.0.1:8791. For production, run `npm run build` and serve `dist/
 - Choose one of 48 addresses, take an existing building or an empty lot, and create an apartment block, studio or project HQ with a name, description, concept ticker and facade color.
 - Created buildings appear in the city and recover from local storage after reload; duplicate claims are prevented in the current browser.
 - District navigation, home/Tokyo Tower shortcuts and safe text rendering. Legacy idea briefs remain readable.
+- Original Fuji silhouette with a jagged snow cap, a taller skyline, Shibuya crossing, shop canopies, small cars, vending machines and vertical Japanese/English signs inspired by the supplied references.
+- Day/night presentation with lit windows and a dark interface; a single generated 1024 × 1024 atlas serves the storefront signs.
 - Shared instanced geometry batches the surrounding city, windows, roofs and tower lattice without new downloaded assets.
 - Responsive desktop/mobile interface, capped pixel ratio, 30 FPS target on mobile and reduced shadow resolution.
 - A private GitHub repository. No credentials, private keys or authenticated browser state are part of this project.
