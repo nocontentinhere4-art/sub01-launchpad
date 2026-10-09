@@ -7,7 +7,8 @@ import { places, residence } from './state.js';
 
 import {cityPlots,districts,tower} from './city-state.js';
 import {openRoom,attachRoomHost} from './room.js';
-import {addResidents,pickNear} from './residents.js';
+import {addResidents} from './residents.js';
+import {createCrowdGPU,crowdPixels,crowdClose} from './crowd-gpu.js';
 import {renderLookFields,readLook,isUnlocked} from './creator.js';
 import {loadCharacter,HEIGHT} from './characters.js';
 import {api,short} from './api.js';
@@ -58,6 +59,8 @@ Object.assign(sunlight.shadow.camera, { left: -24, right: 24, top: 24, bottom: -
 sunlight.shadow.bias = -.0008; sunlight.shadow.normalBias = .025; scene.add(sunlight);
 const fill = new THREE.DirectionalLight('#ffffff', 1); fill.position.set(15, 10, -10); scene.add(fill);
 const roomLight = new THREE.PointLight('#ffb366', 0, 12); roomLight.position.set(-6, 3, -4); scene.add(roomLight);
+// Pedestrians, residents and party guests up close: rigged characters drawn by instanced GPU skinning (crowd-gpu.js).
+const crowdGPU = createCrowdGPU(scene, { mobile, lights: { hemi, dirs: [sunlight, fill] } });
 
 const geometries = new Map();
 function box(w, h, d, color, x, y, z, parent = scene) {
@@ -194,23 +197,19 @@ async function makeCharacter() {
   $('activity-text').textContent='At home. Waiting for the first brief.';
 }
 function play(name){sub01?.play(name);}
-// City LOD: boxes for everyone; the K residents nearest the view centre get a rigged model once the camera is close
-// enough for one to read (~36px tall, dropped below 28px). Re-picked ~3x/s; unpicked models linger 6s before disposal.
-const LOD_K=mobile?4:8,lod=new Map();let lodAt=0;
-function lodTick(now){
-  if(now-lodAt<330)return;lodAt=now;
-  const px=HEIGHT*camera.zoom*innerHeight/(camera.top-camera.bottom),shown=[...lod.values()].some(e=>e.on);
-  const people=px>(shown?28:36)?residents.people.filter(p=>p.key!==visitKey):[],radius=(camera.right-camera.left)/camera.zoom*.6;
-  const want=new Set(pickNear(people,controls.target,{k:LOD_K,radius,keep:new Set([...lod].filter(([,e])=>e.on).map(([k])=>k))}));
-  for(const p of people)if(want.has(p.key)&&!lod.has(p.key)){
-    const e={on:false,seen:now,char:null};lod.set(p.key,e);
-    loadCharacter(p.look,{template}).then(c=>{if(lod.get(p.key)!==e){c.dispose();return;}e.char=c;c.root.position.set(p.x,.26,p.z);c.root.rotation.y=.6+Math.random()*.4;c.update(Math.random()*3);e.wave=now+3e3+Math.random()*9e3;scene.add(c.root);},()=>{e.failed=true;});
-  }
-  for(const [key,e] of lod){e.on=!!e.char&&want.has(key);if(want.has(key))e.seen=now;if(e.char)e.char.root.visible=e.on;
-    if(now-e.seen>6e3&&!e.failed||!residents.people.some(p=>p.key===key)){e.char?.dispose();lod.delete(key);}}
-  residents.hide(new Set([...lod].filter(([,e])=>e.on).map(([k])=>k).concat(visitKey||[])));
+// Crowd LOD: box figures while a character would be under CROWD_PX (14 px) tall, GPU characters above it, culled to the
+// ground the camera sees (nearest first, capped per device). Diagnostics (rendering only) ride on the canvas dataset.
+let crowdNear=false,crowdStatsAt=0;const groundCenter=new THREE.Vector3(),viewDir=new THREE.Vector3();
+// The five outfit glbs (~1.5 MB) load the first time the camera comes close enough; boxes meanwhile.
+function crowdBegin(seconds){const close=crowdClose(crowdPixels(camera.zoom,innerHeight,camera.top-camera.bottom),crowdNear);if(close&&!crowdGPU.ready&&renderer.domElement.dataset.ready)crowdGPU.load(template);
+  crowdNear=crowdGPU.ready&&close;crowdGPU.active=crowdNear;crowdGPU.begin(seconds);}
+function crowdEnd(now){
+  if(!crowdNear)crowdGPU.hide();else{
+    viewDir.subVectors(controls.target,camera.position).normalize();groundCenter.copy(controls.target);if(viewDir.y<-.05)groundCenter.addScaledVector(viewDir,controls.target.y/-viewDir.y);
+    const halfW=(camera.right-camera.left)/camera.zoom/2,halfH=(camera.top-camera.bottom)/camera.zoom/2/Math.max(.3,-viewDir.y);
+    crowdGPU.end(groundCenter,Math.hypot(halfW,halfH)+2);}
+  if(now-crowdStatsAt>500){crowdStatsAt=now;const c=crowdGPU.stats;renderer.domElement.dataset.crowd=`${crowdNear?'near':'far'} ${c.instances} ${c.triangles} ${c.drawCalls}`;}
 }
-function lodUpdate(dt,now){for(const e of lod.values())if(e.on){e.char.update(dt);if(now>e.wave){e.char.play('Wave');e.wave=now+8e3+Math.random()*12e3;}}}
 
 function renderList() {
   $('project-list').replaceChildren();
@@ -357,13 +356,13 @@ function visitWalk(p){
  if(!walkButton){walkButton=Object.assign(document.createElement('button'),{type:'button',className:'button button-ghost visit-walk'});$('visit-button').after(walkButton);walkButton.onclick=startVisit;}
  walkButton.hidden=!show;walkButton.disabled=cityEvents.visiting;walkButton.textContent=cityEvents.visiting?'Your character is out visiting':'Send your character to visit';
 }
-// The roaming model (a visit or explore mode) is followed by the camera like meetDev; its box figure at home is hidden.
+// The roaming model (a visit or explore mode) is followed by the camera like meetDev; its figure at home (box or GPU) is hidden.
 // A name tag rides above it: in the isometric view the street is often behind a building.
 const roamTag={element:Object.assign(document.createElement('div'),{className:'world-label roam-tag',hidden:true}),position:new THREE.Vector3(),roam:true};
-function roamStart(r,root){visitKey=boxKey(r.plotId);roamTag.element.textContent=r.name;if(!labels.includes(roamTag)){$('labels').append(roamTag.element);labels.push(roamTag);}cityTour=null;cameraTween=null;followObj=root;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();}
-function roamEnd(){const i=labels.indexOf(roamTag);if(i>=0)labels.splice(i,1);roamTag.element.remove();visitKey=null;if(followObj){followObj=null;follow=false;}}
+function roamStart(r,root){visitKey=boxKey(r.plotId);residents.hide(new Set(visitKey?[visitKey]:[]));roamTag.element.textContent=r.name;if(!labels.includes(roamTag)){$('labels').append(roamTag.element);labels.push(roamTag);}cityTour=null;cameraTween=null;followObj=root;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();}
+function roamEnd(){const i=labels.indexOf(roamTag);if(i>=0)labels.splice(i,1);roamTag.element.remove();visitKey=null;residents.hide(new Set());if(followObj){followObj=null;follow=false;}}
 // The host's greeting when a visitor (or an exploring resident) stops at their door.
-function greet(plotId,name){const f=frontOf(plotId);if(f)bubble(`💬 Hi ${name}!`,new THREE.Vector3(f.x+1.2,2.4,f.z),4000);const e=lod.get(boxKey(plotId));if(e?.on)e.char.play('Wave');}
+function greet(plotId,name){const f=frontOf(plotId);if(f)bubble(`💬 Hi ${name}!`,new THREE.Vector3(f.x+1.2,2.4,f.z),4000);const k=boxKey(plotId);if(k)residents.wave(k,performance.now()*.001);}
 // Purely local: nothing about a visit is sent to the server.
 function startVisit(){
  const r=resident(),b=selectedPlace?.building;if(!r||b?.type!=='apartment'||cityEvents.visiting)return;closeDialog();stopExplore();
@@ -423,17 +422,17 @@ renderer.domElement.addEventListener('pointerup',e=>{
    lastTap.t=run?0:t;lastTap.x=e.clientX;lastTap.y=e.clientY;if(explorer.tap(tapPoint,{run})&&cityEvents.visitor){followObj=cityEvents.visitor;follow=true;cameraTween=null;}}
 });
 $('district-select').replaceChildren();const all=document.createElement('option');all.value='';all.textContent='Entire city';$('district-select').append(all);for(const d of districts){const option=document.createElement('option');option.value=d.id;option.textContent=d.name;$('district-select').append(option);}
-addEventListener('resize',resize);resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings,{mobile});addLabel(tower,32);
+addEventListener('resize',resize);resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings,{mobile,gpu:crowdGPU});addLabel(tower,32);
 for(const d of districts){const element=document.createElement('button');element.className='world-label district-label';element.textContent=d.name.toUpperCase();element.onclick=()=>{$('district-select').value=d.id;$('district-select').onchange();};$('labels').append(element);labels.push({element,district:true,position:new THREE.Vector3(d.x,.4,d.z+11.4)});}
 
 // Shared world: the server is the source of truth; the city redraws only when something changed.
-const residents=addResidents(scene),worldLabels=[],cityEvents=createCityEvents(scene,{mobile,reducedMotion});
+const residents=addResidents(scene),worldLabels=[],cityEvents=createCityEvents(scene,{mobile,reducedMotion,gpu:crowdGPU});
 // Rooms borrow this renderer; the city stops updating while one is open.
 attachRoomHost({template,notify,setView(view){roomView=view;controls.enabled=!view;document.body.classList.toggle('in-room',!!view);if(view)view.resize(innerWidth/innerHeight);}});
 function residentList(){return cityBuildings.filter(b=>b.type==='apartment').map(b=>{const f=frontOf(b.plotId);const look=b.resident.look||{};return f&&{x:f.x+1.2,z:f.z,look,key:b.plotId+JSON.stringify(look)};}).filter(Boolean);}
 function setServer(up){if(up===serverUp)return;serverUp=up;$('server-status').textContent=up?'LIVE CITY':'SERVER OFFLINE';$('activity-label').textContent=up?'SUB-01 · LIVE':'SUB-01 · OFFLINE';$('server-badge').classList.toggle('is-offline',!up);if(!up)$('activity-text').textContent='The city server is offline. Nothing here is live right now.';}
 async function pollWorld(){
- let next;try{next=await api('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions)lookOptions=await api('/api/world/options');setServer(true);}catch{setServer(false);return;}
+ let next;try{next=await api('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions){lookOptions=await api('/api/world/options');cityRenderer.crowd.setLookOptions(lookOptions);}setServer(true);}catch{setServer(false);return;}
  world=next;const items=worldBuildings(world),key=JSON.stringify(items);let flipped=[];
  if(key!==worldKey){worldKey=key;
   // A party only for a site seen building and now open, not for one that was already open when first seen.
@@ -457,7 +456,7 @@ function animate(now){
   if(document.hidden||now-lastRender<(mobile?1000/30:1000/45))return;
   lastRender=now;
   if(roomView){roomView.update(Math.min(clock.getDelta(),.08));renderer.render(roomView.scene,roomView.camera);return;}
-  cityRenderer?.update(reducedMotion?0:now*.001);const dt=Math.min(clock.getDelta(),.08);sub01?.update(dt);lodTick(now);lodUpdate(dt,now);residents.update(reducedMotion?0:now*.001);cityEvents.update(dt,renderer.getPixelRatio()*innerHeight*camera.zoom/(camera.top-camera.bottom));if(explorer&&cityEvents.visitor)explorer.update(dt);if(cityEvents.visitor){roamTag.position.copy(cityEvents.visitor.position);roamTag.position.y+=2.05;}
+  const seconds=reducedMotion?0:now*.001;crowdBegin(seconds);cityRenderer?.update(seconds);const dt=Math.min(clock.getDelta(),.08);sub01?.update(dt);residents.update(seconds,crowdGPU);cityEvents.update(dt,renderer.getPixelRatio()*innerHeight*camera.zoom/(camera.top-camera.bottom));if(explorer&&cityEvents.visitor)explorer.update(dt);if(cityEvents.visitor){roamTag.position.copy(cityEvents.visitor.position);roamTag.position.y+=2.05;}
   if(goal?.activity==='party'&&!walker&&now>partyWaveAt&&partyWaveAt){play('Idle');play('Wave');partyWaveAt=now+6e3;}
   if(walker&&character){
     const target=walker.points[walker.index],pos=character.position,dx=target.x-pos.x,dz=target.z-pos.z,dist=Math.hypot(dx,dz),stepLen=dt*(walker.points.length>3?4.2:2.4);
@@ -467,7 +466,7 @@ function animate(now){
   if(character){const m=character.userData.marker,fl=markerFlash>now?Math.abs(Math.sin(now*.012)):0;m.scale.setScalar(1+fl*.9);m.material.emissiveIntensity=.25+fl*2.5;m.position.copy(character.position);m.position.y+=2+(reducedMotion?0:Math.sin(now*.002)*.04);m.rotation.y=now*.0005;if(follow){const before=controls.target.clone();controls.target.lerp((followObj||character).position,.07);camera.position.add(controls.target.clone().sub(before));}}
   if(cameraTween){cameraTween.elapsed+=dt;const t=Math.min(cameraTween.elapsed/.75,1),ease=1-(1-t)**3;const before=controls.target.clone();controls.target.lerpVectors(cameraTween.start,cameraTween.target,ease);camera.position.add(controls.target.clone().sub(before));camera.zoom=THREE.MathUtils.lerp(cameraTween.zoom,cameraTween.endZoom,ease);camera.updateProjectionMatrix();if(t===1)cameraTween=null;}
   if(cityTour){cityTour.elapsed+=dt;if(cityTour.elapsed>5){cityTour.elapsed=0;cityTour.index++;if(cityTour.index>=cityViews.length){cityTour=null;resetView();$('activity-text').textContent='Your idea. Your city. Choose an address.';}else nextCityView();}}
-  controls.update();renderer.render(scene,camera);
+  controls.update();crowdEnd(now);renderer.render(scene,camera);
   document.body.classList.toggle('is-close',camera.zoom>.42);
   for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
 }

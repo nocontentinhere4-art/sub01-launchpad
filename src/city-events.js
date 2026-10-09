@@ -67,7 +67,7 @@ export function decorItems({open,soon}){
 }
 
 const NEON=['#ff4fa3','#4ff3ff','#ffd84f','#8dff6a','#c38bff','#ff8a3d'];
-const PARTY_LOOKS=[{top:'#fb752b',bottom:'#2f3e66',skin:'#efbf98',hair:'#2a1b12'},{top:'#69a694',bottom:'#334454',skin:'#a96e51',hair:'#111'},{top:'#d9a5a0',bottom:'#3a3b3d',skin:'#ce9670',hair:'#6b4428'},{top:'#9390c4',bottom:'#263342',skin:'#e2b99a',hair:'#c4a465'},{top:'#e8e0cf',bottom:'#2f3e66',skin:'#c98e66',hair:'#1b1b1b'}];
+const PARTY_LOOKS=[{outfit:'tee',top:'#fb752b',bottom:'#2f3e66',skin:'#efbf98',hair:'#2a1b12'},{outfit:'hoodie',top:'#69a694',bottom:'#334454',skin:'#a96e51',hair:'#111'},{outfit:'jacket',top:'#d9a5a0',bottom:'#3a3b3d',skin:'#ce9670',hair:'#6b4428'},{outfit:'suit',top:'#9390c4',bottom:'#263342',skin:'#e2b99a',hair:'#c4a465'},{outfit:'tee',top:'#e8e0cf',bottom:'#2f3e66',skin:'#c98e66',hair:'#1b1b1b'}];
 
 export function buildFireworks({slots=6,per=200}={}){
  const r=rng(7),pos=new Float32Array(slots*per*3),info=new Float32Array(slots*per*2);
@@ -134,11 +134,12 @@ function drawTile(ctx,tile,kind,text){
 const rrect=(ctx,x,y,w,h,r)=>{ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,r);else ctx.rect(x,y,w,h);};
 const tileUV=t=>[t%COLS,ROWS-1-Math.floor(t/COLS)];
 
-export function createCityEvents(scene,{mobile=false,reducedMotion=false}={}){
+export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=null}={}){
  const root=new THREE.Group();root.name='City events';scene.add(root);
  const fw=buildFireworks({slots:6,per:mobile?120:200}),cf=buildConfetti({slots:2,per:mobile?140:220});root.add(fw.points,cf.points);
  const unit=new THREE.BoxGeometry(1,1,1),m4=new THREE.Matrix4(),part=new THREE.Matrix4(),q=new THREE.Quaternion(),e3=new THREE.Euler(),v3=new THREE.Vector3(),s3=new THREE.Vector3(),color=new THREE.Color();
- // Party crowd: ≤12 six-box figures in one instanced mesh, only visible during a party.
+ // Party crowd: ≤12 six-box figures in one instanced mesh, only visible during a party; up close (gpu.active) the guests are
+ // characters from crowd-gpu.js instead (walking in, then waving and jumping).
  const CROWD=mobile?6:10,crowd=new THREE.InstancedMesh(unit,toon(),CROWD*6);crowd.frustumCulled=false;crowd.visible=false;root.add(crowd);
  const decorBoxes=new THREE.InstancedMesh(unit,toon(),MAX_OPEN*3);decorBoxes.count=0;root.add(decorBoxes);
  let signs=null,atlas=null,ctx=null;
@@ -192,7 +193,10 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false}={}){
  }
  const PARTS=[[0,.32,0,.42,.62,.26],[0,.92,0,.56,.62,.34],[0,1.46,0,.46,.46,.42],[0,1.73,-.03,.5,.16,.46]];
  function drawParty(T){
-  const k=(T-party.start),fade=Math.min(1,Math.max(0,party.end-T));
+  const k=(T-party.start),fade=Math.min(1,Math.max(0,party.end-T));crowd.visible=!gpu?.active;
+  if(gpu?.active){party.figs.forEach((fig,i)=>{const enter=Math.min(1,Math.max(0,(k-i*.15)/2)),e=1-(1-enter)**2,walking=enter<1;
+    const jump=walking?0:Math.max(0,Math.sin(T*6.5+fig.ph))*.28,yaw=walking?Math.atan2(fig.x-fig.from.x,0):fig.yaw;
+    gpu.push(fig.look,fig.from.x+(fig.x-fig.from.x)*e,.26+jump,fig.from.z+(fig.z-fig.from.z)*e,yaw,{clip:walking?'Walk':'Wave',rate:walking?1.6:1,phase:fig.ph%1,scale:fade||1e-4,bias:.7});});return;}
   party.figs.forEach((fig,i)=>{const enter=Math.min(1,Math.max(0,(k-i*.15)/2)),e=1-(1-enter)**2,x=fig.from.x+(fig.x-fig.from.x)*e,z=fig.from.z+(fig.z-fig.from.z)*e;
    const walking=enter<1,jump=walking?Math.abs(Math.sin(k*9+i))*.05:Math.max(0,Math.sin(T*6.5+fig.ph))*.28,yaw=walking?Math.atan2(fig.x-fig.from.x,0):fig.yaw;
    m4.compose(v3.set(x,.26+jump,z),q.setFromEuler(e3.set(0,yaw,0)),s3.setScalar(fade||1e-4));

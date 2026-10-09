@@ -9,6 +9,8 @@
 //     pet {kind,color,name}|null), traits {neat,outgoing,active,playful,nice} numbers 0..1.
 // Helpers (also used by room.js): tierMap, tierOf, isUnlocked, tierLabel.
 export const CLOTHES=['#fb752b','#2f3e66','#69a694','#e8e0cf','#3a3b3d','#d9a5a0','#c4a465','#9390c4'];
+// The server's look vocabulary (GET /api/world/options .look), used for strangers until the options load.
+export const SKINS=['#f6d5b8','#e8b48f','#c98e66','#a26a45','#7a4a2e','#4f3020'],HAIRS=['#1b1b1b','#3b2a20','#6b4428','#a87443','#d9b26f','#b23a2e','#e8e8e8','#4a6cd4'],HAIR_STYLES=['short','long','bun','buzz','curly'];
 export const PET_COLORS=['#c8a27a','#f3efe4','#3a3b3d','#e8a04b','#9aa0a6','#7fd36b','#6fa8ff','#e05a47'];
 export const TRAITS=['neat','outgoing','active','playful','nice'];
 export const TRAIT_LABELS={neat:['messy','neat'],outgoing:['shy','outgoing'],active:['lazy','active'],playful:['serious','playful'],nice:['grouchy','nice']};

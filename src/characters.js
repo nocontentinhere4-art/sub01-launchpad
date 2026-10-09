@@ -11,6 +11,8 @@ export const HEIGHT=1.5;
 // hide drops props (the suit model holds a pistol).
 const OUTFIT_MATS={hoodie:{top:['Purple'],bottom:['LightBlue']},jacket:{top:['LightBrown'],bottom:['LightBlue']},tee:{top:['LightBrown'],bottom:['Red_Dark']},suit:{top:['Suit'],bottom:['Suit'],hide:['Grey','DarkBrown']},worker:{top:['Worker_Vest'],bottom:['Brown','Brown2']}};
 export function lookMaterials(outfit){const o=OUTFIT_MATS[outfit]||OUTFIT_MATS.hoodie;return{top:[...o.top],bottom:[...o.bottom],skin:['Skin','Skin_Darker'],hair:['Hair']};}
+// Materials an outfit never shows (props baked into the glb).
+export const hiddenMaterials=outfit=>[...(OUTFIT_MATS[outfit]?.hide||[])];
 let clips=null;
 const fits=new WeakMap();
 const _a=new THREE.Vector3(),_b=new THREE.Vector3(),_q=new THREE.Quaternion(),_w=new THREE.Quaternion(),_p=new THREE.Quaternion();
