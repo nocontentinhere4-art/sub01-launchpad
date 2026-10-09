@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import {toon,nightColor} from './toon.js';
-import {districts} from './city-state.js';
+import {toon,nightColor,night as nightShared} from './toon.js';
+import * as CS from './city-state.js';
+const {districts}=CS;
 import {cityLayout,rng,CATEGORY,BASE_Y,GROUND} from './lots.js';
 import {streetPlan,ROWS} from './city-street.js';
 // Signs, shopfront dressing, street props and Fuji (art brief 3.4.5, 3.6, 3.7, 3.11; plan items 6 and 10).
@@ -235,7 +236,7 @@ export function stylePlan(buildings=[]){
    let u=start;const out=[];
    for(let i=0;i<n;i++){const rad=.15+rp()*.15,uu=u+s*rad;if(Math.abs(uu)+rad>lot.width/2-.05)break;out.push([uu,rad]);u=uu+s*(rad+.03+rp()*.05);}
    if(out.length<3)continue;const lo=Math.min(...out.map(([a,b])=>a-b)),hi=Math.max(...out.map(([a,b])=>a+b));if(!free(lot,lo,hi))continue;
-   const vb=lot.type==='T5'?.32:.22;if(!out.every(([uu])=>clearOfPoles(f.x(uu),f.z(vb),.3,.3)))continue;
+   const vb=lot.type==='T5'?.32:.22;if(!out.every(([uu])=>clearOfPoles(f.x(uu),f.z(vb),.3,.3)&&clearOfPoles(f.x(uu),f.z(vb+.25),.3,.3)))continue;
    for(const [uu,rad] of out){const v=Math.max(vb+(rp()-.5)*.1,rad*1.7+.03),h=.28+rp()*.2,x=f.x(uu),z=f.z(v),spin=rp()*.8;
     P({x,y:BASE_Y+h/2,z,w:rad*2,h,d:rad*2,ry:spin,color:pick(rp,['#B5674A','#8E9290','#4F6F8F','#E9E6DD','#B5674A']),role:'pot'});
     const ph=.22+rp()*.4;P({x,y:BASE_Y+h+ph/2-.04,z,w:rad*2.3,h:ph,d:rad*2.3,ry:spin+Math.PI/4,color:pick(rp,['#6F8F5E','#8FA66B','#5F7F50']),role:'plant'});}
@@ -267,7 +268,7 @@ export function stylePlan(buildings=[]){
    let u=s*(lot.width/2-.08);const out=[];
    for(let i=0;i<n;i++){const rad=.12+rp()*.12,uu=u-s*rad;out.push([uu,rad]);u=uu-s*(rad+.04+rp()*.06);}
    const lo=Math.min(...out.map(([a,b])=>a-b)),hi=Math.max(...out.map(([a,b])=>a+b));
-   if(!free(lot,lo,hi)||!out.every(([uu])=>clearOfPoles(f.x(uu),f.z(vb),.3,.3)&&!inScramble(f.x(uu),f.z(vb))))continue;
+   if(!free(lot,lo,hi)||!out.every(([uu])=>clearOfPoles(f.x(uu),f.z(vb),.3,.3)&&clearOfPoles(f.x(uu),f.z(vb+.25),.3,.3)&&!inScramble(f.x(uu),f.z(vb))))continue;
    for(const [uu,rad] of out){const h=.26+rp()*.22,ph=.2+rp()*.45,x=f.x(uu),z=f.z(Math.max(vb+(rp()-.5)*.08,rad*1.7+.03)),spin=rp();
     P({x,y:BASE_Y+h/2,z,w:rad*2,h,d:rad*2,ry:spin,color:pick(rp,['#B5674A','#8E9290','#4F6F8F','#E9E6DD','#9A7A60']),role:'pot'});
     P({x,y:BASE_Y+h+ph/2-.04,z,w:rad*2.3,h:ph,d:rad*2.3,ry:spin+Math.PI/4,color:pick(rp,['#6F8F5E','#8FA66B','#5F7F50']),role:'plant'});}
@@ -284,7 +285,7 @@ export function stylePlan(buildings=[]){
  }
 
  here=null;
- // ---------- Boulevards: bus stops (lamp side) and two-crown street trees (pole side), the only street trees ----------
+ // ---------- Boulevards: bus stops (lamp side); the street trees on the pole side live in city-green.js ----------
  const blvd=[...new Set(poles.filter(p=>p.axis==='z').map(p=>p.c))];
  const central=(x,z)=>Math.abs(x)<14.2&&z>-11&&z<15;
  for(const bx of blvd){const side=Math.sign(poles.find(p=>p.axis==='z'&&p.c===bx).x-bx),stops=[];
@@ -297,12 +298,7 @@ export function stylePlan(buildings=[]){
    P({x:x+side*.45+side*.025,y:BASE_Y+2.25,z:z+.9,w:.42,h:.42,d:.02,rz:Math.PI/8,ry,color:'#3E9B5C',role:'bus'},false);
    if(rb()<.6){P({x:x-out*.25,y:BASE_Y+2.35,z,w:1.0,h:.06,d:2.0,color:'#C9CCC6',role:'bus'},false);for(const s of [-.9,.9])P({x:x-out*.68,y:BASE_Y+1.17,z:z+s,w:.06,h:2.34,d:.06,color:'#7E8789',role:'bus'},false);
     P({x:x-out*.68,y:BASE_Y+1.2,z,w:.03,h:1.5,d:1.8,color:'#9FB6BF',role:'bus'},false);}}
-  for(let z=-70+rng(`${bx}:trees`)()*3;z<75;z+=6){const rt=rng(`${bx}:${z.toFixed(1)}:tree`),zz=z+(rt()-.5)*1.2,x=bx+side*2.15;
-   if(ROWS.some(row=>Math.abs(zz-row)<4.4)||central(x,zz)||poles.some(p=>Math.abs(p.x-x)<2&&Math.abs(p.z-zz)<1.45)||Math.hypot(x-SCRAMBLE.x,zz-SCRAMBLE.z)<7.5)continue;
-   const h=2.0+rt()*.5,spin=rt()*.8;
-   P({x,y:BASE_Y+h/2,z:zz,w:.22,h,d:.22,color:'#6B5443',role:'tree'},false);
-   P({x,y:BASE_Y+h+.45,z:zz,w:1.7,h:1.15,d:1.7,ry:spin,color:'#6F8F5E',role:'tree'},false);
-   P({x:x+(rt()-.5)*.2,y:BASE_Y+h+1.3,z:zz+(rt()-.5)*.2,w:1.15,h:.9,d:1.15,ry:spin+Math.PI/4,color:'#8FA66B',role:'tree'},false);}
+  // Street trees moved to city-green.js (wave 4B): instanced zelkova/ginkgo with sway, one draw call per species.
  }
 
  // ---------- The Shibuya scramble: two diagonal zebras (bars 0.45, gaps 0.45) inside the road only ----------
@@ -314,35 +310,63 @@ export function stylePlan(buildings=[]){
     const cut=(1.75+.2)/d[0],tc=(SCRAMBLE.x-cx)/d[0];
     for(const [a,b] of [[ta,Math.min(tb,tc-Math.abs(cut))],[Math.max(ta,tc+Math.abs(cut)),tb]])if(b-a>.4){const tm=(a+b)/2;
      P({x:cx+d[0]*tm,y:.203,z:cz+d[1]*tm,w:.45,h:.01,d:b-a,ry:Math.atan2(d[0],d[1]),color:'#ECEAE2',role:'zebra'},false);}}}}
- return {signs,props,pools,screen,counts};
+ // Last guard (7×7 layouts with gap fillers set back differently): no pot or plant may sit inside a building footprint.
+ const foot=layout.lots.map(l=>{const z1=l.frontZ-(l.front==='+z'?1:-1)*l.depth;return [l.x-l.width/2,l.x+l.width/2,Math.min(l.frontZ,z1),Math.max(l.frontZ,z1)];});
+ const clips=p=>{const c=Math.abs(Math.cos(p.ry||0)),sn=Math.abs(Math.sin(p.ry||0)),hw=(p.w*c+p.d*sn)/2,hd=(p.w*sn+p.d*c)/2;
+  return foot.some(([x0,x1,z0,z1])=>Math.min(p.x+hw,x1)-Math.max(p.x-hw,x0)>.02&&Math.min(p.z+hd,z1)-Math.max(p.z-hd,z0)>.02);};
+ const kept=props.filter((p,i)=>!(p.role==='pot'&&(clips(p)||(props[i+1]?.role==='plant'&&clips(props[i+1])))||(p.role==='plant'&&props[i-1]?.role==='pot'&&(clips(p)||clips(props[i-1])))));
+ return {signs,props:kept,pools,screen,counts};
 }
 
-// ---------- Fuji (brief 3.11): far out and low, concave profile 35° at the summit → 12° at the base ----------
-// Seen from the 40° camera a 35° cone shows its top and reads as a dome, so Fuji is a backdrop: its up axis is tilted
-// to the camera's screen-up (view = main.js CAMERA yaw/pitch), which shows the concave side profile. Placed far back
-// along the view (depth ≈ 320 of the 400 far plane) so the fog takes it, and low: summit just under the header.
-export const FUJI={x:-60.5,z:-131,base:-66.6,height:26,view:{yaw:36,pitch:40},segments:20,slopeTop:35,slopeBase:12,snow:.3,day:'#8FA2B6',snowDay:'#F3F1EA',night:'#1E2840'};
+// ---------- Fuji (wave 4B; brief 3.11, refs real-21, real-20) ----------
+// Seen from Tokyo, Fuji sits low on the horizon and is WIDE: a concave profile from ~10° at the visible foot to ~31° near
+// the summit (slope rises with height), a slightly truncated crater rim, snow on about the top third with fingers running
+// down the gullies (generic radial gully pattern; Tokyo sees the east face), faint radial ridges, the darker Tanzawa
+// ridge in front of its foot, three haze layers in the fog colour (far, mid, near) and an optional lenticular cloud.
+// It is a backdrop: each frame it is turned to face the camera (local y = screen up, local z = toward the camera,
+// squashed in depth) at FUJI_AT (city-state.js), its base low behind the skyline, and it shrinks a little as the camera
+// zooms in, so it still reads from the district views that see the north-west horizon. Two draw calls: the opaque body +
+// ridge, and the transparent haze + cloud. Colours follow the shared night amount (day → dusk → night silhouette).
+const FUJI_AT=CS.FUJI_AT??{x:-60.5,z:-131},FUJI_K=CS.OVERVIEW_ZOOM?.desktop?.19/CS.OVERVIEW_ZOOM.desktop:1;
+export const FUJI={x:FUJI_AT.x,z:FUJI_AT.z,height:34*FUJI_K,base:{sy:.4*16.5/.19*FUJI_K,target:[0,8,-7]},squash:.15,view:{yaw:36,pitch:40},
+ overviewZoom:CS.OVERVIEW_ZOOM?.desktop??.19,segments:48,rings:18,slopeBase:10,slopeTop:31,crater:.04,snow:.3,
+ day:'#8FA2B6',snowDay:'#F3F1EA',dusk:'#6C6F93',snowDusk:'#F2C9B5',night:'#1E2840',snowNight:'#36425F',
+ ridge:{day:'#7A8C9C',dusk:'#4E5076',night:'#141C30',height:.3,width:1.55},maxTriangles:3000};
+// Slope (degrees) at height fraction f: rises from slopeBase at the foot to slopeTop at the rim (a concave profile).
+export const fujiSlope=f=>FUJI.slopeBase+(FUJI.slopeTop-FUJI.slopeBase)*Math.pow(Math.min(1,Math.max(0,f)),1.4);
 export function fujiProfile(H=FUJI.height){
- const N=240,crater=.04,ys=[0];
- for(let i=1;i<=N;i++){const t=(i-.5)/N,th=(FUJI.slopeTop+(FUJI.slopeBase-FUJI.slopeTop)*t)*Math.PI/180;ys.push(ys[i-1]+Math.tan(th)/N);}
- const R=H/((1-crater)*ys[N]);
- return {R,radius(f){const target=(1-f)*ys[N];let i=ys.findIndex(v=>v>=target);if(i<=0)return crater*R;const k=(target-ys[i-1])/(ys[i]-ys[i-1]||1);return R*(crater+(1-crater)*(i-1+k)/N);}};
+ const N=400,rs=new Float64Array(N+1);   // radius at f=i/N, integrated from the rim down (dr = dh / tan θ)
+ for(let i=N-1;i>=0;i--){const f=(i+.5)/N;rs[i]=rs[i+1]+H/N/Math.tan(fujiSlope(f)*Math.PI/180);}
+ const c=FUJI.crater*rs[0]/(1-FUJI.crater),R=rs[0]+c;
+ return {R,rim:c,radius(f){const x=Math.min(1,Math.max(0,f))*N,i=Math.min(N-1,Math.floor(x)),k=x-i;return c+rs[i]*(1-k)+rs[i+1]*k;}};
 }
-export function fujiTilt(){const p=THREE.MathUtils.degToRad(FUJI.view.pitch),y=THREE.MathUtils.degToRad(FUJI.view.yaw);
- return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(-Math.sin(p)*Math.sin(y),Math.cos(p),-Math.sin(p)*Math.cos(y)));}
+// Radial gully pattern g(θ) in −1…1 (negative = a gully: the radius dips and the snow runs further down).
+export const fujiGully=a=>.55*Math.sin(a*9+1.3)+.3*Math.sin(a*17+.4)+.15*Math.sin(a*31+2.2);
+const SUN_L=new THREE.Vector3(-.62,.42,.66).normalize();
 export function fujiMesh(){
- const {segments:S,height:H}=FUJI,prof=fujiProfile(H),rf=rng('fuji'),snowLine=1-FUJI.snow;
- const angle=Array.from({length:S},(_,j)=>(j+(rf()-.5)*.35)/S*Math.PI*2),noise=Array.from({length:S},()=>1+(rf()-.5)*.08);
- const ringsF=[0,.2,.38,.54,null,.82,.92,.975],snowRing=4;
- const vert=(k,j)=>{const jj=(j+S)%S,f=ringsF[k]??snowLine+(rf.cache[jj]-.5)*.14,rad=prof.radius(f)*noise[jj]*(k===ringsF.length-1?1:1);return [Math.cos(angle[jj])*rad,f*H,Math.sin(angle[jj])*rad];};
- rf.cache=Array.from({length:S},()=>rf());
- const pos=[],day=[],night=[],sun=new THREE.Vector2(-.45,.64).normalize();
- const tri=(a,b,c,snow,j)=>{const nx=Math.cos((angle[j]+angle[(j+1)%S])/2),nz=Math.sin((angle[j]+angle[(j+1)%S])/2),lit=.86+.2*Math.max(0,nx*sun.x+nz*sun.y);
-  const cd=new THREE.Color(snow?FUJI.snowDay:FUJI.day).multiplyScalar(lit),cn=new THREE.Color(FUJI.night).multiplyScalar(.94+.08*lit);
-  for(const p of [a,b,c]){pos.push(...p);day.push(cd.r,cd.g,cd.b);night.push(cn.r,cn.g,cn.b);}};
- for(let k=0;k<ringsF.length-1;k++)for(let j=0;j<S;j++){const A=vert(k,j),B=vert(k,j+1),C=vert(k+1,j+1),D=vert(k+1,j),snow=k>=snowRing;tri(A,C,B,snow,j);tri(A,D,C,snow,j);}
- const top=[0,H,0];for(let j=0;j<S;j++)tri(vert(ringsF.length-1,j),top,vert(ringsF.length-1,j+1),true,j);
- return {position:new Float32Array(pos),day:new Float32Array(day),night:new Float32Array(night),triangles:pos.length/9,R:prof.R};
+ const {segments:S,rings:NR,height:H}=FUJI,prof=fujiProfile(H),pos=[],lit=[],fr=[],ang=[],layer=[];
+ const ringF=Array.from({length:NR+1},(_,k)=>1-Math.pow(1-k/NR,1.35));   // denser rings near the summit
+ const P=(k,j)=>{const a=j/S*Math.PI*2,f=ringF[k],g=fujiGully(a),r=prof.radius(f)*(1+(.018+.045*f)*g);return [Math.cos(a)*r,f*H,Math.sin(a)*r,a,f];};
+ // Smooth shading: each vertex's normal from the profile slope at its height, nudged by the gully pattern.
+ const vlit=(a,f)=>{const t=fujiSlope(f)*Math.PI/180,n=new THREE.Vector3(Math.cos(a)*Math.sin(t),Math.cos(t),Math.sin(a)*Math.sin(t));return (.76+.34*Math.max(0,n.dot(SUN_L)))*(1+.05*fujiGully(a+.12));};
+ const tri=(A,B,C,lay=0)=>{for(const p of [A,B,C]){pos.push(p[0],p[1],p[2]);lit.push(vlit(p[3],p[4]));fr.push(p[4]);ang.push(p[3]);layer.push(lay);}};
+ for(let k=0;k<NR;k++)for(let j=0;j<S;j++){const A=P(k,j),B=P(k,j+1),C=P(k+1,j+1),D=P(k+1,j);tri(A,C,B);tri(A,D,C);}
+ // Crater: the rim ring dips to a shallow bowl (truncated top, not a point).
+ for(let j=0;j<S;j++){const A=P(NR,j),B=P(NR,j+1),a=(j+.5)/S*Math.PI*2,c=[Math.cos(a)*prof.rim*.35,H*.985,Math.sin(a)*prof.rim*.35,a,1];tri(A,c,B);}
+ // Tanzawa ridge: a jagged lower silhouette in front (local z toward the camera), wider than Fuji's foot.
+ const RW=prof.R*FUJI.ridge.width,RH=H*FUJI.ridge.height,M=64,ridgeY=x=>{const u=x/RW;return RH*(.55+.25*Math.sin(u*9.1+.7)+.14*Math.sin(u*23.+1.9)+.06*Math.sin(u*57.)-.35*u*u);};
+ for(let i=0;i<M;i++){const x0=-RW+2*RW*i/M,x1=-RW+2*RW*(i+1)/M,z=prof.R*.95;const a=[x0,-H*.08,z,0,0],b=[x1,-H*.08,z,0,0],c=[x1,ridgeY(x1),z,0,0],d=[x0,ridgeY(x0),z,0,0];
+  for(const t of [[a,b,c],[a,c,d]]){for(const p of t){pos.push(p[0],p[1],p[2]);lit.push(1);fr.push(p[1]/RH);ang.push(0);layer.push(1);}}}
+ return {position:new Float32Array(pos),lit:new Float32Array(lit),f:new Float32Array(fr),angle:new Float32Array(ang),layer:new Float32Array(layer),triangles:pos.length/9,R:prof.R,ridgeZ:prof.R*.95,ridgeW:RW,ridgeH:RH};
+}
+// Haze + cloud (transparent): three bands in the fog colour (far one over Fuji's foot, mid over the ridge, near at the
+// horizon) and a lens cloud just over the summit. Each vertex: position, alpha, cloud flag.
+export function fujiHaze(m=fujiMesh()){
+ const H=FUJI.height,W=m.ridgeW*1.1,pos=[],alpha=[],cloud=[],quad=(z,y0,y1,a0,a1)=>{const v=[[-W,y0,a0],[W,y0,a0],[W,y1,a1],[-W,y1,a1]];for(const i of [0,1,2,0,2,3]){pos.push(v[i][0],v[i][1],z);alpha.push(v[i][2]);cloud.push(0);}};
+ quad(m.ridgeZ*.6,-H*.1,H*.42,.92,0);quad(m.ridgeZ*1.03,-H*.1,m.ridgeH*.75,.9,0);quad(m.ridgeZ*1.08,-H*.12,H*.1,.95,0);
+ const n=24,cx=0,cy=H*1.09,rx=m.R*.2,ry=H*.035;for(let i=0;i<n;i++){const a0=i/n*Math.PI*2,a1=(i+1)/n*Math.PI*2;
+  for(const [x,y,a] of [[cx,cy,.6],[cx+Math.cos(a0)*rx,cy+Math.sin(a0)*ry*(Math.sin(a0)>0?1:.55),0],[cx+Math.cos(a1)*rx,cy+Math.sin(a1)*ry*(Math.sin(a1)>0?1:.55),0]]){pos.push(x,y,m.R*.2);alpha.push(a);cloud.push(1);}}
+ return {position:new Float32Array(pos),alpha:new Float32Array(alpha),cloud:new Float32Array(cloud),triangles:pos.length/9};
 }
 
 // ---------- Atlas drawing (browser only) ----------
@@ -430,21 +454,49 @@ export function addTokyoStyle(parent,buildings=[]){
  // Shibuya's big screen lives in city-life.js (created after this module on first load): re-place it once found.
  if(plan.screen){let placed=false;const before=signMesh.onBeforeRender;signMesh.onBeforeRender=(...args)=>{before(...args);if(placed)return;
   parent.traverse(o=>{if(placed||!o.isMesh||o.isInstancedMesh)return;const p=o.geometry?.parameters;if(p?.width===6.3&&p?.height===3.15){const s=plan.screen;o.position.set(s.x,s.y,s.z);o.rotation.set(0,s.ry,0);o.scale.set(s.w/6.3,s.h/3.15,1);placed=true;}});};}
- // Fuji: one mesh, flat vertex colours, its own lighter fog and a ground haze so it sits behind the city.
- const fm=fujiMesh(),fgeo=new THREE.BufferGeometry();fgeo.setAttribute('position',new THREE.BufferAttribute(fm.position,3));fgeo.setAttribute('color',new THREE.BufferAttribute(fm.day.slice(),3));
- const fujiMat=new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false,side:THREE.DoubleSide});
- fujiMat.onBeforeCompile=sh=>{sh.uniforms.uFujiBase={value:FUJI.base};sh.uniforms.uFujiH={value:FUJI.height};
-  sh.vertexShader='varying float vFujiY;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n vFujiY=position.y;');
-  sh.fragmentShader='uniform float uFujiBase,uFujiH;varying float vFujiY;\n'+sh.fragmentShader.replace('#include <fog_fragment>',
-   '#ifdef USE_FOG\n float fujiHaze=1.-smoothstep(uFujiH*.14,uFujiH*.5,vFujiY);\n gl_FragColor.rgb=mix(gl_FragColor.rgb,fogColor,max(smoothstep(fogNear,fogFar,vFogDepth)*.35,fujiHaze*.97));\n#endif');};
- fujiMat.customProgramCacheKey=()=>'tokyo-fuji-v2';
- const mountain=new THREE.Mesh(fgeo,fujiMat);mountain.position.set(FUJI.x,FUJI.base,FUJI.z);mountain.quaternion.copy(fujiTilt());mountain.name='fuji';mountain.raycast=()=>{};root.add(mountain);
+ // Fuji: body + Tanzawa ridge (opaque) and haze + lens cloud (transparent); colours from the shared night amount.
+ const fm=fujiMesh(),fh=fujiHaze(fm),fgeo=new THREE.BufferGeometry(),hgeo=new THREE.BufferGeometry();
+ fgeo.setAttribute('position',new THREE.BufferAttribute(fm.position,3));for(const [k,a] of [['aLit',fm.lit],['aF',fm.f],['aAng',fm.angle],['aLayer',fm.layer]])fgeo.setAttribute(k,new THREE.BufferAttribute(a,1));
+ hgeo.setAttribute('position',new THREE.BufferAttribute(fh.position,3));hgeo.setAttribute('aA',new THREE.BufferAttribute(fh.alpha,1));hgeo.setAttribute('aCloud',new THREE.BufferAttribute(fh.cloud,1));
+ const C=h=>new THREE.Color(h),fu={uFN:nightShared,uFSnow:{value:1-FUJI.snow},uFDay:{value:C(FUJI.day)},uFDusk:{value:C(FUJI.dusk)},uFNight:{value:C(FUJI.night)},
+  uFSDay:{value:C(FUJI.snowDay)},uFSDusk:{value:C(FUJI.snowDusk)},uFSNight:{value:C(FUJI.snowNight)},uFRDay:{value:C(FUJI.ridge.day)},uFRDusk:{value:C(FUJI.ridge.dusk)},uFRNight:{value:C(FUJI.ridge.night)}};
+ const FU='uniform float uFN,uFSnow;uniform vec3 uFDay,uFDusk,uFNight,uFSDay,uFSDusk,uFSNight,uFRDay,uFRDusk,uFRNight;\nvec3 fuji3(vec3 a,vec3 b,vec3 c){return uFN<.5?mix(a,b,uFN*2.):mix(b,c,uFN*2.-1.);}\n';
+ const fujiMat=new THREE.MeshBasicMaterial({toneMapped:false,side:THREE.DoubleSide});
+ fujiMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,fu);
+  sh.vertexShader='attribute float aLit,aF,aAng,aLayer;varying float vLit,vF,vAng,vLayer;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vLit=aLit;vF=aF;vAng=aAng;vLayer=aLayer;');
+  sh.fragmentShader=FU+'varying float vLit,vF,vAng,vLayer;\n'+sh.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+ float fg=.55*sin(vAng*9.+1.3)+.3*sin(vAng*17.+.4)+.15*sin(vAng*31.+2.2);
+ float fs=uFSnow-.11*max(0.,-fg)+.03*max(0.,fg)-.018*sin(vAng*71.+.5)-.01*sin(vAng*143.);
+ float fsn=smoothstep(fs-.004,fs+.004,vF);
+ vec3 fc=mix(fuji3(uFDay,uFDusk,uFNight),fuji3(uFSDay,uFSDusk,uFSNight),fsn)*mix(vLit,1.,uFN*.8);
+ fc*=1.-.035*smoothstep(.55,1.,abs(sin(vAng*41.)))*(1.-fsn)*(1.-uFN)*smoothstep(.15,.6,vF);
+ diffuseColor.rgb=mix(fc,fuji3(uFRDay,uFRDusk,uFRNight)*(.92+.12*clamp(vF,0.,1.)),step(.5,vLayer));`)
+   .replace('#include <fog_fragment>','#ifdef USE_FOG\n gl_FragColor.rgb=mix(gl_FragColor.rgb,fogColor,smoothstep(fogNear,fogFar,vFogDepth)*.28);\n#endif');};
+ fujiMat.customProgramCacheKey=()=>'tokyo-fuji-w4b';
+ const hazeMat=new THREE.MeshBasicMaterial({toneMapped:false,transparent:true,depthWrite:false,side:THREE.DoubleSide});
+ hazeMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,fu);
+  sh.vertexShader='attribute float aA,aCloud;varying float vA,vCloud;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vA=aA;vCloud=aCloud;');
+  sh.fragmentShader=FU+'varying float vA,vCloud;\n'+sh.fragmentShader.replace('#include <fog_fragment>',`vec3 hz=fuji3(uFDay,uFDusk,uFNight);
+ #ifdef USE_FOG
+ hz=fogColor;
+ #endif
+ vec3 cl=mix(hz,fuji3(uFSDay,uFSDusk,uFSNight),.62-.3*uFN);
+ gl_FragColor=vec4(mix(hz,cl,vCloud),vA*mix(1.,.8-.55*uFN,vCloud));`);};
+ hazeMat.customProgramCacheKey=()=>'tokyo-fuji-haze-w4b';
+ const mountain=new THREE.Mesh(fgeo,fujiMat),haze=new THREE.Mesh(hgeo,hazeMat);mountain.name='fuji';haze.name='fuji haze';
+ // Base anchor: at FUJI_AT, low enough that the base sits FUJI.base.sy below screen centre in the default overview.
+ const fp=THREE.MathUtils.degToRad(FUJI.view.pitch),fy=THREE.MathUtils.degToRad(FUJI.view.yaw),up=new THREE.Vector3(-Math.sin(fp)*Math.sin(fy),Math.cos(fp),-Math.sin(fp)*Math.cos(fy)),T0=FUJI.base.target;
+ const anchor=new THREE.Vector3(FUJI.x,T0[1]+(FUJI.base.sy-(FUJI.x-T0[0])*up.x-(FUJI.z-T0[2])*up.z)/up.y,FUJI.z),FM=new THREE.Matrix4(),fr=new THREE.Vector3(),fu2=new THREE.Vector3(),fb=new THREE.Vector3();
+ // Faces the camera every frame (it is radially symmetric), squashed in depth, a bit smaller when zoomed in.
+ const face=(m,camera)=>{const s=Math.min(1,Math.max(.42,Math.pow(FUJI.overviewZoom/Math.max(1e-3,camera.zoom||1),.6)));camera.matrixWorld.extractBasis(fr,fu2,fb);
+  FM.makeBasis(fr.multiplyScalar(s),fu2.multiplyScalar(s),fb.multiplyScalar(s*FUJI.squash)).setPosition(anchor);m.matrixWorld.multiplyMatrices(m.parent.matrixWorld,FM);};
+ for(const m of [mountain,haze]){m.matrixAutoUpdate=false;m.frustumCulled=false;m.raycast=()=>{};m.onBeforeRender=(r,sc,camera)=>face(m,camera);root.add(m);}
+ mountain.matrixWorld.makeBasis(new THREE.Vector3(1,0,0),up,new THREE.Vector3().crossVectors(new THREE.Vector3(1,0,0),up)).setPosition(anchor);
  const white=new THREE.Color('#ffffff');let life=null;
- return {signMesh,propMesh,mountain,plan,lightPools:plan.pools,
-  stats:()=>({props:props.length,propsCore:propMesh.userData.lod.core,signs:signs.length,signsCore:signMesh.userData.lod.core,fujiTriangles:fm.triangles,drawCalls:3,atlasBytes:atlas?512*512:0}),
+ return {signMesh,propMesh,mountain,haze,plan,lightPools:plan.pools,
+  stats:()=>({props:props.length,propsCore:propMesh.userData.lod.core,signs:signs.length,signsCore:signMesh.userData.lod.core,fujiTriangles:fm.triangles+fh.triangles,drawCalls:4,atlasBytes:atlas?512*512:0}),
   // Vending pools need city-life's light-pool batch; city.js can hand it over (style.bindLife(life)) after each redraw.
   bindLife(l){life=l;if(!l?.addLightPool)return;l.clearLightPools('props');for(const [x,z,c,r,s] of plan.pools)l.addLightPool(x,z,c,r,{group:'props',strength:s});},
-  setNight(value){night.value=value?1:0;const f=value?nightColor('walls'):white;propMat.color.copy(f);signMat.color.copy(f);
-   fgeo.attributes.color.array.set(value?fm.night:fm.day);fgeo.attributes.color.needsUpdate=true;},
-  dispose(){parent.remove(root);propMesh.dispose();propMesh.geometry.dispose();propMat.dispose();signMesh.dispose();geo.dispose();signMat.dispose();atlas?.dispose();fgeo.dispose();fujiMat.dispose();}};
+  setNight(value){night.value=value?1:0;const f=value?nightColor('walls'):white;propMat.color.copy(f);signMat.color.copy(f);},
+  dispose(){parent.remove(root);propMesh.dispose();propMesh.geometry.dispose();propMat.dispose();signMesh.dispose();geo.dispose();signMat.dispose();atlas?.dispose();fgeo.dispose();fujiMat.dispose();hgeo.dispose();hazeMat.dispose();}};
 }

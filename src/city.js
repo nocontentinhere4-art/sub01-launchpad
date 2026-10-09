@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as T from './toon.js';
+import {windowMaterial} from './windows.js';
 import {addCityLife} from './city-life.js';
 import {addCityCrowd} from './city-crowd.js';
 import {addCityTraffic} from './city-traffic.js';
@@ -32,7 +33,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  const root=new THREE.Group();scene.add(root);
  const geometry=new THREE.BoxGeometry(1,1,1);
  const wallMat=wallMaterial({roughness:1,ground:BASE_Y}),groundMat=T.toon({roughness:1});
- const windowMat=nightLit(T.toon({roughness:.7})),towerMat=nightLit(T.toon({roughness:.9}));
+ const windowMat=nightLit(windowMaterial()),towerMat=nightLit(T.toon({roughness:.9}));
  const MATS={roads:groundMat,marks:groundMat,walls:wallMat,windows:windowMat,roofs:wallMat};
  // Two lists per batch: core instances first, then "detail" ones (AC units, small roof items, side pipes, all road
  // marks). setDetail(false) at overview zoom just lowers each InstancedMesh's count to its core: no extra draw calls.

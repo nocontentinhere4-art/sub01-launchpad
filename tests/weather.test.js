@@ -67,7 +67,7 @@ test('particle buffers: finite seeds in [0,1), meshes hidden when clear, ≤ 3 e
 });
 
 test('toon materials share the weather uniforms (wet streets, snow on up-facing faces)',()=>{
- assert.deepEqual(Object.keys(weather),['wet','snow']);
+ assert.deepEqual(Object.keys(weather),['wet','snow','time','sakura','wear']);
  for(const m of [toon(),wallMaterial()]){const sh={uniforms:{},vertexShader:THREE.ShaderLib.toon.vertexShader,fragmentShader:THREE.ShaderLib.toon.fragmentShader};
   m.onBeforeCompile(sh);assert.equal(sh.uniforms.uWxWet,weather.wet);assert.equal(sh.uniforms.uWxSnow,weather.snow);
   assert.match(sh.vertexShader,/vWxY=/);assert.match(sh.fragmentShader,/uWxSnow/);}
