@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#eee9df" />
+  <title>SUB-01 · The neighborhood</title>
+  <meta name="description" content="A first look at SUB-01's neighborhood. Your ideas become places." />
+</head>
+<body>
+  <div id="app">
+    <div id="world" aria-label="Interactive 3D neighborhood"></div>
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="SUB-01 neighborhood home"><span class="brand-mark">S<span>01</span></span><span>SUBZERONE<small>TOKYO / BLOCK 001</small></span></a>
+      <div class="preview-badge"><i></i> CONCEPT PREVIEW</div>
+      <button class="button button-dark" id="idea-button">Bring an idea <span>↗</span></button>
+    </header>
+    <section class="intro">
+      <span class="eyebrow">ONE BRAIN. A CITY YOU CAN LIVE IN.</span>
+      <h1>Your idea.<br><em>Your address.</em></h1>
+      <p>A home for you. A building for your project.<br>SUB-01 is the dev next door.</p>
+    </section>
+    <div id="labels" aria-hidden="true"></div>
+    <aside class="project-panel" id="project-panel">
+      <div class="panel-heading"><span class="eyebrow">TOKYO / BLOCK 001</span><span class="count" id="project-count">04</span></div>
+      <div id="project-list"></div>
+      <button id="tour-button" class="button button-orange">Meet your dev <span>→</span></button>
+      <p class="panel-footnote">Explore the concept. Projects and events here are demo examples.</p>
+    </aside>
+    <section class="activity" aria-live="polite">
+      <div class="activity-avatar">01</div>
+      <div><span class="eyebrow"><i class="live-dot"></i> SUB-01 · DEMO ROUTINE</span><strong id="activity-text">Getting the neighborhood ready.</strong></div>
+      <button class="icon-button" id="follow-button" aria-label="Follow SUB-01" title="Follow SUB-01">◎</button>
+    </section>
+    <nav class="world-controls" aria-label="World controls">
+      <button class="icon-button" id="zoom-out" aria-label="Zoom out">−</button>
+      <button class="icon-button" id="zoom-in" aria-label="Zoom in">+</button>
+      <button class="icon-button" id="reset-view" aria-label="Reset camera">⌂</button>
+      <button class="icon-button" id="day-night" aria-label="Switch to night">☾</button>
+    </nav>
+    <div class="world-hint">DRAG TO EXPLORE <span>·</span> SELECT A BUILDING</div>
+    <div id="loading" class="loading"><div class="loading-mark">01</div><strong>Opening the neighborhood</strong><span id="loading-text">Making room for your ideas…</span></div>
+    <div class="dialog-backdrop" id="detail-backdrop" hidden>
+      <section class="detail-card" role="dialog" aria-modal="true" aria-labelledby="detail-name">
+        <button class="close-button" id="detail-close" aria-label="Close project">×</button>
+        <span class="eyebrow" id="detail-category"></span>
+        <div class="detail-icon" id="detail-icon"></div>
+        <h2 id="detail-name"></h2><p id="detail-description"></p>
+        <div class="detail-stats"><div><small>STATE</small><strong id="detail-state"></strong></div><div><small>DEVELOPER</small><strong>SUB-01</strong></div></div>
+        <div class="milestones"><span>01 · Idea</span><span>02 · Build</span><span>03 · Launch</span></div>
+        <button class="button button-orange" id="visit-button">Visit this place <span>→</span></button>
+        <p class="disclosure">Concept preview. No live token, trading, fee distribution or X connection.</p>
+      </section>
+    </div>
+    <div class="dialog-backdrop" id="idea-backdrop" hidden>
+      <section class="idea-card" role="dialog" aria-modal="true" aria-labelledby="idea-title">
+        <button class="close-button" id="idea-close" aria-label="Close idea form">×</button>
+        <span class="eyebrow">LEAVE SOMETHING AT HIS DOOR</span><h2 id="idea-title">What should he build?</h2>
+        <p>Your first idea becomes a draft in this neighborhood.</p>
+        <form id="idea-form">
+          <label for="project-name">Project name</label><input id="project-name" name="name" maxlength="40" required placeholder="Something worth opening a door for" />
+          <label for="project-idea">The idea</label><textarea id="project-idea" name="idea" maxlength="400" required rows="3" placeholder="An arcade for people who keep buying the top…"></textarea>
+          <p class="form-error" id="form-error" role="alert"></p>
+          <button class="button button-orange" type="submit">Leave the brief <span>↗</span></button>
+        </form>
+        <p class="disclosure">Saved on this device only. This preview does not launch a token or send your idea to a server.</p>
+      </section>
+    </div>
+    <div class="dialog-backdrop" id="resident-backdrop" hidden>
+      <section class="idea-card" role="dialog" aria-modal="true" aria-labelledby="resident-title">
+        <button class="close-button" id="resident-close" aria-label="Close resident form">×</button>
+        <span class="eyebrow">ORANGE APARTMENTS / 03</span><h2 id="resident-title">Make yourself at home.</h2>
+        <p>Your character. Your apartment. Your project's future ticker.</p>
+        <form id="resident-form">
+          <label for="resident-name">Resident name</label><input id="resident-name" maxlength="24" required placeholder="What should the neighbors call you?" />
+          <label for="resident-ticker">Concept coin ticker</label><input id="resident-ticker" maxlength="10" required placeholder="YOURCOIN" />
+          <label for="resident-color">Character color</label><select id="resident-color"><option value="orange">Orange</option><option value="mint">Mint</option><option value="violet">Violet</option></select>
+          <p class="form-error" id="resident-error" role="alert"></p>
+          <button class="button button-orange" type="submit">Try this apartment <span>→</span></button>
+        </form>
+        <p class="disclosure">Local preview only. No ownership, exclusive reservation, wallet connection or coin creation. The same demo apartment is available to every viewer.</p>
+      </section>
+    </div>
+    <div class="toast" id="toast" role="status" hidden></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
