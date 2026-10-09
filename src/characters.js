@@ -46,6 +46,8 @@ export async function loadCharacter(look={},{template}){
  function play(name){const next=actions[name]||actions.Idle;if(!next)return;if(next!==actions.Wave)base=name in actions?name:'Idle';if(next===current)return;
   next.reset().play();if(current)current.crossFadeTo(next,.25,false);current=next;}
  mixer.addEventListener('finished',e=>{if(e.action===current&&e.action===actions.Wave)play(base);});
+ // Distance-driven walking: the caller sets the Walk cycle from metres travelled (motion.js), so feet never slide. play() un-pauses.
+ function stride(phase){const w=actions.Walk;if(!w||current!==w)return;w.paused=true;w.time=phase*w.getClip().duration;}
  // Hip/thigh/knee for procedural poses on top of Idle_Neutral.
  const legs=['l','r'].map(s=>{const thigh=findBone(model,/upperleg|thigh/,s),knee=findBone(model,/lowerleg|shin|calf|knee/,s),foot=findBone(model,/foot|ankle/,s);return thigh&&knee&&foot&&{thigh,knee,foot};}).filter(Boolean);
  model.updateMatrixWorld(true);const len=(a,b)=>a.getWorldPosition(_a).distanceTo(b.getWorldPosition(_b));
@@ -61,5 +63,5 @@ export async function loadCharacter(look={},{template}){
   for(const l of legs){aim(l.thigh,l.knee,FWD);aim(l.knee,l.foot,DOWN);}}
  function dispose(){mixer.stopAllAction();mixer.uncacheRoot(model);for(const m of owned.values())m.dispose();for(const s of skeletons)s.dispose();root.removeFromParent();}
  play('Idle');
- return {root,play,pose,update,dispose,offsets,get posed(){return kind;}};
+ return {root,play,stride,pose,update,dispose,offsets,get posed(){return kind;}};
 }

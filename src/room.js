@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import {api} from './api.js';
 import {toon} from './toon.js';
 import {loadCharacter} from './characters.js';
+import {blockedTiles,route,mover} from './motion.js';
+import {makeResident,tick,choose,use as useAd,TRAITS,HOURS_PER_SECOND} from './needs.js';
 // A resident's room: a cutaway studio (floor + left and back walls) furnished with Kenney Furniture Kit pieces.
 // It shares the city's renderer (one WebGL context); while it is open the city pauses.
 // Budget: geometry is shared (glTF templates + a module cache of shell geometry), one 512 shadow map, three lights
@@ -210,7 +212,7 @@ function boxCharacter(look={}){
  const arms=[-1,1].map(s=>{const p=new THREE.Group();p.position.set(s*.32,1.08,0);inner.add(p);box(.12,.5,.14,look.top,0,-.23,0,p);return p;});
  let clip='Idle',kind=null,t=0;
  return {root,offsets:{seat:.3,lieLength:1.5},get posed(){return kind;},
-  play(name){clip=name;t=0;},pose(next){kind=next==='sit'||next==='lie'?next:null;inner.rotation.set(0,0,0);inner.position.set(0,0,0);if(kind==='lie'){inner.rotation.x=-Math.PI/2;inner.position.set(0,.15,.75);}if(kind==='sit')inner.position.y=-.26;},
+  play(name){clip=name;t=0;},stride(phase){t=phase*Math.PI*2/9;},pose(next){kind=next==='sit'||next==='lie'?next:null;inner.rotation.set(0,0,0);inner.position.set(0,0,0);if(kind==='lie'){inner.rotation.x=-Math.PI/2;inner.position.set(0,.15,.75);}if(kind==='sit')inner.position.y=-.26;},
   update(dt){t+=dt;const walk=clip==='Walk'||clip==='Run',sw=Math.sin(t*9)*.6;legs.forEach((l,i)=>l.rotation.x=walk?sw*(i?1:-1):kind==='sit'?-1.5:0);
    arms.forEach((a,i)=>{a.rotation.x=walk?-sw*(i?1:-1)*.8:clip==='Interact'?-1.2+Math.sin(t*12+i)*.1:0;a.rotation.z=0;});
    if(clip==='Wave'){arms[1].rotation.z=2.6+Math.sin(t*10)*.3;if(t>2)clip='Idle';}},
@@ -344,25 +346,44 @@ async function enter(plotId,mine){
  {const free=(x,z)=>!room.furniture.some(f=>{const d=dimsOf(f.item);if(!d||WALL_ITEMS.has(f.item)||/^rug/.test(f.item))return false;const {hx,hz}=extent(f,d);return Math.abs(x-f.x)<hx+.25&&Math.abs(z-f.z)<hz+.25;});
   const [x,z]=[[1.2,1.8],[.4,2.6],[2.2,2.4],[-.6,2.9],[1.8,.2],[0,0]].find(([x,z])=>free(x,z))||[1.2,1.8];me.root.position.set(x,0,z);}
  const feet=new THREE.Mesh(PLANE,contactMat);feet.rotation.x=-Math.PI/2;feet.scale.set(.75,.75,1);feet.raycast=()=>{};scene.add(feet);
- let walk=null,busy=null;   // walk: {x,z,then}; busy: timer for a one-shot action
+ // Movement the Sims/Habbo way (motion.js): tile routes around the furniture, a turn on the spot, a walk cycle driven by distance.
+ const mv=mover({x:me.root.position.x,z:me.root.position.z,yaw:me.root.rotation.y,speed:1.5});
+ const footprints=()=>room.furniture.filter(f=>!WALL_ITEMS.has(f.item)&&!/^rug/.test(f.item)&&!(f.y>0)).map(f=>{const d=dimsOf(f.item);if(!d)return null;const {hx,hz}=extent(f,d);return {x:f.x,z:f.z,hx,hz};}).filter(Boolean);
+ // The Sims brain (needs.js): five traits drawn from the owner's name, needs that decay in game hours, a choice every few seconds
+ // when nobody is tapping. Doors and lamps are left to taps: an autonomous "leave" would close the room under the visitor.
+ const seed=[...owner.name].reduce((a,c)=>(a*31+c.charCodeAt(0))|0,7)>>>0;
+ const brain=makeResident(Object.fromEntries(TRAITS.map((t,i)=>[t,((seed>>(i*6))&63)/63])));
+ let free=true,think=3;   // free: standing idle with nothing in hand; think: seconds to the next autonomous choice
  const timers=new Set(),later=(ms,fn)=>{const id=setTimeout(()=>{timers.delete(id);if(!closed)fn();},ms);timers.add(id);return id;};
- function stand(){me.pose(null);me.root.position.y=0;}
- function walkTo(x,z,then){const c=v=>Math.min(HALF-.3,Math.max(-HALF+.3,v));stand();walk={x:c(x),z:c(z),then};me.play('Walk');}
- function face(x,z){me.root.rotation.y=Math.atan2(x-me.root.position.x,z-me.root.position.z);}
+ function stand(){me.pose(null);me.root.position.y=0;mv.set(me.root.position.x,me.root.position.z,me.root.rotation.y);}
+ function walkTo(x,z,then){
+  const c=v=>Math.min(HALF-.3,Math.max(-HALF+.3,v));stand();free=false;
+  const path=route(blockedTiles(footprints(),HALF),me.root.position,{x,z},HALF,mv.heading)||[{x:c(x),z:c(z)}];   // boxed in: walk straight
+  mv.go(path,()=>{me.play('Idle');free=!then;then?.();});
+ }
+ function face(x,z){mv.face(Math.atan2(x-me.root.position.x,z-me.root.position.z));}
  function faceCamera(){face(camera.position.x,camera.position.z);}
  function use(i){
   const e=room.furniture[i],d=dimsOf(e.item);if(!e||!d)return;const act=actionFor(e.item),spot=act==='lie'||act==='sit'?approach(e,d):standSpot(room.furniture,i,dimsOf),[px,py,pz]=renderPosition(e,d),a=e.rot*Math.PI/180;
+  useAd(brain,e.item);
   walkTo(spot.x,spot.z,()=>{
+   const done=ms=>later(ms,()=>{me.play('Idle');free=true;});
    if(act==='lie'){me.root.position.set(px,py+d.h*(SURFACE[e.item]||.5),pz);me.root.rotation.y=a;me.pose('lie');hud.say(ACTION_TEXT.lie);return;}
    if(act==='sit'){const seat=py+d.h*(SURFACE[e.item]||.45);me.root.position.set(px+Math.sin(a)*-.05,Math.max(0,seat-me.offsets.seat),pz+Math.cos(a)*-.05);me.root.rotation.y=a;me.pose('sit');
     if(workAfterSit){workAfterSit=false;me.play('Interact');hud.say(ACTION_TEXT.work);}else hud.say(ACTION_TEXT.sit);return;}
    face(px,pz);
-   if(act==='toggle'){me.play('Interact');const wasLit=lampsLit&&lampIndex()===i;lampOn=i;lampsLit=!wasLit;applyLook();hud.say(lampsLit?`${label(e.item)} on.`:`${label(e.item)} off.`);later(1200,()=>me.play('Idle'));return;}
-   if(act==='look'){me.play('Idle_Neutral');hud.say(ACTION_TEXT.look);return;}
+   if(act==='toggle'){me.play('Interact');const wasLit=lampsLit&&lampIndex()===i;lampOn=i;lampsLit=!wasLit;applyLook();hud.say(lampsLit?`${label(e.item)} on.`:`${label(e.item)} off.`);done(1200);return;}
+   if(act==='look'){me.play('Idle_Neutral');hud.say(ACTION_TEXT.look);done(5000);return;}
    if(act==='leave'){faceCamera();me.play('Wave');hud.say(ACTION_TEXT.leave);later(1900,close);return;}
-   if(act==='walk'){me.play('Idle');return;}
-   me.play('Interact');hud.say(USE_TEXT[e.item]||(act==='work'?ACTION_TEXT.work:`Checking the ${label(e.item).toLowerCase()}.`));if(act!=='work')later(3500,()=>me.play('Idle'));
+   if(act==='walk'){me.play('Idle');free=true;return;}
+   me.play('Interact');hud.say(USE_TEXT[e.item]||(act==='work'?ACTION_TEXT.work:`Checking the ${label(e.item).toLowerCase()}.`));if(act!=='work')done(3500);
   });
+ }
+ // Autonomy: when the resident is free (or done with what it was using), it picks the loudest advertisement nearby.
+ function autonomy(){
+  if(editing||mv.busy||brain.busy||!(free||me.posed))return;
+  const c=choose(brain,room.furniture.map(f=>{const a=actionFor(f.item);return a==='leave'||a==='toggle'?{item:null}:f;}),me.root.position);
+  if(c)actionFor(c.item)==='work'?useForWork(c.i):use(c.i);
  }
  let workAfterSit=false;
  // A desk is used from the chair in front of it, if there is one.
@@ -404,7 +425,7 @@ async function enter(plotId,mine){
    if(key==='lighting'||key==='daylight')lampsLit=daylightAt(daylight()).lamps;applyLook();return room;},
   async save(){room=upgradeRoom(room);const r=await api('/api/rooms/me',{method:'PUT',body:{room}});room.window=r?.room?.window||room.window;saved=JSON.stringify(room);},
   async revert(){room=upgradeRoom(JSON.parse(saved));hud.sync(room);lampsLit=daylightAt(daylight()).lamps;select(-1);await build();},
-  start(){editing=true;stand();walk=null;me.play('Idle');},stop(){editing=false;select(-1);},
+  start(){editing=true;stand();free=true;me.play('Idle');},stop(){editing=false;select(-1);},
   dirty:()=>JSON.stringify(room)!==saved,
  };
 
@@ -432,12 +453,15 @@ async function enter(plotId,mine){
    if(editing){const i=pieceAt();if(i>=0){select(i);return;}const f=floorAt();if(selected>=0&&f&&Math.abs(f.x)<=HALF&&Math.abs(f.z)<=HALF){moveTo(selected,f.x,f.z);return;}select(-1);return;}
    if(!mine)return;
    const i=pieceAt();if(i>=0){if(actionFor(room.furniture[i].item)==='work')useForWork(i);else use(i);return;}
-   const f=floorAt();if(f&&Math.abs(f.x)<=HALF&&Math.abs(f.z)<=HALF)walkTo(f.x,f.z,()=>me.play('Idle'));},
+   const f=floorAt();if(f&&Math.abs(f.x)<=HALF&&Math.abs(f.z)<=HALF)walkTo(f.x,f.z);},
   update(dt){
-   if(walk){const r=me.root.position,dx=walk.x-r.x,dz=walk.z-r.z,dist=Math.hypot(dx,dz),step=dt*1.7;
-    if(dist<=step){r.x=walk.x;r.z=walk.z;const then=walk.then;walk=null;me.play('Idle');then?.();}
-    else{r.x+=dx/dist*step;r.z+=dz/dist*step;const target=Math.atan2(dx,dz);let diff=target-me.root.rotation.y;diff=Math.atan2(Math.sin(diff),Math.cos(diff));me.root.rotation.y+=diff*Math.min(1,dt*12);}}
-   me.update(dt);const r=me.root.position;feet.position.set(r.x,(me.posed==='lie'?r.y:0)+.012,r.z);feet.visible=me.posed!=='lie';
+   const r=me.root.position;
+   if(!me.posed){const p=mv.update(dt);
+    if(!me.posed){r.x=p.x;r.z=p.z;me.root.rotation.y=p.yaw;   // the arrival callback may have put the resident on a bed or chair
+     if(p.moving){me.play('Walk');me.stride?.(p.phase);}
+     else if(p.fidget&&free){me.play('Idle_Neutral');later(2200,()=>{if(free&&!mv.busy)me.play('Idle');});}}}
+   tick(brain,dt*HOURS_PER_SECOND);think-=dt;if(think<=0){think=3+Math.random()*4;autonomy();}
+   me.update(dt);feet.position.set(r.x,(me.posed==='lie'?r.y:0)+.012,r.z);feet.visible=me.posed!=='lie';
   },
   dispose(){
    closed=true;for(const id of timers)clearTimeout(id);
@@ -446,7 +470,7 @@ async function enter(plotId,mine){
    if(gl){gl.shadowMap.autoUpdate=cityAutoShadows;gl.shadowMap.needsUpdate=true;gl.setPixelRatio(cityRatio);}
   },
  };
- const hud=roomHud({owner,mine,room,edit,onClose:close,onWave(){if(walk)return;stand();faceCamera();me.play('Wave');hud.say(`${owner.name} waves back.`);}});
+ const hud=roomHud({owner,mine,room,edit,onClose:close,onWave(){if(mv.busy)return;stand();faceCamera();me.play('Wave');hud.say(`${owner.name} waves back.`);}});
  function close(){if(closed)return;host.setView(null);hud.remove();view.dispose();}
  host.setView(view);
  hud.say(mine?`Welcome home, ${owner.name}. Tap the bed, the desk, the window, the door…`:`You are visiting ${owner.name}.`);
