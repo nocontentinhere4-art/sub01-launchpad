@@ -3,12 +3,12 @@ import * as THREE from 'three';
 import {toon,toonify} from './toon.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { places, residence } from './state.js';
 
 import {cityPlots,districts,tower} from './city-state.js';
 import {openRoom,attachRoomHost} from './room.js';
-import {addResidents} from './residents.js';
+import {addResidents,pickNear} from './residents.js';
+import {loadCharacter,HEIGHT} from './characters.js';
 import {api,short} from './api.js';
 import {listWallets,onWallets,signIn,signOut} from './wallet.js';
 import {worldBuildings,sub01Goal,planRoute,frontOf} from './world-sync.js';
@@ -21,7 +21,7 @@ let roomView=null,cityBuildings=[],cityRenderer,world=null,me=null,lookOptions=n
 const resident=()=>me?.resident||null;
 let selectedPlace = places[0], night = false, follow = false, currentDialog = null, previousFocus = null;
 let cityTour=null;
-let character, mixer, actions, activeAction, cameraTween = null, toastTimer;
+let character, sub01, cameraTween = null, toastTimer;
 const floorY = 0.24;
 const labels = [], interactive = [], cache = new Map();
 const scene = new THREE.Scene();
@@ -80,7 +80,7 @@ function addLabel(place, height) {
 }
 
 async function template(kind, name) {
-  const url = `/assets/${kind}/${name}.${kind === 'characters' ? 'glb' : 'gltf'}`;
+  const url = `/assets/${kind}/${name}.${kind === 'characters' || kind === 'room' ? 'glb' : 'gltf'}`;
   if (!cache.has(url)) cache.set(url, new GLTFLoader().loadAsync(url).then(gltf=>{toonify(gltf.scene);return gltf;}));
   return cache.get(url);
 }
@@ -177,32 +177,33 @@ async function makeBuildings() {
   ]);
 }
 async function makeCharacter() {
-  const data = await template('characters','Casual_Hoodie');
-  character = cloneSkeleton(data.scene);
-  const bounds = new THREE.Box3().setFromObject(character), size = bounds.getSize(new THREE.Vector3());
-  character.scale.setScalar(1.55/size.y);
-  character.traverse(node => {
-    if (!node.isMesh) return;
-    node.castShadow = true; node.receiveShadow = true;
-    const mats = Array.isArray(node.material) ? node.material : [node.material];
-    node.material = mats.map(m => { const mat=m.clone(); if (['Purple','LightBlue'].includes(m.name)) {mat.color.set('#313a37'); mat.map=null;} if(m.name==='Hair'){mat.color.set('#202a26'); mat.map=null;} return mat; });
-    if (!Array.isArray(node.material) || node.material.length===1) node.material = node.material[0];
-  });
+  // SUB-01 keeps his dark hoodie and hair; skin stays the model's own.
+  sub01=await loadCharacter({outfit:'hoodie',top:'#313a37',bottom:'#313a37',hair:'#202a26'},{template});
+  character=sub01.root;character.scale.setScalar(1.55/HEIGHT);
   character.position.set(-6,.335,-2.4); character.rotation.y = .5; scene.add(character);
-  mixer = new THREE.AnimationMixer(character); actions = {};
-  for (const clip of data.animations) actions[clip.name]=mixer.clipAction(clip);
-  play('Idle');
   const marker = new THREE.Mesh(new THREE.OctahedronGeometry(.17),toon({ color: '#ff7b32', emissive: '#ff7620', emissiveIntensity: .25, roughness:.5 }));
-  marker.position.set(0,size.y*character.scale.x+.5,0);
   // Marker sits in scene units so it is not affected by the imported rig scale.
   scene.add(marker); character.userData.marker=marker;
   $('activity-text').textContent='At home. Waiting for the first brief.';
 }
-function play(name) {
-  const next=actions?.[name] || actions?.Idle;
-  if (!next || next===activeAction) return;
-  next.reset().play(); if(activeAction) activeAction.crossFadeTo(next,.2,false); activeAction=next;
+function play(name){sub01?.play(name);}
+// City LOD: boxes for everyone; the K residents nearest the view centre get a rigged model once the camera is close
+// enough for one to read (~36px tall, dropped below 28px). Re-picked ~3x/s; unpicked models linger 6s before disposal.
+const LOD_K=mobile?4:8,lod=new Map();let lodAt=0;
+function lodTick(now){
+  if(now-lodAt<330)return;lodAt=now;
+  const px=HEIGHT*camera.zoom*innerHeight/(camera.top-camera.bottom),shown=[...lod.values()].some(e=>e.on);
+  const people=px>(shown?28:36)?residents.people:[],radius=(camera.right-camera.left)/camera.zoom*.6;
+  const want=new Set(pickNear(people,controls.target,{k:LOD_K,radius,keep:new Set([...lod].filter(([,e])=>e.on).map(([k])=>k))}));
+  for(const p of people)if(want.has(p.key)&&!lod.has(p.key)){
+    const e={on:false,seen:now,char:null};lod.set(p.key,e);
+    loadCharacter(p.look,{template}).then(c=>{if(lod.get(p.key)!==e){c.dispose();return;}e.char=c;c.root.position.set(p.x,.26,p.z);c.root.rotation.y=.6+Math.random()*.4;c.update(Math.random()*3);e.wave=now+3e3+Math.random()*9e3;scene.add(c.root);},()=>{e.failed=true;});
+  }
+  for(const [key,e] of lod){e.on=!!e.char&&want.has(key);if(want.has(key))e.seen=now;if(e.char)e.char.root.visible=e.on;
+    if(now-e.seen>6e3&&!e.failed||!residents.people.some(p=>p.key===key)){e.char?.dispose();lod.delete(key);}}
+  residents.hide(new Set([...lod].filter(([,e])=>e.on).map(([k])=>k)));
 }
+function lodUpdate(dt,now){for(const e of lod.values())if(e.on){e.char.update(dt);if(now>e.wave){e.char.play('Wave');e.wave=now+8e3+Math.random()*12e3;}}}
 
 function renderList() {
   $('project-list').replaceChildren();
@@ -367,7 +368,7 @@ for(const d of districts){const element=document.createElement('button');element
 const residents=addResidents(scene),worldLabels=[];
 // Rooms borrow this renderer; the city stops updating while one is open.
 attachRoomHost({template,notify,setView(view){roomView=view;controls.enabled=!view;document.body.classList.toggle('in-room',!!view);if(view)view.resize(innerWidth/innerHeight);}});
-function residentList(){return cityBuildings.filter(b=>b.type==='apartment').map(b=>{const f=frontOf(b.plotId);return f&&{x:f.x+1.2,z:f.z,look:b.resident.look||{}};}).filter(Boolean);}
+function residentList(){return cityBuildings.filter(b=>b.type==='apartment').map(b=>{const f=frontOf(b.plotId);const look=b.resident.look||{};return f&&{x:f.x+1.2,z:f.z,look,key:b.plotId+JSON.stringify(look)};}).filter(Boolean);}
 function setServer(up){if(up===serverUp)return;serverUp=up;$('server-status').textContent=up?'LIVE CITY':'SERVER OFFLINE';$('activity-label').textContent=up?'SUB-01 · LIVE':'SUB-01 · OFFLINE';$('server-badge').classList.toggle('is-offline',!up);if(!up)$('activity-text').textContent='The city server is offline. Nothing here is live right now.';}
 async function pollWorld(){
  let next;try{next=await api('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions)lookOptions=await api('/api/world/options');setServer(true);}catch{setServer(false);return;}
@@ -389,7 +390,7 @@ function animate(now){
   if(document.hidden||now-lastRender<(mobile?1000/30:1000/45))return;
   lastRender=now;
   if(roomView){roomView.update(Math.min(clock.getDelta(),.08));renderer.render(roomView.scene,roomView.camera);return;}
-  cityRenderer?.update(reducedMotion?0:now*.001);const dt=Math.min(clock.getDelta(),.08);mixer?.update(dt);residents.update(reducedMotion?0:now*.001);
+  cityRenderer?.update(reducedMotion?0:now*.001);const dt=Math.min(clock.getDelta(),.08);sub01?.update(dt);lodTick(now);lodUpdate(dt,now);residents.update(reducedMotion?0:now*.001);
   if(walker&&character){
     const target=walker.points[walker.index],pos=character.position,dx=target.x-pos.x,dz=target.z-pos.z,dist=Math.hypot(dx,dz),stepLen=dt*(walker.points.length>3?4.2:2.4);
     if(dist<=stepLen){pos.x=target.x;pos.z=target.z;walker.index++;if(walker.index>=walker.points.length){walker=null;play(goal?.activity==='build'?'Interact':goal?.activity==='desk'?'Idle_Neutral':'Idle');}}

@@ -1,0 +1,13 @@
+{
+  "name": "sub01-launchpad-asset-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline glTF pipeline for public/assets (build-assets.mjs). Not shipped to the browser.",
+  "engines": { "node": ">=20.19" },
+  "devDependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@gltf-transform/functions": "4.5.1"
+  }
+}
