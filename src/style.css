@@ -192,3 +192,10 @@
 .tokyo-clock{font:inherit;letter-spacing:inherit;color:inherit;white-space:nowrap}
 #world{transition:none}
 @media(max-width:600px){#weather-mode,#city-sound{font-size:16px}.activity .eyebrow{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+
+/* ===== Robustness pass (src/quality.js, main.js): LITE toggle, WebGL context-loss overlay ===== */
+#lite-mode{font:bold 9px/1 monospace;letter-spacing:.06em;width:auto;min-width:35px;padding:0 6px;position:relative}
+#lite-mode[aria-pressed=true]{background:#272b25;color:#faf7ee}
+.gl-lost{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;background:#272c25;color:#fff5e7;font-size:12px;padding:14px 20px;border-radius:9px;max-width:80%;text-align:center;box-shadow:0 10px 40px #0003}
+@media(max-width:600px){#lite-mode{width:29px;min-width:0;padding:0;font-size:7px;letter-spacing:0}}
+/* ===== end robustness pass ===== */

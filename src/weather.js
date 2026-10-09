@@ -145,26 +145,29 @@ export function createWeather(scene,{mobile=false}={}){
   rGeo.instanceCount=k;rPool.needsUpdate=rCol.needsUpdate=true;
  }
  const toward=new THREE.Vector3();
+ // Quality hook (quality.js via main.js): caps under the device counts; the defaults change nothing.
+ let qPrecip=N,qSplash=true,qRefl=true;
+ function setQuality({precip=N,splash=true,reflections=true}={}){qPrecip=Math.max(0,Math.min(N,precip|0));qSplash=!!splash;qRefl=!!reflections;}
  // view: {seconds, now, camera, target, px (drawing px per unit), levels, night (0–1), wind:[x,z]}
  function update({seconds,now,camera,target,px,levels:l,night,wind:w}){
   const z=camera.zoom,halfW=(camera.right-camera.left)/z/2,halfH=(camera.top-camera.bottom)/z/2;
   const span=Math.min(Math.max(halfW,halfH/.64)*2.3,420),height=THREE.MathUtils.clamp(span*.3,10,70);
   shared.uTime.value=seconds%900;shared.uPx.value=Math.max(px,.5);shared.uCenter.value.copy(target);shared.uSpan.value=span;
   const mode=l.rain>.02?0:l.snow>.02?1:l.petals>.02?2:-1,amount=mode===0?l.rain:mode===1?l.snow/.8:mode===2?l.petals:0;
-  precip.visible=mode>=0&&amount>.01;
-  if(precip.visible){pGeo.instanceCount=Math.ceil(N*Math.min(1,amount)*(mode===2?.75:1));pU.uMode.value=mode;pU.uHeight.value=height;
+  precip.visible=mode>=0&&amount>.01&&qPrecip>0;
+  if(precip.visible){pGeo.instanceCount=Math.ceil(qPrecip*Math.min(1,amount)*(mode===2?.75:1));pU.uMode.value=mode;pU.uHeight.value=height;
    pU.uFall.value=Math.max(20,height*1.3);pU.uWind.value.set(w[0],w[1]);
    if(mode===0){pU.uColor.value.set(night>.5?'#B4C6E6':'#F4F7FA');pU.uAlpha.value=(night>.5?.62:.58)*(.85+.15*l.storm);pU.uLen.value=30+14*l.storm;}
    else if(mode===1){pU.uColor.value.set(night>.5?'#C8D4EA':'#FFFFFF');pU.uAlpha.value=.9;}else pU.uAlpha.value=.95;}
   // Splashes only near the camera, where a ring is a few pixels wide.
-  splash.visible=l.rain>.05&&px>5;if(splash.visible){sGeo.instanceCount=Math.ceil(NS*l.rain);sU.uAlpha.value=(night>.5?.5:.38)*l.rain;
+  splash.visible=qSplash&&l.rain>.05&&px>5;if(splash.visible){sGeo.instanceCount=Math.ceil(NS*l.rain);sU.uAlpha.value=(night>.5?.5:.38)*l.rain;
    sU.uColor.value.set(night>.5?'#9FB2D4':'#E8EEF2');}
   // Reflections: wet × night (the pools themselves are only drawn at night).
-  const amt=l.wet*THREE.MathUtils.smoothstep(night,.5,.9);refl.visible=amt>.02;
+  const amt=l.wet*THREE.MathUtils.smoothstep(night,.5,.9);refl.visible=qRefl&&amt>.02;
   if(refl.visible){readPools(now);rU.uAmount.value=amt*.85;toward.subVectors(camera.position,target);rU.uToward.value.set(toward.x,toward.z).normalize();}
   if(refl.visible&&!rGeo.instanceCount)refl.visible=false;
  }
- return {precip,splash,refl,update,get drawCalls(){return [precip,splash,refl].filter(m=>m.visible).length;}};
+ return {precip,splash,refl,update,setQuality,get drawCalls(){return [precip,splash,refl].filter(m=>m.visible).length;}};
 }
 
 // Ambient sound: procedural Web Audio, one AudioContext made on the first tap (iOS), off by default, suspended while the

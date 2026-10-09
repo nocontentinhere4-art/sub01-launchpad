@@ -232,6 +232,8 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  const towerPick=new THREE.Mesh(new THREE.BoxGeometry(7,33,7),new THREE.MeshBasicMaterial({visible:false}));towerPick.position.set(tower.x,16.5,tower.z);towerPick.userData.place=tower;root.add(towerPick);interactive.push(towerPick);
  style=addTokyoStyle(root,buildings);life=addCityLife(root);applyPools();const crowd=addCityCrowd(root,options),traffic=addCityTraffic(root);
  return {redraw,crowd,lattice,
+  // Quality hook (quality.js via main.js): forwarded to city-life.js (steam, critters, blimp).
+  setQuality(q){life.setQuality?.(q);},get life(){return life;},
   heightOf:plotId=>heights.get(plotId)??null,
   stats:()=>({...counts,tower:beams.length,drawCalls:renderGroups.length+1,
    instances:renderGroups.reduce((n,g)=>n+g.count,0)+beams.length,detail:showDetail}),

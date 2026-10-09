@@ -69,10 +69,11 @@ export function steamVents(buildings=[]){
 // the blimp's nav lights, train headlights and the scramble's signal halos. Kinds: 0 pool, 1 cone, 2 steam, 3 blimp
 // light, 4 train light, 5 signal halo. aG = (kind, seed, index/role, spare), aPos = vent / local offset / lamp position.
 export const GLOW_BUDGET={desktop:260,mobile:170};
-export function glowPlan({mobile=false,vents=[],lamps=[]}={}){
+export function glowPlan({mobile=false,vents=[],lamps=[],wisps:maxWisps=Infinity}={}){
  const out=[],add=(kind,seed,idx,x=0,y=0,z=0)=>out.push({kind,seed,idx,x,y,z});
  for(let i=0;i<16;i++){add(0,hash(i,1),i);add(1,hash(i,2),i);}
- const wisps=mobile?3:5;for(const v of vents)for(let j=0;j<wisps;j++)add(2,hash(v.x,v.z,j),0,v.x,v.y,v.z);
+ // maxWisps: quality hook (quality.js); the default changes nothing.
+ const wisps=Math.max(0,Math.min(mobile?3:5,maxWisps));for(const v of vents)for(let j=0;j<wisps;j++)add(2,hash(v.x,v.z,j),0,v.x,v.y,v.z);
  BLIMP_LIGHTS.forEach(([x,y,z,c],i)=>add(3,hash(i,3),c,x,y,z));
  for(let t=0;t<3;t++)add(4,hash(t,4),t,0,0,0);
  for(const l of lamps)add(5,0,l.role,l.x,l.y,l.z);
@@ -266,8 +267,9 @@ export function addCityLife(parent){
  const quad=new THREE.PlaneGeometry(1,1),glowGeo=new THREE.InstancedBufferGeometry();glowGeo.index=quad.index;glowGeo.setAttribute('position',quad.attributes.position);glowGeo.setAttribute('uv',quad.attributes.uv);
  const glow=new THREE.Mesh(glowGeo,new THREE.ShaderMaterial({uniforms:glowUniforms,vertexShader:GLOW_VERT,fragmentShader:GLOW_FRAG,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
   polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));glow.name='glow';glow.frustumCulled=false;glow.raycast=()=>{};glow.renderOrder=2;root.add(glow);
- let ventCount=0;
- function setGlow(buildings){const vents=steamVents(buildings);ventCount=vents.length;const b=glowBuffers(glowPlan({mobile,vents,lamps:lampSites}));
+ let ventCount=0,glowFor=[],qWisps=Infinity;
+ function setGlow(buildings){glowFor=buildings;const vents=steamVents(buildings);ventCount=vents.length;const b=glowBuffers(glowPlan({mobile,vents,lamps:lampSites,wisps:qWisps}));
+  glowGeo.dispose();   // frees the previous instance buffers on the GPU (re-uploaded on the next draw)
   glowGeo.setAttribute('aG',new THREE.InstancedBufferAttribute(b.aG,4));glowGeo.setAttribute('aPos',new THREE.InstancedBufferAttribute(b.aPos,3));glowGeo.instanceCount=b.count;}
  const halfLen=VEHICLE_KINDS.map(k=>k==='bus'?1.86:k==='kei'?1.06:1.07);
  // World snapshot → screens, banner, and (when the set of built plots changes) steam, critters and hero overlays.
@@ -308,7 +310,9 @@ export function addCityLife(parent){
  }
  update(0);
  const skyColor=new THREE.Color(),white=new THREE.Color('#ffffff');
- return {update,setNight(value){currentNight=value;mat.color.copy(value?nightColor('walls'):white);windowMesh.visible=value;street.setNight(value);
+ // Quality hook (quality.js via main.js → city.js): steam wisps per vent, critter share, blimp. Defaults change nothing.
+ function setQuality({wisps=Infinity,critters=1,blimp=true}={}){skyLife.setQuality({critters,blimp});if(wisps!==qWisps){qWisps=wisps;setGlow(glowFor);}}
+ return {update,setQuality,setNight(value){currentNight=value;mat.color.copy(value?nightColor('walls'):white);windowMesh.visible=value;street.setNight(value);
    if(!value){lanternBase.forEach((c,i)=>lanterns.setColorAt(i,c));lanterns.instanceColor.needsUpdate=true;}lastDirs='';
    // Skyline values swap per layer; crowns keep the colour of their own layer.
    skyItems.forEach((s,i)=>{const layer=SKYLINE.day.indexOf(s.color);skyMesh.setColorAt(i,skyColor.set(value?SKYLINE.night[layer]:s.color));});skyMesh.instanceColor.needsUpdate=true;},

@@ -160,6 +160,9 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
   fragmentShader:`varying float vT;void main(){gl_FragColor=vec4(1.,.93,.75,(1.-vT)*(.25+.75*(1.-vT))*.55);}`}),MAX_OPEN);
  cones.count=0;cones.frustumCulled=false;cones.visible=false;root.add(cones);
  let night=false,decorKey='',buildings=[],soonDrawn=false;const tileOf=new Map();
+ // Quality hook (quality.js via main.js): how many of the 6 firework slots may burst at once (fewer points drawn).
+ const FW_PER=fw.points.geometry.attributes.position.count/fw.slots;let fwSlots=fw.slots;
+ function setQuality({fireworks=fw.slots}={}){fwSlots=Math.max(1,Math.min(fw.slots,fireworks|0));fw.points.geometry.setDrawRange(0,fwSlots*FW_PER);}
  function decorate(next,events){
   buildings=Array.isArray(next)?next:[];const d=decorations(buildings,events),items=decorItems(d),key=JSON.stringify(items);if(key===decorKey)return;decorKey=key;
   items.boxes.forEach((b,i)=>{m4.compose(v3.set(b.x,b.y,b.z),q.identity(),s3.set(b.w,b.h,b.d));decorBoxes.setMatrixAt(i,m4);decorBoxes.setColorAt(i,color.set(b.color));});
@@ -265,7 +268,7 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
   const T=clock();
   if(fw.points.visible||queue.length){
    const b=fw.uniforms.uBurst.value;
-   for(let i=queue.length-1;i>=0;i--){if(queue[i].at-T>RISE_S)continue;const s=b.findIndex(x=>T>x.w+BURST_S);if(s<0)break;const e=queue.splice(i,1)[0];b[s].set(e.x,e.y,e.z,e.at);fw.uniforms.uColor.value[s].set(e.color);}
+   for(let i=queue.length-1;i>=0;i--){if(queue[i].at-T>RISE_S)continue;const s=b.findIndex((x,j)=>j<fwSlots&&T>x.w+BURST_S);if(s<0)break;const e=queue.splice(i,1)[0];b[s].set(e.x,e.y,e.z,e.at);fw.uniforms.uColor.value[s].set(e.color);}
    fw.points.visible=queue.length>0||b.some(x=>T<x.w+BURST_S);
   }
   if(cf.points.visible)cf.points.visible=cf.uniforms.uShower.value.some(s=>T<s.w+SHOWER_S+2.5);
@@ -273,7 +276,7 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
   if(party){if(T>party.end){party=null;crowd.visible=false;crowd.count=0;}else drawParty(T);}
   if(roam)stepRoam(dt,T);
  }
- return {root,decorate,celebrate,update,visit:startVisit,explore:startExplore,cancelVisit:endRoam,endRoam,
+ return {root,decorate,celebrate,update,setQuality,visit:startVisit,explore:startExplore,cancelVisit:endRoam,endRoam,
   // Additive sparks vanish on the pale day sky, so daytime fireworks blend normally.
   setNight(v){night=!!v;cones.visible=night&&cones.count>0;fw.points.material.blending=night?THREE.AdditiveBlending:THREE.NormalBlending;},
   get visiting(){return roam?.mode==='visit';},get roaming(){return roam?.mode||null;},get party(){return party;},get visitor(){return roam?.char?.root||null;},get pet(){return roam?.pet?.root||null;},

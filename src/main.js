@@ -14,12 +14,19 @@ import {addResidents} from './residents.js';
 import {createCrowdGPU,crowdPixels,crowdClose} from './crowd-gpu.js';
 import {renderLookFields,readLook,isUnlocked} from './creator.js';
 import {loadCharacter,HEIGHT} from './characters.js';
-import {api,short} from './api.js';
+import {api,short,ApiError} from './api.js';
 import {listWallets,onWallets,signIn,signOut} from './wallet.js';
 import {worldBuildings,sub01Goal,planRoute,frontOf} from './world-sync.js';
 import {createCity} from './city.js';
 import {createCityEvents,freshEvents} from './city-events.js';
 import {createExplorer,cityPois} from './explore.js';
+import {createGovernor,settingsFor,startLevel,gpuName,createFuse,packResume,unpackResume,safeStore,timeoutSignal,nextPollDelay,GOV,RESUME_KEY,RESUME_MAX_AGE} from './quality.js';
+// Never a white page: an uncaught error or rejection is one quiet console line. If the city never drew its first frame
+// (no WebGL, a module that failed), the loading screen says so instead of spinning forever.
+let booted=false;
+addEventListener('error',e=>{if(!e.error&&!e.message)return;console.warn('[city] uncaught:',e.message||e.error);e.preventDefault();
+  if(!booted){const t=document.getElementById('loading-text');if(t)t.textContent='The 3D city could not start in this browser (WebGL may be off). Reload, or try another browser.';}});
+addEventListener('unhandledrejection',e=>{console.warn('[city] unhandled:',e.reason?.message||e.reason);e.preventDefault();});
 
 const $ = id => document.getElementById(id);
 const mobile = matchMedia('(max-width:600px)').matches;
@@ -28,6 +35,8 @@ let roomView=null,cityBuildings=[],cityRenderer,world=null,me=null,lookOptions=n
 const resident=()=>me?.resident||null;
 let selectedPlace = places[0], night = false, follow = false, currentDialog = null, previousFocus = null;
 let cityTour=null;
+// Quality governor state (quality.js; section 'Quality governor' below). Q = the current level's settings.
+let governor=null,Q=settingsFor(3,{mobile,dpr:devicePixelRatio||1}),ratioDirty=false,glLost=false;
 // City events: launch parties, the accepted-idea flash, and a client-only visit followed by the camera.
 let partyGoal=null,partyWaveAt=0,markerFlash=0,followObj=null,visitKey=null,walkButton=null;const seenEvents=new Set();
 let character, sub01, cameraTween = null, toastTimer;
@@ -69,7 +78,7 @@ const SUN_DIR = new THREE.Vector3(-.45, .62, .64).normalize(), SUN_DISTANCE = 70
 const hemi = new THREE.HemisphereLight(...LOOK.day.hemi); scene.add(hemi);
 const sunlight = new THREE.DirectionalLight(...LOOK.day.sun);
 sunlight.castShadow = true; scene.add(sunlight, sunlight.target);
-const SHADOW_MAP = mobile ? 512 : 1024;
+let SHADOW_MAP = mobile ? 512 : 1024;   // quality.js lowers it (1024 → 512) or turns cast shadows off
 sunlight.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
 Object.assign(sunlight.shadow.camera, { near: 1, far: 150 });
 sunlight.shadow.bias = -.0006;
@@ -241,7 +250,7 @@ function play(name){sub01?.play(name);}
 // ground the camera sees (nearest first, capped per device). Diagnostics (rendering only) ride on the canvas dataset.
 let crowdNear=false,crowdStatsAt=0;const groundCenter=new THREE.Vector3(),viewDir=new THREE.Vector3();
 // The five outfit glbs (~1.5 MB) load the first time the camera comes close enough; boxes meanwhile.
-function crowdBegin(seconds){const close=crowdClose(crowdPixels(camera.zoom,innerHeight,camera.top-camera.bottom),crowdNear);if(close&&!crowdGPU.ready&&renderer.domElement.dataset.ready)crowdGPU.load(template);
+function crowdBegin(seconds){const close=Q.crowdCap>0&&crowdClose(crowdPixels(camera.zoom,innerHeight,camera.top-camera.bottom),crowdNear,Q.crowdPx);if(close&&!crowdGPU.ready&&renderer.domElement.dataset.ready)crowdGPU.load(template);
   crowdNear=crowdGPU.ready&&close;crowdGPU.active=crowdNear;crowdGPU.begin(seconds);}
 function crowdEnd(now){
   if(!crowdNear)crowdGPU.hide();else{
@@ -333,7 +342,8 @@ function openSignIn(next){
 }
 const IDEA_STATUS={submitted:'In his mailbox',evaluating:'SUB-01 is thinking',selected:'He will build it',declined:'He passed',generating:'Being built',preview_ready:'Ready for your review',approved:'Approved by you',launch_prepared:'Launch ready',awaiting_signature:'Waiting for your signature',confirming:'Confirming on-chain',launched:'Launched',failed:'Stopped: needs attention',cancelled:'Cancelled'};
 let knownStatus=null;
-async function refreshMe(){const before=knownStatus;try{me=await api('/api/me');if(typeof me?.user!=='object')me=null;}catch{me=null;}
+// A timeout or a dead network keeps the account as it was (the server answered nothing); a real answer replaces it.
+async function refreshMe(){const before=knownStatus;try{me=await getJSON('/api/me');if(typeof me?.user!=='object')me=null;}catch(err){if(!(err instanceof ApiError)&&me)return;me=null;}
   // Tell the author when SUB-01 decides or a stage changes; private ideas never reach the public news.
   knownStatus=Object.fromEntries((me?.ideas||[]).map(i=>[i.id,i.status]));
   if(before)for(const i of me?.ideas||[])if(before[i.id]&&before[i.id]!==i.status)notify(i.status==='declined'?`SUB-01 passed on “${i.title}”. ${i.status_note?.split(' [')[0]||''}`:`“${i.title}”: ${IDEA_STATUS[i.status]||i.status}.`);$('account-button').textContent=me?.user?(resident()?.name||short(me.user.wallet)):'Sign in';renderList();updateResident();if(!resident())stopExplore();}
@@ -467,17 +477,28 @@ renderer.domElement.addEventListener('pointerup',e=>{
    lastTap.t=run?0:t;lastTap.x=e.clientX;lastTap.y=e.clientY;if(explorer.tap(tapPoint,{run})&&cityEvents.visitor){followObj=cityEvents.visitor;follow=true;cameraTween=null;}}
 });
 $('district-select').replaceChildren();const all=document.createElement('option');all.value='';all.textContent='Entire city';$('district-select').append(all);for(const d of districts){const option=document.createElement('option');option.value=d.id;option.textContent=d.name;$('district-select').append(option);}
-addEventListener('resize',resize);resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings,{mobile,gpu:crowdGPU});addLabel(tower,32);
+addEventListener('resize',()=>{resize();governor?.grace(GOV.grace.resize,performance.now());});resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings,{mobile,gpu:crowdGPU});addLabel(tower,32);
 for(const d of districts){const element=document.createElement('button');element.className='world-label district-label';element.textContent=d.name.toUpperCase();element.onclick=()=>{$('district-select').value=d.id;$('district-select').onchange();};$('labels').append(element);labels.push({element,district:true,position:new THREE.Vector3(d.x,.4,d.z+11.4)});}
 
 // Shared world: the server is the source of truth; the city redraws only when something changed.
 const residents=addResidents(scene),worldLabels=[],cityEvents=createCityEvents(scene,{mobile,reducedMotion,gpu:crowdGPU});
 // Rooms borrow this renderer; the city stops updating while one is open.
-attachRoomHost({template,notify,openIdea(){openBuildForm();},setView(view){roomView=view;controls.enabled=!view;document.body.classList.toggle('in-room',!!view);if(view)view.resize(innerWidth/innerHeight);}});
+attachRoomHost({template,notify,openIdea(){openBuildForm();},setView(view){
+  // Memory audit: room.js's dispose() clears its scene but not its sun's shadow map (a 512² render target per visit
+  // stayed on the GPU). The host frees the closing room's light shadow maps here; room.js runs its dispose() right after.
+  if(!view&&roomView)roomView.scene.traverse(n=>{if(n.isLight&&n.shadow?.map)n.shadow.dispose();});
+  roomView=view;controls.enabled=!view;governor?.grace(GOV.grace.room,performance.now());if(view)fuses.room.reset();else ratioDirty=true;
+  document.body.classList.toggle('in-room',!!view);if(view)view.resize(innerWidth/innerHeight);}});
 function residentList(){return cityBuildings.filter(b=>b.type==='apartment').map(b=>{const f=frontOf(b.plotId);const look=b.resident.look||{};return f&&{x:f.x+1.2,z:f.z,look,key:b.plotId+JSON.stringify(look)};}).filter(Boolean);}
 function setServer(up){if(up===serverUp)return;serverUp=up;$('server-status').textContent=up?'LIVE CITY':'SERVER OFFLINE';$('activity-label').textContent=up?'SUB-01 · LIVE':'SUB-01 · OFFLINE';$('server-badge').classList.toggle('is-offline',!up);if(!up)$('activity-text').textContent='The city server is offline. Nothing here is live right now.';}
+// Polls (robustness pass): every fetch has an 8 s timeout, the next poll is scheduled only after the last one settled,
+// and a server that does not answer is retried at 8, 16, 32, 60 s instead of every 4 s. A hidden tab does not poll.
+const POLL={world:4e3,me:8e3,timeout:8e3};let worldFails=0;
+async function getJSON(path){const res=await fetch(path,{credentials:'same-origin',signal:timeoutSignal(POLL.timeout)});let json=null;try{json=await res.json();}catch{}if(!res.ok)throw new ApiError(res.status,json);return json;}
+function pollLoop(run,delay){let timer=0;const tick=async()=>{try{if(!document.hidden)await run();}catch(err){console.warn('[city] poll',err?.message||err);}finally{timer=setTimeout(tick,delay());}};
+ timer=setTimeout(tick,delay());return ()=>clearTimeout(timer);}
 async function pollWorld(){
- let next;try{next=await api('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions){lookOptions=await api('/api/world/options');cityRenderer.crowd.setLookOptions(lookOptions);}setServer(true);}catch{setServer(false);return;}
+ let next;try{next=await getJSON('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions){lookOptions=await getJSON('/api/world/options');cityRenderer.crowd.setLookOptions(lookOptions);}setServer(true);worldFails=0;}catch{worldFails++;setServer(false);return;}
  world=next;setCityWorld(world);const items=worldBuildings(world),key=JSON.stringify(items);let flipped=[];
  if(key!==worldKey){worldKey=key;
   // A party only for a site seen building and now open, not for one that was already open when first seen.
@@ -537,7 +558,7 @@ function weatherFrame(now,dt,seconds){
   phaseMix(n,Ld.sun[0],D.sun[0],Ln.sun[0],sunlight.color);if(flash)sunlight.color.lerp(FLASH,.8);
   sunlight.intensity=mix3(n,Ld.sun[1],D.sun[1],Ln.sun[1])*A.sun+flash*4;fill.intensity=mix3(n,Ld.fill[1],D.fill[1],Ln.fill[1])*A.fill;
   sunDir.copy(SUN_DIR).lerp(SUN_LOW,1-Math.abs(2*n-1)).normalize();
-  const shadows=n<.62;if(sunlight.castShadow!==shadows)sunlight.castShadow=shadows;sunlight.shadow.intensity=.8*A.shadow;
+  const shadows=n<.62&&Q.shadow>0;if(sunlight.castShadow!==shadows)sunlight.castShadow=shadows;sunlight.shadow.intensity=.8*A.shadow;
   phaseMix(n,Ld.fog,D.fog,Ln.fog,scene.fog.color).lerp(phaseMix(n,'#B4BAC0','#8E8A90','#1A2130',_wc).lerp(phaseMix(n,'#DCE1E5','#A9A3AE','#28324A',_wd),Math.min(1,l.snow*1.25)),l.overcast*.7);
   fogMul.near=A.fogNear;fogMul.far=A.fogFar;nightAmount.value=n;wxUniforms.wet.value=l.wet;wxUniforms.snow.value=l.cover;
   const isNight=n>=.5;if(isNight!==WX.isNight){WX.isNight=night=isNight;roomLight.intensity=isNight?7:0;cityRenderer?.setNight(isNight);cityEvents.setNight(isNight);document.body.classList.toggle('is-night',isNight);}
@@ -560,13 +581,75 @@ function weatherFrame(now,dt,seconds){
   const green=crossingState(s).pedestrianGreen;if(green&&!WX.green&&camera.zoom>.4&&near(29,2,30)>0)ambience.chirp(near(29,2,30));WX.green=green;
   ambience.update({hum:.5+.5*zoomIn,rain:Math.min(1,l.rain*1.2),train:train*(.35+.65*near(-26,78,70)),murmur:camera.zoom>.6?zoomIn*near(-29,2,16):0});
 }
-const clock=new THREE.Clock();let lastRender=0;
+// ---------- Quality governor, lite mode, WebGL context loss, resume (robustness pass, quality.js) ----------
+// Start level from the device (phone 2, desktop 3, weak GPU / ≤2 GB / ≤2 cores 1); "LITE" pins level 0 (remembered).
+const local=safeStore((()=>{try{return localStorage;}catch{return null;}})()),session=safeStore((()=>{try{return sessionStorage;}catch{return null;}})());
+const phone=mobile||(matchMedia('(pointer:coarse)').matches&&Math.min(screen.width,screen.height)<=600);
+const GPU=gpuName(renderer.getContext()),START=startLevel({phone,gpu:GPU,deviceMemory:navigator.deviceMemory,cores:navigator.hardwareConcurrency});
+const LITE_KEY='sub01-lite',liteStored=local.get(LITE_KEY)==='1';
+governor=createGovernor({level:liteStored?0:START,auto:!liteStored,now:performance.now(),onChange(level,{reason}){applyQuality();if(reason==='down')notify('Lighter mode for a smoother city');}});
+const liteButton=control('lite-mode','LITE',()=>setLite(governor.auto));
+function setLite(on){local.set(LITE_KEY,on?'1':'0');governor.auto=!on;governor.set(on?0:START,performance.now());applyQuality();notify(on?'Lite mode: the lightest city, always.':'Lite mode off: the city adjusts to this device.');}
+function applyQuality(){
+  const q=settingsFor(governor.level,{mobile,dpr:devicePixelRatio||1});Q=q;
+  wxView.setQuality(q);crowdGPU.setLimits({cap:q.crowdCap,budget:q.crowdTris});cityEvents.setQuality(q);cityRenderer?.setQuality?.(q);
+  if(q.shadow&&q.shadow!==SHADOW_MAP){SHADOW_MAP=q.shadow;sunlight.shadow.mapSize.set(SHADOW_MAP,SHADOW_MAP);sunlight.shadow.map?.dispose();sunlight.shadow.map=null;shadowHalf=0;}
+  if(roomView)ratioDirty=true;else renderer.setPixelRatio(q.pixelRatio);
+  renderer.domElement.dataset.quality=`${q.level} ${governor.auto?'auto':'manual'} ${q.name}`;
+  const lite=!governor.auto&&q.level===0;liteButton.setAttribute('aria-pressed',String(lite));label(liteButton,lite?'Lite mode: on (tap for automatic quality)':'Lite mode: off (tap for the lightest city)');
+}
+applyQuality();
+for(const type of ['visibilitychange','pageshow','focus'])addEventListener(type,()=>governor.grace(GOV.grace.visible,performance.now()));
+// WebGL context loss: three.js re-uploads everything it still has on the CPU (canvas textures, the crowd's bone texture,
+// the sign atlas, glTF images) when the context comes back; main.js stops the loop meanwhile, shows a small overlay and
+// re-applies the level (one step lighter: a lost context is usually GPU memory pressure). No restore within 3 s →
+// the page reloads by itself with the view kept in sessionStorage (not more than twice a minute; then a tap reloads).
+const lostOverlay=Object.assign(document.createElement('div'),{className:'gl-lost',hidden:true,role:'status',textContent:'Tokyo is reloading its lights…'});document.body.append(lostOverlay);
+let lostTimer=0,glLosses=0;
+function resumeState(){return {target:controls.target,zoom:camera.zoom,district:$('district-select').value,dayMode:WX.dayMode,weather:WX.mode};}
+function reloadCity(){const prev=unpackResume(session.get(RESUME_KEY))?.reloads||0;
+  if(prev>=2){lostOverlay.textContent='The city lost its graphics. Tap to reload.';lostOverlay.onclick=()=>location.reload();lostOverlay.style.cursor='pointer';return;}
+  session.set(RESUME_KEY,packResume({...resumeState(),reloads:prev+1}));location.reload();}
+renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();glLost=true;glLosses++;lostOverlay.hidden=false;clearTimeout(lostTimer);lostTimer=setTimeout(reloadCity,3000);});
+renderer.domElement.addEventListener('webglcontextrestored',()=>{clearTimeout(lostTimer);glLost=false;lostOverlay.hidden=true;
+  if(governor.auto&&governor.level>0)governor.set(governor.level-1,performance.now());else applyQuality();
+  governor.grace(GOV.grace.restore,performance.now());clock.getDelta();});
+// Back from a reload: the camera, district, day mode and weather it had (a room is not reopened: the city comes back).
+{const r=unpackResume(session.get(RESUME_KEY),Date.now(),{weathers:['clear','rain','storm','sakura','snow','auto']});
+ if(r){if(!r.reloads)session.remove(RESUME_KEY);else setTimeout(()=>session.remove(RESUME_KEY),RESUME_MAX_AGE);   // keeps the reload count for a minute
+  aimCamera(new THREE.Vector3(r.target.x,r.target.y,r.target.z));camera.zoom=r.zoom;camera.updateProjectionMatrix();controls.update();
+  if(districts.some(d=>d.id===r.district)){$('district-select').value=r.district;renderList();}setDayMode(r.dayMode);setWeather(r.weather);}}
+// Diagnostics (rendering only, no account data): __city.quality.set(0), .auto, .level; __city.memory(); __city.view({x,z,zoom}).
+// __city.audit drives the same disposal paths as the UI (a room, a roaming model with a pet, a visit) for the memory audit.
+const quality={get level(){return governor.level;},set(l){governor.set(l,performance.now());applyQuality();return governor.level;},get auto(){return governor.auto;},set auto(v){governor.auto=v;applyQuality();},
+  get settings(){return {...Q};},get ema(){return governor.ema;},get steps(){return governor.steps;},start:START,gpu:GPU,phone};
+const sceneCount=root=>{let n=0;root.traverse(()=>n++);return n;};
+const aptPlots=()=>cityBuildings.filter(b=>b.type==='apartment'&&frontOf(b.plotId)).map(b=>b.plotId);
+window.__city={quality,get fuses(){return fuses;},
+  memory(){const m=renderer.info.memory;return {heapMB:performance.memory?+(performance.memory.usedJSHeapSize/1048576).toFixed(1):null,geometries:m.geometries,textures:m.textures,programs:renderer.info.programs?.length??null,objects:sceneCount(scene),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles};},
+  get camera(){const t=controls.target;return {x:+t.x.toFixed(2),y:+t.y.toFixed(2),z:+t.z.toFixed(2),zoom:+camera.zoom.toFixed(3)};},
+  view({x=0,y=2,z=0,zoom=1}={}){cityTour=null;follow=false;cameraTween=null;aimCamera(new THREE.Vector3(x,y,z));camera.zoom=zoom;camera.updateProjectionMatrix();controls.update();},
+  audit:{room(plotId=aptPlots()[0]){return openRoom({plotId,mine:false,me});},get inRoom(){return !!roomView;},
+   roam(){const at=frontOf(aptPlots()[0]);return !!cityEvents.explore({at,pet:{kind:'cat'},load:()=>loadCharacter({outfit:'jacket'},{template})});},
+   visit(){const [from,to]=aptPlots();return !!cityEvents.visit({from,to,skate:true,pet:{kind:'dog'},load:()=>loadCharacter({outfit:'tee'},{template})});},
+   endRoam(){cityEvents.endRoam();},get roaming(){return cityEvents.roaming;},
+   // Textures the open room's scene draws (uuid, kind, size): compared across opens to find per-room textures.
+   roomTextures(){const out=new Map();roomView?.scene.traverse(n=>{for(const m of [n.material].flat())for(const k of ['map','emissiveMap','alphaMap'])if(m?.[k])out.set(m[k].uuid,`${m[k].uuid.slice(0,6)} ${m[k].constructor.name} ${m[k].image?.width}x${m[k].image?.height} ${n.name||n.type}`);});return [...out.values()];}}};
+const clock=new THREE.Clock();let lastRender=0,renderedAt=-1;
+// Per-frame subsystems run behind fuses (quality.js): three errors in a row switch off only that subsystem.
+const fuses=Object.fromEntries(['crowd','weather','critters','events','explore','room'].map(n=>[n,createFuse(n)]));
+function crowdFrame(seconds){crowdBegin(seconds);residents.update(seconds,crowdGPU);}
 function animate(now){
   requestAnimationFrame(animate);
-  if(document.hidden||now-lastRender<(mobile?1000/30:1000/45))return;
+  // Governor sample: the cost of the last rendered frame = this rAF minus that frame's rAF (vsync-quantised, cap-free).
+  if(renderedAt>=0){governor.sample(now-renderedAt,now);renderedAt=-1;}
+  if(glLost||document.hidden||now-lastRender<(mobile?1000/30:1000/45))return;
   lastRender=now;
-  if(roomView){renderer.toneMappingExposure=EXPOSURE.room;wxUniforms.wet.value=wxUniforms.snow.value=0;roomView.update(Math.min(clock.getDelta(),.08));renderer.render(roomView.scene,roomView.camera);return;}
-  const seconds=reducedMotion?0:now*.001;crowdBegin(seconds);cityRenderer?.update(seconds);const dt=Math.min(clock.getDelta(),.08);sub01?.update(dt);residents.update(seconds,crowdGPU);cityEvents.update(dt,renderer.getPixelRatio()*innerHeight*camera.zoom/(camera.top-camera.bottom));if(explorer&&cityEvents.visitor)explorer.update(dt);if(cityEvents.visitor){roamTag.position.copy(cityEvents.visitor.position);roamTag.position.y+=2.05;}
+  if(roomView){renderer.toneMappingExposure=EXPOSURE.room;wxUniforms.wet.value=wxUniforms.snow.value=0;fuses.room.run(()=>roomView.update(Math.min(clock.getDelta(),.08)));renderer.render(roomView.scene,roomView.camera);return;}
+  if(ratioDirty){ratioDirty=false;renderer.setPixelRatio(Q.pixelRatio);}
+  const seconds=reducedMotion?0:now*.001;fuses.crowd.run(crowdFrame,seconds);if(fuses.crowd.off&&crowdGPU.active){crowdGPU.active=crowdNear=false;crowdGPU.hide();residents.update(seconds,crowdGPU);}
+  fuses.critters.run(()=>cityRenderer?.update(seconds));const dt=Math.min(clock.getDelta(),.08);sub01?.update(dt);
+  fuses.events.run(()=>cityEvents.update(dt,renderer.getPixelRatio()*innerHeight*camera.zoom/(camera.top-camera.bottom)));if(explorer&&cityEvents.visitor)fuses.explore.run(()=>explorer.update(dt));if(cityEvents.visitor){roamTag.position.copy(cityEvents.visitor.position);roamTag.position.y+=2.05;}
   if(goal?.activity==='party'&&!walker&&now>partyWaveAt&&partyWaveAt){play('Idle');play('Wave');partyWaveAt=now+6e3;}
   if(walker&&character){
     const target=walker.points[walker.index],pos=character.position,dx=target.x-pos.x,dz=target.z-pos.z,dist=Math.hypot(dx,dz),stepLen=dt*(walker.points.length>3?4.2:2.4);
@@ -577,15 +660,19 @@ function animate(now){
   if(cameraTween){cameraTween.elapsed+=dt;const t=Math.min(cameraTween.elapsed/.75,1),ease=1-(1-t)**3;const before=controls.target.clone();controls.target.lerpVectors(cameraTween.start,cameraTween.target,ease);camera.position.add(controls.target.clone().sub(before));camera.zoom=THREE.MathUtils.lerp(cameraTween.zoom,cameraTween.endZoom,ease);camera.updateProjectionMatrix();if(t===1)cameraTween=null;}
   if(cityTour){cityTour.elapsed+=dt;if(cityTour.elapsed>5){cityTour.elapsed=0;cityTour.index++;if(cityTour.index>=cityViews.length){cityTour=null;resetView();$('activity-text').textContent='Your idea. Your city. Choose an address.';}else nextCityView();}}
   // Overview LOD: below zoom 0.3 the city skips AC units, small roof items, side pipes and road marks.
-  cityRenderer?.setDetail(camera.zoom>=.3);
-  weatherFrame(now,dt,seconds);controls.update();updateSunAndFog();crowdEnd(now);setCityFocus(cityEvents.visitor?.position||character?.position||null);renderer.render(scene,camera);
+  cityRenderer?.setDetail(camera.zoom>=.3&&Q.detail);   // quality level 0 keeps the overview LOD even up close
+  fuses.weather.run(weatherFrame,now,dt,seconds);controls.update();updateSunAndFog();if(!fuses.crowd.off)fuses.crowd.run(crowdEnd,now);setCityFocus(cityEvents.visitor?.position||character?.position||null);renderer.render(scene,camera);renderedAt=now;booted=true;
   document.body.classList.toggle('is-close',camera.zoom>.42);
   for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
 }
 requestAnimationFrame(animate);
 async function initialize(){try{
   await Promise.all([makeHome(),makeBuildings(),makeCharacter()]);
-  await refreshMe();await pollWorld();setInterval(pollWorld,4000);setInterval(()=>{if(me?.user)refreshMe();},8000);
+  // The first account + world fetch gets 2.5 s before the city is shown: a server that hangs (8 s timeouts) never keeps
+  // the loading screen up. The poll loops start once that first fetch settled.
+  const first=Promise.all([refreshMe(),pollWorld()]).catch(err=>console.warn('[city] first poll',err?.message||err));
+  await Promise.race([first,new Promise(r=>setTimeout(r,2500))]);
+  first.then(()=>{pollLoop(pollWorld,()=>nextPollDelay(POLL.world,worldFails));pollLoop(()=>me?.user&&serverUp?refreshMe():null,()=>POLL.me);});
   $('loading').classList.add('is-ready');
   // Browser-visible diagnostics are limited to rendering; no wallet or account data.
   renderer.domElement.dataset.ready='true';

@@ -169,6 +169,9 @@ export function createCrowdGPU(parent,{mobile=false,lights=null,cap=mobile?CROWD
   return loading;
  }
  let time=0;
+ // Quality hook (quality.js via main.js): a runtime instance cap and triangle budget at or under the built ones (0 = none).
+ let limit=cap,tris=budget;
+ function setLimits({cap:c=cap,budget:b=budget}={}){limit=Math.max(0,Math.min(cap,c|0));tris=Math.max(0,Math.min(budget,+b||0));}
  // seconds is not wrapped: callers time one-off clips (a wave) against the same clock; float32 stays frame-exact for days.
  function begin(seconds){n=0;time=seconds;}
  // clip: Idle | Walk | Run | Wave; rate scales the clip's own speed; phase in loops (0..1). bias < 1 wins the cap (residents).
@@ -181,11 +184,11 @@ export function createCrowdGPU(parent,{mobile=false,lights=null,cap=mobile?CROWD
   shared.uTime.value=time;
   if(lights){const h=lights.hemi;if(h){shared.uSky.value.copy(h.color).multiplyScalar(h.intensity);shared.uGround.value.copy(h.groundColor).multiplyScalar(h.intensity);}
    for(let i=0;i<2;i++){const d=lights.dirs?.[i];if(d){shared['uL'+i].value.subVectors(d.position,d.target.position).normalize();shared['uC'+i].value.copy(d.color).multiplyScalar(d.intensity);}else shared['uC'+i].value.setRGB(0,0,0);}}
-  cullInstances(pool,n,target,radius,cap,visible);
+  cullInstances(pool,n,target,radius,limit,visible);
   for(const b of perOutfit.values())b.count=0;
-  let tris=0,calls=0,drawn=0;
+  let used=0,calls=0,drawn=0;
   // Nearest first until the triangle budget is spent (the outfits differ: 5.2k–6.6k triangles each).
-  for(const i of visible){const it=pool[i],p=pack(it.look),b=perOutfit.get(p.outfit);if(tris+b.triangles>budget)break;tris+=b.triangles;drawn++;
+  for(const i of visible){const it=pool[i],p=pack(it.look),b=perOutfit.get(p.outfit);if(used+b.triangles>tris)break;used+=b.triangles;drawn++;
    const k=b.count++,ci=bake.clips[it.clip]||bake.clips.Idle;
    const c=Math.cos(it.yaw)*it.scale,s=Math.sin(it.yaw)*it.scale,e=b.mesh.instanceMatrix.array,o=k*16;
    e[o]=c;e[o+1]=0;e[o+2]=-s;e[o+3]=0;e[o+4]=0;e[o+5]=it.scale;e[o+6]=0;e[o+7]=0;e[o+8]=s;e[o+9]=0;e[o+10]=c;e[o+11]=0;e[o+12]=it.x;e[o+13]=it.y;e[o+14]=it.z;e[o+15]=1;
@@ -193,11 +196,11 @@ export function createCrowdGPU(parent,{mobile=false,lights=null,cap=mobile?CROWD
    const [c0,c1,c2]=b.cols,q=p.c;c0.array.set([q[0],q[1],q[2],q[3]],k*4);c1.array.set([q[4],q[5],q[6],q[7]],k*4);c2.array.set([q[8],q[9],q[10],q[11]],k*4);}
   for(const b of perOutfit.values()){const m=b.mesh;m.count=b.count;m.visible=b.count>0;if(!b.count)continue;calls++;
    for(const a of [m.instanceMatrix,b.anim,...b.cols]){a.clearUpdateRanges();a.addUpdateRange(0,b.count*a.itemSize);a.needsUpdate=true;}}
-  stats={instances:drawn,pushed:n,triangles:tris,drawCalls:calls};return stats;
+  stats={instances:drawn,pushed:n,triangles:used,drawCalls:calls};return stats;
  }
  function hide(){for(const m of meshes)m.visible=false;stats={instances:0,triangles:0,drawCalls:0};}
  // active: set by the caller each frame (LOD); sources push only while it is true.
- return {active:false,root,load,begin,push,end,hide,cap,budget,get ready(){return ready;},get stats(){return stats;},get bake(){return bake;},get meshes(){return meshes;},
+ return {active:false,root,load,begin,push,end,hide,cap,budget,setLimits,get limits(){return {cap:limit,budget:tris};},get ready(){return ready;},get stats(){return stats;},get bake(){return bake;},get meshes(){return meshes;},
   // Seconds of one loop of a clip at rate 1 (callers time a one-off Wave with it).
   clipSeconds:name=>bake?.clips[name]?.duration||1};
 }

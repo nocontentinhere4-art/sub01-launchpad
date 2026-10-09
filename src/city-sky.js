@@ -184,11 +184,12 @@ export function addCitySky(parent,{mobile=isMobile()}={}){
  const box=new THREE.BoxGeometry(1,1,1),geo=new THREE.InstancedBufferGeometry();geo.index=box.index;
  for(const k of ['position','normal','uv'])geo.setAttribute(k,box.attributes[k]);
  const critters=new THREE.Mesh(geo,critterMaterial(uniforms));critters.name='critters';critters.frustumCulled=false;critters.raycast=()=>{};root.add(critters);
- let planKey='';
+ let planKey='',planCount=0,qCritters=1;   // qCritters: quality hook (fraction of the plan drawn; 1 = all)
  function setBuildings(buildings=[]){const key=JSON.stringify(buildings.map(b=>b.plotId).sort());if(key===planKey)return;planKey=key;
   const b=critterBuffers(critterPlan({mobile,buildings}).slice(0,CRITTER_BUDGET[mobile?'mobile':'desktop']));
+  geo.dispose();   // frees the previous instance buffers on the GPU (re-uploaded on the next draw)
   geo.setAttribute('aC',new THREE.InstancedBufferAttribute(b.aC,4));geo.setAttribute('aP',new THREE.InstancedBufferAttribute(b.aP,4));
-  geo.setAttribute('color',new THREE.InstancedBufferAttribute(b.color,3));geo.instanceCount=b.count;}
+  geo.setAttribute('color',new THREE.InstancedBufferAttribute(b.color,3));planCount=b.count;geo.instanceCount=Math.ceil(planCount*qCritters);}
  setBuildings([]);
  // Pigeons scatter when a vehicle or the roaming character comes within 2.6 of their spot (one start time per flock).
  const scatter=uniforms.uScatter.value;
@@ -209,6 +210,8 @@ export function addCitySky(parent,{mobile=isMobile()}={}){
  function update(seconds,scarers=[]){uniforms.uTime.value=seconds;scare(seconds,scarers);
   state=blimpState(seconds);blimp.position.set(state.x,state.y,state.z);blimp.rotation.set(0,state.yaw,0);}
  update(0);
- return {root,critters,blimp,update,setBuildings,setBannerText,get banner(){return text;},get blimpState(){return state;},
+ // Quality hook (quality.js via main.js → city.js → city-life.js): critter share and the blimp; defaults change nothing.
+ function setQuality({critters:c=1,blimp:on=true}={}){qCritters=Math.max(0,Math.min(1,+c||0));geo.instanceCount=Math.ceil(planCount*qCritters);blimp.visible=!!on;}
+ return {root,critters,blimp,update,setBuildings,setBannerText,setQuality,get banner(){return text;},get blimpState(){return state;},
   stats:()=>({critters:geo.instanceCount,drawCalls:2})};
 }
