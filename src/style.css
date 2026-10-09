@@ -129,3 +129,14 @@
  .room-guestbook{max-height:44dvh}
 }
 /* ===== end room v3 ===== */
+/* ===== explore mode (src/explore.js): explore / go-home button, landmark toast ===== */
+.activity>div{min-width:0}
+.explore-button{flex:none;margin-left:14px;border:0;border-radius:9px;background:var(--orange);color:#272720;font-weight:700;font-size:11px;padding:9px 12px;white-space:nowrap}
+.explore-button[aria-pressed=true]{background:#272b25;color:#faf7ee}.explore-button+.icon-button{margin-left:4px}
+.is-night .explore-button[aria-pressed=true]{background:#f7833f;color:#1d2e34}
+.world-label.explore-toast{pointer-events:none;background:#272b25;color:#fff5e7;border-color:#272b25;max-width:260px;white-space:normal;text-align:center;line-height:1.4}
+.world-label.explore-toast::after{background:#272b25;border-color:#272b25}
+@media(max-width:600px){.explore-button{margin-left:auto;font-size:10px;padding:8px 9px}.activity .explore-button+.icon-button{margin-left:2px}.world-label.explore-toast{max-width:200px}}
+/* ===== end explore mode ===== */
+/* explore: the roaming model's name tag */
+.world-label.roam-tag{pointer-events:none;cursor:default;background:var(--orange);color:#272720;border-color:var(--orange);padding:4px 8px}.world-label.roam-tag::after{background:var(--orange)}

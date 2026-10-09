@@ -3,8 +3,10 @@ import {toon} from './toon.js';
 import {cityPlots,districts} from './city-state.js';
 import {frontOf,planRoute} from './world-sync.js';
 import {STRIDE} from './motion.js';
+import {createPet,petFollow} from './accessories.js';
+import {groundY,WALK_SPEED,RUN_SPEED} from './explore.js';
 // City reactions to /api/world `events`: fireworks + street party on launches, neon/graffiti on launched buildings,
-// client-only visits. Particles are pure functions of (seed, time) in the vertex shader: the CPU only writes a few uniforms.
+// client-only visits and explore mode (one roaming model at a time). Particles are pure functions of (seed, time) in the vertex shader: the CPU only writes a few uniforms.
 export const FIRE_AGE=60e3,PARTY_S=40,MAX_OPEN=7,KINDS=['accepted','site_live','launched'];
 const BURST_S=2.8,RISE_S=.75,SHOWER_S=7,BUILDING_H=8,ROOF=BUILDING_H+.46;
 const plotOf=id=>cityPlots.find(p=>p.id===id);
@@ -174,7 +176,7 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false}={}){
   signs.count=list.length;attr.needsUpdate=true;signs.instanceMatrix.needsUpdate=true;signs.computeBoundingSphere();
  }
  // Fireworks: bursts wait in a queue until one of the 6 slots is free.
- const queue=[],lastParty=new Map();let party=null,visit=null;
+ const queue=[],lastParty=new Map();let party=null;
  function celebrate(plotId,{people=[]}={}){
   const p=plotOf(plotId),f=frontOf(plotId),T=clock();if(!p||!f||lastParty.get(plotId)>T-FIRE_AGE/1000)return null;lastParty.set(plotId,T);
   const r=rng(hash(plotId)^Math.floor(T));
@@ -200,26 +202,59 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false}={}){
   });
   crowd.instanceMatrix.needsUpdate=true;
  }
- function startVisit(o){
-  if(visit)return false;const route=visitRoute(o.from,o.to);if(!route)return false;
-  visit={...o,route,state:'loading'};const v=visit;
-  Promise.resolve().then(o.load).then(c=>{if(visit!==v){c.dispose();return;}v.char=c;const r=c.root;r.position.set(route[0].x,.26,route[0].z);
-   // Prefer the rig's own skate emote (board + lean, characters.js); otherwise a plain box board and the Run clip.
-   if(o.skate&&!(v.emote=typeof c.emote==='function'&&c.emote('skate')===true)){v.board=new THREE.Mesh(new THREE.BoxGeometry(.34,.06,.95),toon({color:'#fb752b'}));v.board.position.y=-.06;r.add(v.board);r.position.y=.38;}
-   scene.add(r);Object.assign(v,{state:'go',path:route,i:1,dist:0,speed:(route.reduce((s,p,i)=>i?s+Math.hypot(p.x-route[i-1].x,p.z-route[i-1].z):0,0)>30?3:2.2)*(o.skate?2:1)});o.onStart?.(r);},
-   ()=>{if(visit===v)endVisit();});
-  return true;
+ // The one roaming model (a visit or explore mode, never both): the resident's rigged model plus its pet, on a street route.
+ // Its box figure at home is hidden by the caller (main.js visitKey). Nothing about it is sent to the server.
+ let roam=null;
+ function spawn(o,mode,at,ready){
+  if(roam||!at)return null;const v={...o,mode,at,state:'loading',path:null,i:1,dist:0,speed:WALK_SPEED,lift:0,run:false,done:null};roam=v;
+  Promise.resolve().then(o.load).then(c=>{if(roam!==v){c.dispose();return;}v.char=c;const r=c.root;r.position.set(at.x,groundY(at.x,at.z),at.z);
+   ready?.(v,c);
+   if(o.pet?.kind)try{const pet=createPet(o.pet);pet.root.position.set(at.x-.7,r.position.y,at.z-.5);pet.root.traverse(n=>{if(n.isMesh){n.castShadow=false;n.raycast=()=>{};}});scene.add(pet.root);v.pet=pet;}catch(err){console.warn('pet',err);}
+   scene.add(r);o.onStart?.(r);},
+   ()=>{if(roam===v)endRoam();});
+  return v;
  }
- function endVisit(){const v=visit;visit=null;if(!v)return;v.char?.dispose();if(v.board){v.board.geometry.dispose();v.board.material.dispose();}v.onEnd?.();}
- function stepVisit(dt,T){
-  const v=visit,c=v.char;if(!c)return;c.update(dt);const r=c.root;
-  if(v.state==='stay'){if(T>v.waveAt){c.play('Wave');v.waveAt=Infinity;}if(T>v.until){v.state='back';v.path=[...v.route].reverse();v.i=1;if(v.emote)c.emote('skate');}return;}
+ function endRoam(){const v=roam;roam=null;if(!v)return;v.char?.dispose();v.pet?.dispose();if(v.board){v.board.geometry.dispose();v.board.material.dispose();}v.onEnd?.();}
+ // One step along v.path at v.speed; true once its last point is reached. Allocation-free.
+ function walk(v,dt){
+  const r=v.char.root;if(v.i>=v.path.length)return true;
   const t=v.path[v.i],dx=t.x-r.position.x,dz=t.z-r.position.z,dist=Math.hypot(dx,dz),step=dt*v.speed;
-  if(dist<=step){r.position.x=t.x;r.position.z=t.z;v.dist+=dist;if(++v.i<v.path.length)return;
-   if(v.state==='back'){endVisit();return;}
-   v.state='stay';v.until=T+20;v.waveAt=T+10;r.rotation.y=Math.PI/2;if(v.emote)c.stopEmote?.();c.play('Idle');c.play('Wave');v.onArrive?.();return;}
-  r.position.x+=dx/dist*step;r.position.z+=dz/dist*step;v.dist+=step;r.rotation.y=Math.atan2(dx,dz);
-  if(v.emote)return;if(v.skate)c.play('Run');else{c.play('Walk');c.stride?.(v.dist/STRIDE%1);}
+  if(dist<=step){r.position.x=t.x;r.position.z=t.z;v.dist+=dist;}
+  else{r.position.x+=dx/dist*step;r.position.z+=dz/dist*step;v.dist+=step;r.rotation.y=Math.atan2(dx,dz);}
+  r.position.y=groundY(r.position.x,r.position.z)+v.lift;
+  if(dist<=step&&++v.i>=v.path.length)return true;
+  if(!v.emote){if(v.run)v.char.play('Run');else{v.char.play('Walk');v.char.stride?.(v.dist/STRIDE%1);}}
+  return false;
+ }
+ const routeLength=p=>p.reduce((s,q,i)=>i?s+Math.hypot(q.x-p[i-1].x,q.z-p[i-1].z):0,0);
+ function startVisit(o){
+  const route=visitRoute(o.from,o.to);if(!route||roam)return false;
+  return !!spawn(o,'visit',route[0],(v,c)=>{const r=c.root;
+   // Prefer the rig's own skate emote (board + lean, characters.js); otherwise a plain box board and the Run clip.
+   if(o.skate&&!(v.emote=typeof c.emote==='function'&&c.emote('skate')===true)){v.board=new THREE.Mesh(new THREE.BoxGeometry(.34,.06,.95),toon({color:'#fb752b'}));v.board.position.y=-.06;r.add(v.board);v.lift=.12;}
+   Object.assign(v,{state:'go',route,path:route,i:1,dist:0,run:!!o.skate,speed:(routeLength(route)>30?3:WALK_SPEED)*(o.skate?2:1)});});
+ }
+ function stepVisit(v,dt,T){
+  const c=v.char;
+  if(v.state==='stay'){if(T>v.waveAt){c.play('Wave');v.waveAt=Infinity;}if(T>v.until){v.state='back';v.path=[...v.route].reverse();v.i=1;if(v.emote)c.emote('skate');}return;}
+  if(!walk(v,dt))return;
+  if(v.state==='back'){endRoam();return;}
+  v.state='stay';v.until=T+20;v.waveAt=T+10;c.root.rotation.y=Math.PI/2;if(v.emote)c.stopEmote?.();c.play('Idle');c.play('Wave');v.onArrive?.();
+ }
+ // Explore mode: the explore.js brain drives the model through this handle (one object per outing, no per-frame garbage).
+ function startExplore(o){
+  const v=spawn(o,'explore',o.at);if(!v)return null;const ch=()=>roam===v&&v.char;
+  return v.handle={get x(){return v.char?v.char.root.position.x:v.at.x;},get z(){return v.char?v.char.root.position.z:v.at.z;},get root(){return v.char?.root||null;},get moving(){return !!v.path;},
+   go(path,{run=false,done=null}={}){if(roam!==v)return;v.path=path;v.i=1;v.dist=0;v.run=run;v.done=done;v.speed=run?RUN_SPEED:routeLength(path)>30?3:WALK_SPEED;},
+   halt(){v.path=v.done=null;if(ch())v.char.play('Idle');},face(yaw){if(ch())v.char.root.rotation.y=yaw;},play(name){if(ch())v.char.play(name);},
+   emote(name){return !!ch()&&typeof v.char.emote==='function'&&v.char.emote(name)===true;},stopEmote(){if(ch())v.char.stopEmote?.();}};
+ }
+ function stepExplore(v,dt){if(!v.path||!walk(v,dt))return;v.path=null;v.char.play('Idle');const d=v.done;v.done=null;d?.();}
+ function stepRoam(dt,T){
+  const v=roam;if(!v.char)return;v.char.update(dt);
+  if(v.mode==='visit')stepVisit(v,dt,T);else stepExplore(v,dt);
+  // The pet trails 0.9 behind and stops when its owner stops (accessories.js petFollow).
+  if(roam===v&&v.pet){const st=petFollow(v.pet.root,v.char.root,dt,{distance:.9,speed:v.speed*1.25});v.pet.update(dt,st);}
  }
  // dt in seconds; pxPerUnit = screen pixels per world unit (orthographic), so particle sizes follow zoom.
  function update(dt,pxPerUnit=20){
@@ -232,11 +267,11 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false}={}){
   if(cf.points.visible)cf.points.visible=cf.uniforms.uShower.value.some(s=>T<s.w+SHOWER_S+2.5);
   fw.uniforms.uTime.value=cf.uniforms.uTime.value=T;fw.uniforms.uScale.value=cf.uniforms.uScale.value=pxPerUnit;coneTime.value=reducedMotion?0:T;
   if(party){if(T>party.end){party=null;crowd.visible=false;crowd.count=0;}else drawParty(T);}
-  if(visit)stepVisit(dt,T);
+  if(roam)stepRoam(dt,T);
  }
- return {root,decorate,celebrate,update,visit:startVisit,cancelVisit:endVisit,
+ return {root,decorate,celebrate,update,visit:startVisit,explore:startExplore,cancelVisit:endRoam,endRoam,
   // Additive sparks vanish on the pale day sky, so daytime fireworks blend normally.
   setNight(v){night=!!v;cones.visible=night&&cones.count>0;fw.points.material.blending=night?THREE.AdditiveBlending:THREE.NormalBlending;},
-  get visiting(){return !!visit;},get party(){return party;},get visitor(){return visit?.char?.root||null;},
+  get visiting(){return roam?.mode==='visit';},get roaming(){return roam?.mode||null;},get party(){return party;},get visitor(){return roam?.char?.root||null;},get pet(){return roam?.pet?.root||null;},
   stats:()=>({points:fw.points.geometry.attributes.position.count+cf.points.geometry.attributes.position.count,signs:signs?.count||0,boxes:decorBoxes.count,cones:cones.count})};
 }

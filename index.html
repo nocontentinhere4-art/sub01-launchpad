@@ -31,6 +31,7 @@
     <section class="activity" aria-live="polite">
       <div class="activity-avatar">01</div>
       <div><span class="eyebrow"><i class="live-dot"></i> <span id="activity-label">SUB-01 · OFFLINE</span></span><strong id="activity-text">Getting the neighborhood ready.</strong></div>
+      <button class="explore-button" id="explore-button" type="button" aria-pressed="false" title="Walk your resident around the city">🚶 Explore</button>
       <button class="icon-button" id="follow-button" aria-label="Follow SUB-01" title="Follow SUB-01">◎</button>
     </section>
     <nav class="world-controls" aria-label="World controls">
@@ -39,7 +40,7 @@
       <button class="icon-button" id="reset-view" aria-label="Reset camera">⌂</button>
       <button class="icon-button" id="day-night" aria-label="Switch to night">☾</button>
     </nav>
-    <div class="world-hint">DRAG TO EXPLORE <span>·</span> SELECT A BUILDING</div>
+    <div class="world-hint" id="world-hint">DRAG TO EXPLORE <span>·</span> SELECT A BUILDING</div>
     <div id="loading" class="loading"><div class="loading-mark">01</div><strong>Opening Tokyo</strong><span id="loading-text">Making room for your ideas…</span></div>
     <div class="dialog-backdrop" id="detail-backdrop" hidden>
       <section class="detail-card" role="dialog" aria-modal="true" aria-labelledby="detail-name">
