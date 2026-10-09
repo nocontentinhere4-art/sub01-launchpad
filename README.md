@@ -52,4 +52,6 @@ The state tests cover brief validation, queue limits, corrupt storage recovery a
 
 ## Assets
 
+The SUBZERONE logo kit (marks, favicons, lockups, social images) lives in `public/brand/`; `index.html` links the icons and `src/brand.css` styles the topbar and loader marks.
+
 Only the selected runtime assets are bundled; source collections stay outside this repo. Attribution, origins, licenses and derived-file notes are in `ASSETS.md` and `licenses/`. Original animation names are preserved. Quaternius's embedded glTF was converted to GLB; unused animation definitions were omitted, while its binary animation buffer is retained. No Sims/EA assets are included.

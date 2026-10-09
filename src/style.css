@@ -199,3 +199,5 @@
 .gl-lost{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;background:#272c25;color:#fff5e7;font-size:12px;padding:14px 20px;border-radius:9px;max-width:80%;text-align:center;box-shadow:0 10px 40px #0003}
 @media(max-width:600px){#lite-mode{width:29px;min-width:0;padding:0;font-size:7px;letter-spacing:0}}
 /* ===== end robustness pass ===== */
+
+.is-night .account-chip{background:#193346;color:#d7e5e4;border-color:#496674}

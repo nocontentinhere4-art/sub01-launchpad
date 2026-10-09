@@ -1,0 +1,5 @@
+/* SUBZERONE logo kit (public/brand). The topbar and the loader show the mark as an image: sizes still come from
+   style.css (.brand-mark, .loading-mark). These rules only drop the old orange "01" tile. !important because
+   style.css is injected after this sheet in development. */
+.brand-mark{display:block!important;flex:none;background:none!important;padding:0!important;border-radius:0!important}
+.loading-mark{display:block!important;background:none!important;padding:0!important;border-radius:0!important}
