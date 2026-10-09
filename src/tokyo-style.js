@@ -20,9 +20,12 @@ export function addTokyoStyle(parent,buildings=[]){
  }
  // Shibuya's scramble crossing: wide pedestrian stripes in three directions.
  const crossX=29,crossZ=2;
- for(const angle of [0,Math.PI/2,Math.PI/4])for(let i=-5;i<=5;i++){
-  const offset=i*.6;item(solids,crossX+Math.cos(angle)*offset,.225,crossZ-Math.sin(angle)*offset,.3,.025,5.8,'#dde8df',angle);
+ for(let i=-4;i<=4;i++)for(const side of [-1,1]){
+  item(solids,crossX+i*.6,.232,crossZ+side*2.5,.3,.02,1.2,'#dde8df');
+  item(solids,crossX+side*2.5,.232,crossZ+i*.6,1.2,.02,.3,'#dde8df');
  }
+ // One diagonal crossing in the middle; separated heights prevent coplanar flicker.
+ for(let i=-4;i<=4;i++)item(solids,crossX+i*.4,.256,crossZ-i*.4,.28,.018,3.4,'#dde8df',Math.PI/4);
  // Compact shop alley in Roppongi with lamps, sign brackets and vending boxes.
  for(const x of [-33,-25])for(let z=-9;z<14;z+=4){
   item(solids,x,1.9,z,.1,3.4,.1,'#3b5059');item(solids,x+.4,3.55,z,.85,.12,.1,'#3b5059');
