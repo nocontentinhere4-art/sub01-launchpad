@@ -208,7 +208,7 @@ function renderList() {
   $('project-list').replaceChildren();
   const district=$('district-select').value;
   const available=cityPlots.filter(p=>!district||p.district===district).map(placeFor);
-  const mine=new Set(me?.plots?.map(p=>p.plotId)||[]),landmarks=[tower,...places];
+  const mine=new Set(me?.plots?.map(p=>p.plotId)||[]),ideas=(me?.ideas||[]).filter(i=>i.status!=='cancelled').slice(0,5).map(i=>({id:'idea-'+i.id,name:i.title,symbol:'✉',color:i.status==='declined'?'#9a9d92':'#fb752b',kind:'YOUR IDEA',status:IDEA_STATUS[i.status]||i.status,description:i.status_note||'',slug:i.slug,ideaId:i.id})),landmarks=[...ideas,tower,...places];
   const yours=available.filter(p=>p.claimed&&mine.has(p.id)),others=available.filter(p=>p.claimed&&!mine.has(p.id));
   for (const p of district?[...yours,...others,...landmarks,...available.filter(p=>!p.claimed)]:[...yours,...landmarks,...others]) {
     const button=document.createElement('button');button.className='project-row';button.setAttribute('aria-label',`Open ${p.name}`);
@@ -246,7 +246,7 @@ function showPlace(p) {
   if(project&&b.slug)loadRoles(b);$('detail-name').textContent=p.name;$('detail-category').textContent=p.kind;
   $('detail-description').textContent=p.description;$('detail-state').textContent=p.status;
   $('detail-icon').textContent=p.symbol;$('detail-icon').style.background=p.color+'25';$('detail-icon').style.color=p.color;
-  $('visit-button').textContent=b?.type==='apartment'?(p.mine?'Enter your room →':'Visit '+b.name+'\'s room →'):project?(b.slug?(p.mine?'Open your office ↗':'Open project page ↗'):'Watch the site →'):cityPlots.some(l=>l.id===p.id)?'Drop an idea here →':'Visit this place →';
+  $('visit-button').textContent=p.ideaId?'Open the idea ↗':b?.type==='apartment'?(p.mine?'Enter your room →':'Visit '+b.name+'\'s room →'):project?(b.slug?(p.mine?'Open your office ↗':'Open project page ↗'):'Watch the site →'):cityPlots.some(l=>l.id===p.id)?'Drop an idea here →':'Visit this place →';
   openDialog('detail-backdrop');
 }
 function focusPlace(p) {
@@ -275,13 +275,19 @@ function openSignIn(next){
   b.onclick=async()=>{$('signin-error').textContent='';try{await signIn(w.name);await refreshMe();closeDialog();notify('Signed in.');next?.();}catch(err){$('signin-error').textContent=err.message;}};return b;}):[Object.assign(document.createElement('p'),{className:'fine',textContent:'No Solana wallet found in this browser. Install Phantom, Solflare or Backpack, then reload.'})]));};
  draw();onWallets(draw);openDialog('signin-backdrop');
 }
-async function refreshMe(){try{me=await api('/api/me');if(typeof me?.user!=='object')me=null;}catch{me=null;}$('account-button').textContent=me?.user?(resident()?.name||short(me.user.wallet)):'Sign in';renderList();updateResident();}
+const IDEA_STATUS={submitted:'In his mailbox',evaluating:'SUB-01 is thinking',selected:'He will build it',declined:'He passed',generating:'Being built',preview_ready:'Ready for your review',approved:'Approved by you',launch_prepared:'Launch ready',awaiting_signature:'Waiting for your signature',confirming:'Confirming on-chain',launched:'Launched',failed:'Stopped: needs attention',cancelled:'Cancelled'};
+let knownStatus=null;
+async function refreshMe(){const before=knownStatus;try{me=await api('/api/me');if(typeof me?.user!=='object')me=null;}catch{me=null;}
+  // Tell the author when SUB-01 decides or a stage changes; private ideas never reach the public news.
+  knownStatus=Object.fromEntries((me?.ideas||[]).map(i=>[i.id,i.status]));
+  if(before)for(const i of me?.ideas||[])if(before[i.id]&&before[i.id]!==i.status)notify(i.status==='declined'?`SUB-01 passed on “${i.title}”. ${i.status_note?.split(' [')[0]||''}`:`“${i.title}”: ${IDEA_STATUS[i.status]||i.status}.`);$('account-button').textContent=me?.user?(resident()?.name||short(me.user.wallet)):'Sign in';renderList();updateResident();}
+const CLOTHES=['#fb752b','#2f3e66','#69a694','#e8e0cf','#3a3b3d','#d9a5a0','#c4a465','#9390c4'];
 function openCreator(next){
  if(!lookOptions){notify('The city server is offline.');return;}
  const r=resident(),look=r?.look||{};$('resident-name').value=r?.name||'';$('resident-error').textContent='';
  const fields=$('look-fields');fields.replaceChildren();
  for(const [key,label] of [['skin','Skin'],['hair','Hair colour'],['hairStyle','Hair'],['outfit','Outfit'],['top','Top'],['bottom','Bottom']]){
-  const values=lookOptions.look?.[key]||[];if(!values.length)continue;
+  const values=Array.isArray(lookOptions.look?.[key])?lookOptions.look[key]:lookOptions.look?.freeColors?.includes(key)?CLOTHES:[];if(!values.length)continue;
   const group=document.createElement('fieldset');group.className='swatches';const legend=document.createElement('legend');legend.textContent=label;group.append(legend);
   values.forEach((v,i)=>{const id=`look-${key}-${i}`,input=Object.assign(document.createElement('input'),{type:'radio',name:key,value:v,id,checked:look[key]?look[key]===v:i===0});const l=document.createElement('label');l.htmlFor=id;
    if(/^#[0-9a-f]{6}$/i.test(v)){l.style.background=v;l.title=v;l.className='swatch';}else{l.textContent=v;l.className='chip';}group.append(input,l);});
@@ -325,6 +331,7 @@ document.addEventListener('keydown',e=>{
 $('visit-button').onclick=()=>{
  const p=selectedPlace,b=p?.building;closeDialog();
  if(b?.type==='apartment'){openRoom({plotId:p.id,mine:p.mine,me,onEdit:()=>openCreator()});return;}
+ if(p.ideaId){open(p.slug?`/projects/${encodeURIComponent(p.slug)}/review`:`/ideas/${encodeURIComponent(p.ideaId)}`,'_blank','noopener');return;}
  if(b?.type==='project'){if(b.slug)open(`/projects/${encodeURIComponent(b.slug)}${p.mine?'/review':''}`,'_blank','noopener');else focusPlace(p);return;}
  if(cityPlots.some(c=>c.id===p.id)){openBuildForm(p);return;}
  focusPlace(p);
@@ -374,7 +381,7 @@ async function pollWorld(){
  }
  const g=sub01Goal(world);
  if(character&&(!goal||g.x!==goal.x||g.z!==goal.z)){walker={points:planRoute(character.position,g),index:1};}
- goal=g;if(serverUp)$('activity-text').textContent=world.news?.[0]?`${g.text} · ${world.news[0].text}`:g.text;
+ goal=g;const latest=world.news?.[0]?.text.replace(/\b([a-z]+)-([1-6])\b/g,m=>cityPlots.find(p=>p.id===m)?.name||m);if(serverUp)$('activity-text').textContent=latest?`${g.text} · ${latest}`:g.text;
 }
 const clock=new THREE.Clock();let lastRender=0;
 function animate(now){
@@ -392,12 +399,13 @@ function animate(now){
   if(cameraTween){cameraTween.elapsed+=dt;const t=Math.min(cameraTween.elapsed/.75,1),ease=1-(1-t)**3;const before=controls.target.clone();controls.target.lerpVectors(cameraTween.start,cameraTween.target,ease);camera.position.add(controls.target.clone().sub(before));camera.zoom=THREE.MathUtils.lerp(cameraTween.zoom,cameraTween.endZoom,ease);camera.updateProjectionMatrix();if(t===1)cameraTween=null;}
   if(cityTour){cityTour.elapsed+=dt;if(cityTour.elapsed>5){cityTour.elapsed=0;cityTour.index++;if(cityTour.index>=cityViews.length){cityTour=null;resetView();$('activity-text').textContent='Your idea. Your city. Choose an address.';}else nextCityView();}}
   controls.update();renderer.render(scene,camera);
+  document.body.classList.toggle('is-close',camera.zoom>.42);
   for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
 }
 requestAnimationFrame(animate);
 async function initialize(){try{
   await Promise.all([makeHome(),makeBuildings(),makeCharacter()]);
-  await refreshMe();await pollWorld();setInterval(pollWorld,4000);
+  await refreshMe();await pollWorld();setInterval(pollWorld,4000);setInterval(()=>{if(me?.user)refreshMe();},8000);
   $('loading').classList.add('is-ready');
   // Browser-visible diagnostics are limited to rendering; no wallet or account data.
   renderer.domElement.dataset.ready='true';

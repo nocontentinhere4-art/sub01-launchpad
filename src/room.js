@@ -72,7 +72,8 @@ export async function openRoom({plotId,mine}){
  const hud=roomHud({owner,mine,room,onChange:async()=>{applyLook();await build();},onSave:()=>api('/api/rooms/me',{method:'PUT',body:{room}}),onClose:close,onWave:()=>{pose='wave';t=0;hud.say(`${owner.name} waves back.`);}});
  let moving=null;
  const view={scene,camera,
-  resize(aspect){const h=mobile()?6.5:5.2;camera.left=-h*aspect;camera.right=h*aspect;camera.top=h;camera.bottom=-h;camera.updateProjectionMatrix();},
+  // Fit the whole room: portrait screens are width-bound.
+  resize(aspect){const h=Math.max(5.2,6.4/aspect);camera.left=-h*aspect;camera.right=h*aspect;const lift=aspect<.8?.42:0;camera.top=h*(1-lift);camera.bottom=-h*(1+lift);camera.updateProjectionMatrix();},
   click(ndc){const ray=new THREE.Raycaster();ray.setFromCamera(ndc,camera);
    if(hud.editing()){const hitFloor=ray.intersectObject(floor)[0],hitPiece=ray.intersectObjects(furnitureRoot.children,true)[0];
     if(moving!==null&&hitFloor){room.furniture[moving].x=+hitFloor.point.x.toFixed(2);room.furniture[moving].z=+hitFloor.point.z.toFixed(2);pieces[moving].wrap.position.set(hitFloor.point.x,0,hitFloor.point.z);hud.select(null);moving=null;applyLook();return;}

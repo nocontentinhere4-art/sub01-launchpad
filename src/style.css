@@ -39,3 +39,6 @@
 .room-panel fieldset{border:0;padding:0;margin:0 0 12px;display:flex;flex-wrap:wrap;gap:6px}.room-panel legend{font:9px monospace;letter-spacing:1px;color:#7b7f72;margin-bottom:7px}.room-panel .swatch{width:30px;height:30px;border-radius:8px;border:2px solid #fff;box-shadow:0 0 0 1px #d6d2c7}.room-panel .swatch[aria-pressed=true],.room-panel .chip[aria-pressed=true]{box-shadow:0 0 0 2px var(--orange)}.room-panel .chip{border:1px solid #d6d2c7;background:#fffdf6;border-radius:20px;padding:7px 10px;font:10px monospace;text-transform:capitalize}.room-panel .button{width:100%}
 .room-hud>.button{position:absolute;right:36px;bottom:30px}
 @media(max-width:600px){.account-chip{position:absolute;top:75px;right:16px;margin:0;padding:6px 9px;font-size:8px;max-width:120px}.room-top{top:80px;left:14px;right:14px}.room-top strong{font-size:19px}.room-board{left:14px;right:14px;top:auto;bottom:80px;width:auto}.room-panel{max-height:46dvh;overflow:auto}.room-bubble{bottom:20px;font-size:11px}.room-hud>.button{right:14px;bottom:70px}}
+.intro{transition:opacity .4s}.is-close .intro{opacity:0}
+.room-top>div{background:#faf8f0ee;color:#242722;padding:10px 16px;border-radius:12px;box-shadow:0 6px 24px #0000001a}
+@media(max-width:600px){.in-room .preview-badge,.in-room .account-chip{display:none}}
