@@ -580,7 +580,7 @@ async function enter(plotId,mine,viewer){
    if(party>0)party-=dt;for(const sp of specials)sp.update(dt);if(pet)petStep(dt);
    feet.position.set(r.x,(me.posed==='lie'?r.y:0)+.012,r.z);feet.visible=me.posed!=='lie';
   },
-  dispose(){
+  dispose(){sun.dispose();
    closed=true;for(const id of timers)clearTimeout(id);
    canvas?.removeEventListener('pointerdown',onDown);removeEventListener('pointermove',onMove);removeEventListener('pointerup',onUp);removeEventListener('pointercancel',onUp);
    me.dispose();pet?.dispose();for(const sp of specials)sp.dispose();specials.clear();for(const m of owned)m.dispose();scene.clear();
