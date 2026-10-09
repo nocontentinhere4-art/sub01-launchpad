@@ -7,6 +7,7 @@ import {CROWD_OUTFITS,CLIP_FRAMES,CROWD_PX,crowdLook,crowdPixels,crowdClose,cull
 import {HEIGHT,lookMaterials} from '../src/characters.js';
 import {SKINS,HAIRS,CLOTHES} from '../src/creator.js';
 import {addResidents} from '../src/residents.js';
+import {RAMP} from '../src/toon.js';
 
 const glb=name=>new Promise((ok,fail)=>{const b=readFileSync(new URL(`../public/assets/characters/${name}.glb`,import.meta.url));new GLTFLoader().parse(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'',ok,fail);});
 let assets=null;const load=async()=>assets||={anims:await glb('anims'),...Object.fromEntries(await Promise.all(CROWD_OUTFITS.map(async o=>[o,await glb(o)])))};
@@ -80,6 +81,8 @@ test('GPU crowd: five instanced meshes, compacted instances, ≤ 6 draw calls, r
  assert.equal(gpu.push({},0,0,0,0),false,'pushes before load are ignored');
  await gpu.load(async(kind,name)=>a[name]);assert.equal(gpu.ready,true);assert.equal(gpu.meshes.length,5);
  assert.ok(gpu.meshes.every(m=>m.frustumCulled===false&&m.boundingSphere&&m.material.isShaderMaterial));
+ // Lit like the city: toon.js's coloured ramp and the scene fog.
+ assert.ok(gpu.meshes.every(m=>m.material.fog===true&&m.material.uniforms.uRamp.value.map(c=>c.getHexString()).join()===RAMP.map(h=>new THREE.Color(h).getHexString()).join()));
  gpu.begin(12.5);
  for(let i=0;i<20;i++)gpu.push({outfit:CROWD_OUTFITS[i%5],top:'#ff0000'},i,.24,0,i,{clip:i%2?'Walk':'Idle'});
  gpu.push({outfit:'suit',hairStyle:'buzz',skin:'#123456',hair:'#ffffff'},30,.26,0,0,{clip:'Wave',bias:.1});

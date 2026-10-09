@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import {OUTFITS,HEIGHT,lookMaterials,hiddenMaterials} from './characters.js';
 import {CLOTHES,SKINS,HAIRS,HAIR_STYLES} from './creator.js';
+import {RAMP} from './toon.js';
 // Instanced skinned crowd: street pedestrians, residents and party guests drawn as the same rigged people the creator makes.
 // Per outfit, every skinned mesh of its glb is merged into ONE geometry (aTint.w = look slot); ONE float texture holds the
 // baked bone matrices (bone.matrixWorld × boneInverse) of the shared 62-bone rig for Idle/Walk/Run/Wave; the vertex shader
@@ -103,6 +104,7 @@ export function bakeBones(scene,clips,spec=CLIP_FRAMES){
 const VERT=`uniform highp sampler2D uBones;uniform float uTime;uniform mat4 uFit;
 attribute vec4 skinIndex;attribute vec4 skinWeight;attribute vec4 aTint;attribute vec4 aAnim;attribute vec4 aCol0;attribute vec4 aCol1;attribute vec4 aCol2;
 varying vec3 vColor;varying vec3 vNormal;
+#include <fog_pars_vertex>
 mat4 boneAt(float i,int row){int x=int(i+.5)*${TEXELS};return mat4(texelFetch(uBones,ivec2(x,row),0),texelFetch(uBones,ivec2(x+1,row),0),texelFetch(uBones,ivec2(x+2,row),0),texelFetch(uBones,ivec2(x+3,row),0));}
 void main(){
  int row=int(aAnim.x+floor(mod(uTime*aAnim.w+aAnim.z,aAnim.y)));
@@ -114,16 +116,21 @@ void main(){
  vNormal=normalize(mat3(M)*normal);
  float s=aTint.w;vec3 t=aTint.rgb;
  vColor=s<.5?aCol0.rgb*t:s<1.5?vec3(aCol0.w,aCol1.xy)*t:s<2.5?vec3(aCol1.zw,aCol2.x)*t:s<3.5?aCol2.yzw*t:t;
- gl_Position=projectionMatrix*viewMatrix*M*vec4(position,1.);}`;
-// MeshToonMaterial with toon.js's 3-band gradient (90/170/255), hemisphere + two directional lights, no shadows.
-const FRAG=`uniform vec3 uSky;uniform vec3 uGround;uniform vec3 uL0;uniform vec3 uC0;uniform vec3 uL1;uniform vec3 uC1;
+ vec4 mvPosition=viewMatrix*M*vec4(position,1.);gl_Position=projectionMatrix*mvPosition;
+ #include <fog_vertex>
+}`;
+// MeshToonMaterial with toon.js's coloured 3-band ramp (same texels, same thresholds), hemisphere + up to two directional
+// lights, the scene fog, no shadows. So people and city share the cool shade and the warm lit side.
+const FRAG=`uniform vec3 uSky;uniform vec3 uGround;uniform vec3 uL0;uniform vec3 uC0;uniform vec3 uL1;uniform vec3 uC1;uniform vec3 uRamp[3];
 varying vec3 vColor;varying vec3 vNormal;
-float band(float d){float u=d*.5+.5;return u<.33334?.35294:u<.66667?.66667:1.;}
+#include <fog_pars_fragment>
+vec3 band(float d){float u=d*.5+.5;return u<.33334?uRamp[0]:u<.66667?uRamp[1]:uRamp[2];}
 void main(){vec3 n=normalize(vNormal);
  vec3 irr=mix(uGround,uSky,n.y*.5+.5)+band(dot(n,uL0))*uC0+band(dot(n,uL1))*uC1;
  gl_FragColor=vec4(vColor*irr*.31830989,1.);
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
+ #include <fog_fragment>
 }`;
 
 // parent: the scene. lights: {hemi, dirs:[DirectionalLight…]} read every frame (day/night follow for free).
@@ -132,7 +139,8 @@ void main(){vec3 n=normalize(vNormal);
 export function createCrowdGPU(parent,{mobile=false,lights=null,cap=mobile?CROWD_CAP.mobile:CROWD_CAP.desktop,budget=mobile?CROWD_TRIS.mobile:CROWD_TRIS.desktop}={}){
  const root=new THREE.Group();root.name='GPU crowd';parent.add(root);
  const shared={uBones:{value:null},uTime:{value:0},uSky:{value:new THREE.Color()},uGround:{value:new THREE.Color()},
-  uL0:{value:new THREE.Vector3(0,1,0)},uC0:{value:new THREE.Color(0,0,0)},uL1:{value:new THREE.Vector3(0,1,0)},uC1:{value:new THREE.Color(0,0,0)}};
+  uL0:{value:new THREE.Vector3(0,1,0)},uC0:{value:new THREE.Color(0,0,0)},uL1:{value:new THREE.Vector3(0,1,0)},uC1:{value:new THREE.Color(0,0,0)},
+  uRamp:{value:RAMP.map(h=>new THREE.Color(h))},...THREE.UniformsUtils.clone(THREE.UniformsLib.fog)};
  const pool=Array.from({length:Math.max(cap*2,360)},()=>({look:null,x:0,y:0,z:0,yaw:0,scale:1,clip:'Idle',phase:0,rate:1,bias:1,d:0}));
  const packed=new WeakMap(),visible=[],perOutfit=new Map();let n=0,meshes=[],bake=null,loading=null,failedAt=-Infinity,ready=false,stats={instances:0,triangles:0,drawCalls:0};
  // Linear colours for the four slots; buzz shows skin where the hair would be. Cached per look object.
@@ -142,7 +150,7 @@ export function createCrowdGPU(parent,{mobile=false,lights=null,cap=mobile?CROWD
  function build(merged,outfit){
   const g=merged.geometry,attr=(name,size)=>{const a=new THREE.InstancedBufferAttribute(new Float32Array(cap*size),size);a.setUsage(THREE.DynamicDrawUsage);g.setAttribute(name,a);return a;};
   const anim=attr('aAnim',4),cols=[attr('aCol0',4),attr('aCol1',4),attr('aCol2',4)];
-  const material=new THREE.ShaderMaterial({name:'crowd-'+outfit,uniforms:{...shared,uFit:{value:merged.fit}},vertexShader:VERT,fragmentShader:FRAG});
+  const material=new THREE.ShaderMaterial({name:'crowd-'+outfit,uniforms:{...shared,uFit:{value:merged.fit}},vertexShader:VERT,fragmentShader:FRAG,fog:true});
   const mesh=new THREE.InstancedMesh(g,material,cap);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.count=0;mesh.visible=false;
   // Instances move every frame and are culled on the CPU; the sphere only keeps three from computing one.
   mesh.frustumCulled=false;mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(),1e4);mesh.raycast=()=>{};mesh.name='crowd '+outfit;
@@ -172,7 +180,7 @@ export function createCrowdGPU(parent,{mobile=false,lights=null,cap=mobile?CROWD
   if(!ready){stats={instances:0,triangles:0,drawCalls:0};return stats;}
   shared.uTime.value=time;
   if(lights){const h=lights.hemi;if(h){shared.uSky.value.copy(h.color).multiplyScalar(h.intensity);shared.uGround.value.copy(h.groundColor).multiplyScalar(h.intensity);}
-   (lights.dirs||[]).slice(0,2).forEach((d,i)=>{shared['uL'+i].value.subVectors(d.position,d.target.position).normalize();shared['uC'+i].value.copy(d.color).multiplyScalar(d.intensity);});}
+   for(let i=0;i<2;i++){const d=lights.dirs?.[i];if(d){shared['uL'+i].value.subVectors(d.position,d.target.position).normalize();shared['uC'+i].value.copy(d.color).multiplyScalar(d.intensity);}else shared['uC'+i].value.setRGB(0,0,0);}}
   cullInstances(pool,n,target,radius,cap,visible);
   for(const b of perOutfit.values())b.count=0;
   let tris=0,calls=0,drawn=0;

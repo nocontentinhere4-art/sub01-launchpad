@@ -1,6 +1,6 @@
 import './style.css';
 import * as THREE from 'three';
-import {toon,toonify} from './toon.js';
+import {toon,toonify,night as nightAmount} from './toon.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { places, residence } from './state.js';
@@ -33,16 +33,20 @@ let explorer=null,lastTap={t:0,x:0,y:0};const groundPlane=new THREE.Plane(new TH
 const floorY = 0.24;
 const labels = [], interactive = [], cache = new Map();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#eee9df');
+// The sky is the page's CSS gradient behind a transparent canvas (style.css #world): zero draw calls, exact colours.
+scene.background = null;
 const camera = new THREE.OrthographicCamera(-18, 18, 18, -18, 0.1, 400);
 camera.position.set(27, 31, 35);
-const renderer = new THREE.WebGLRenderer({ antialias: !mobile, alpha: false, powerPreference: 'low-power' });
+const renderer = new THREE.WebGLRenderer({ antialias: !mobile, alpha: true, powerPreference: 'low-power' });
+renderer.setClearColor(0x000000, 0);
 renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.25 : 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.35;
+// Rooms keep the exposure they were tuned with; the city uses the art brief's (3.10).
+const EXPOSURE = { city: 1.02, room: 1.35 };
+renderer.toneMappingExposure = EXPOSURE.city;
 $('world').append(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 2);
@@ -51,13 +55,39 @@ controls.minZoom = .07; controls.maxZoom = 2.8;
 controls.minPolarAngle = .3; controls.maxPolarAngle = 1.1;
 controls.enablePan = true;
 controls.addEventListener('start', () => { cityTour=null;follow = false; cameraTween = null; followObj=null; });
-const hemi = new THREE.HemisphereLight('#fff9e9', '#8c9a78', 2.5); scene.add(hemi);
-const sunlight = new THREE.DirectionalLight('#fff3da', 3.2);
-sunlight.position.set(-12, 24, 13); sunlight.castShadow = true;
-sunlight.shadow.mapSize.set(mobile ? 512 : 1024, mobile ? 512 : 1024);
-Object.assign(sunlight.shadow.camera, { left: -24, right: 24, top: 24, bottom: -24, near: 1, far: 65 });
-sunlight.shadow.bias = -.0008; sunlight.shadow.normalBias = .025; scene.add(sunlight);
-const fill = new THREE.DirectionalLight('#ffffff', 1); fill.position.set(15, 10, -10); scene.add(fill);
+// Light (art brief 3.10): a low warm sun at 38° that lights the +z faces and shades the +x faces (the two the camera
+// sees), a weak cool-sky / warm-ground hemisphere, the white fill replaced by a faint cool one from the opposite side
+// (it tints the shaded faces blue and brings lit/shade to ~1.9). Coloured toon ramp in toon.js; linear fog for depth.
+const LOOK = {
+  day: { hemi: ['#CFDDF0', '#B9A88E', 1.1], sun: ['#FFE6C4', 2.6], fill: ['#9DB3D6', .45], fog: '#E6DFD2', shadows: true },
+  night: { hemi: ['#2E4A86', '#2A2630', 3.2], sun: ['#9DB0E0', .5], fill: ['#9DB3D6', 0], fog: '#1C2638', shadows: false },
+};
+const SUN_DIR = new THREE.Vector3(-.45, .62, .64).normalize(), SUN_DISTANCE = 70;
+const hemi = new THREE.HemisphereLight(...LOOK.day.hemi); scene.add(hemi);
+const sunlight = new THREE.DirectionalLight(...LOOK.day.sun);
+sunlight.castShadow = true; scene.add(sunlight, sunlight.target);
+const SHADOW_MAP = mobile ? 512 : 1024;
+sunlight.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+Object.assign(sunlight.shadow.camera, { near: 1, far: 150 });
+sunlight.shadow.bias = -.0006;
+// Cast shadows keep a little sun so they sit at the same value as the shaded band of the ramp, not darker.
+sunlight.shadow.intensity = .8;
+const fill = new THREE.DirectionalLight(...LOOK.day.fill); fill.position.set(.45, .3, -.64); scene.add(fill);
+// Fog is measured from the camera; the ortho camera sits a fixed distance from its target, so fog is set relative to it.
+const FOG = { near: 12, far: 230 };
+scene.fog = new THREE.Fog(LOOK.day.fog, 100, 300);
+// One shadow map near what the camera looks at: the light follows controls.target (snapped to whole texels so edges do
+// not crawl while panning) and its box grows with the visible area, from ±18 up close to ±62 in the overview.
+let shadowHalf = 0;
+function updateSunAndFog() {
+  const d = camera.position.distanceTo(controls.target); scene.fog.near = d + FOG.near; scene.fog.far = d + FOG.far;
+  if (!sunlight.castShadow) return;
+  const half = THREE.MathUtils.clamp(Math.max(camera.right, camera.top) / camera.zoom * 1.1, 18, 62);
+  if (Math.abs(half - shadowHalf) > .5) { shadowHalf = half; Object.assign(sunlight.shadow.camera, { left: -half, right: half, top: half, bottom: -half }); sunlight.shadow.camera.updateProjectionMatrix(); sunlight.shadow.normalBias = half * 2 / SHADOW_MAP * .9; }
+  const texel = shadowHalf * 2 / SHADOW_MAP, t = controls.target;
+  sunlight.target.position.set(Math.round(t.x / texel) * texel, 0, Math.round(t.z / texel) * texel);
+  sunlight.position.copy(sunlight.target.position).addScaledVector(SUN_DIR, SUN_DISTANCE);
+}
 const roomLight = new THREE.PointLight('#ffb366', 0, 12); roomLight.position.set(-6, 3, -4); scene.add(roomLight);
 // Pedestrians, residents and party guests up close: rigged characters drawn by instanced GPU skinning (crowd-gpu.js).
 const crowdGPU = createCrowdGPU(scene, { mobile, lights: { hemi, dirs: [sunlight, fill] } });
@@ -107,15 +137,16 @@ async function model(kind, name, x, z, size, rotation = 0, by = 'width', y = flo
 }
 
 function groundwork() {
-  box(28, .65, 26, '#c7c8ad', 0, -.37, 2);
-  box(27.7, .18, 25.7, '#aeb697', 0, .045, 2);
+  // Concrete block, not lawn (brief 3.9): the hero block matches the districts' block concrete and side-street asphalt.
+  box(28, .65, 26, '#9C9A91', 0, -.37, 2);
+  box(27.7, .18, 25.7, '#A9A79D', 0, .045, 2);
   // The central street connects the project's small, walkable parcels.
-  box(27.7, .035, 3.5, '#69736c', 0, .165, 1.6);
-  box(27.7, .055, .52, '#ded8c5', 0, .175, -.4);
-  box(27.7, .055, .52, '#ded8c5', 0, .175, 3.6);
-  for (let x = -13; x < 14; x += 2.1) box(.8, .01, .06, '#d9d2bb', x, .19, 1.6);
-  for (const x of [-6, 3.4]) box(1.25, .04, 3, '#ddd7c3', x, .18, -1.5);
-  for (const x of [-3.5, 8]) box(1.25, .04, 3, '#ddd7c3', x, .18, 5.25);
+  box(27.7, .035, 3.5, '#7A7F7C', 0, .165, 1.6);
+  box(27.7, .055, .52, '#B4B1A7', 0, .175, -.4);
+  box(27.7, .055, .52, '#B4B1A7', 0, .175, 3.6);
+  // A Japanese side street has no centre line.
+  for (const x of [-6, 3.4]) box(1.25, .04, 3, '#CFCBC0', x, .18, -1.5);
+  for (const x of [-3.5, 8]) box(1.25, .04, 3, '#CFCBC0', x, .18, 5.25);
   for (const p of places) {
     box(p.id === 'home' ? 7.6 : 6.7, .12, p.id === 'home' ? 6.9 : 6.4, '#d9d4bd', p.x, .2, p.z);
   }
@@ -408,9 +439,13 @@ function cityEvent(e){
  else if(e.kind==='launched'){const id=e.plotId||cityBuildings.find(b=>b.type==='project'&&(e.ticker&&b.ticker===e.ticker||b.name===e.name))?.plotId;if(id)party(id,e);}
 }
 $('day-night').onclick=()=>{
-  night=!night;scene.background.set(night?'#112638':'#eee9df');hemi.intensity=night?1.5:2.5;hemi.color.set(night?'#8bbacd':'#fff9e9');sunlight.intensity=night?.7:3.2;roomLight.intensity=night?7:0;cityRenderer?.setNight(night);cityEvents.setNight(night);
+  night=!night;applyLook(night);roomLight.intensity=night?7:0;cityRenderer?.setNight(night);cityEvents.setNight(night);
   $('day-night').textContent=night?'☀':'☾';$('day-night').setAttribute('aria-label',night?'Switch to day':'Switch to night');document.body.classList.toggle('is-night',night);
 };
+// Night (brief 3.9/3.10): saturated blue ambient, the sun down to a faint moon, dark fog, no shadow map (a cost with no
+// visible benefit); toon.js's shared night amount lets the city's materials apply their own night multipliers.
+function applyLook(isNight){const L=isNight?LOOK.night:LOOK.day;hemi.color.set(L.hemi[0]);hemi.groundColor.set(L.hemi[1]);hemi.intensity=L.hemi[2];
+  sunlight.color.set(L.sun[0]);sunlight.intensity=L.sun[1];fill.color.set(L.fill[0]);fill.intensity=L.fill[1];sunlight.castShadow=L.shadows;scene.fog.color.set(L.fog);nightAmount.value=isNight?1:0;}
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();let down;
 renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY};});
 renderer.domElement.addEventListener('pointerup',e=>{
@@ -455,7 +490,8 @@ function animate(now){
   requestAnimationFrame(animate);
   if(document.hidden||now-lastRender<(mobile?1000/30:1000/45))return;
   lastRender=now;
-  if(roomView){roomView.update(Math.min(clock.getDelta(),.08));renderer.render(roomView.scene,roomView.camera);return;}
+  if(roomView){renderer.toneMappingExposure=EXPOSURE.room;roomView.update(Math.min(clock.getDelta(),.08));renderer.render(roomView.scene,roomView.camera);return;}
+  renderer.toneMappingExposure=EXPOSURE.city;
   const seconds=reducedMotion?0:now*.001;crowdBegin(seconds);cityRenderer?.update(seconds);const dt=Math.min(clock.getDelta(),.08);sub01?.update(dt);residents.update(seconds,crowdGPU);cityEvents.update(dt,renderer.getPixelRatio()*innerHeight*camera.zoom/(camera.top-camera.bottom));if(explorer&&cityEvents.visitor)explorer.update(dt);if(cityEvents.visitor){roamTag.position.copy(cityEvents.visitor.position);roamTag.position.y+=2.05;}
   if(goal?.activity==='party'&&!walker&&now>partyWaveAt&&partyWaveAt){play('Idle');play('Wave');partyWaveAt=now+6e3;}
   if(walker&&character){
@@ -466,7 +502,7 @@ function animate(now){
   if(character){const m=character.userData.marker,fl=markerFlash>now?Math.abs(Math.sin(now*.012)):0;m.scale.setScalar(1+fl*.9);m.material.emissiveIntensity=.25+fl*2.5;m.position.copy(character.position);m.position.y+=2+(reducedMotion?0:Math.sin(now*.002)*.04);m.rotation.y=now*.0005;if(follow){const before=controls.target.clone();controls.target.lerp((followObj||character).position,.07);camera.position.add(controls.target.clone().sub(before));}}
   if(cameraTween){cameraTween.elapsed+=dt;const t=Math.min(cameraTween.elapsed/.75,1),ease=1-(1-t)**3;const before=controls.target.clone();controls.target.lerpVectors(cameraTween.start,cameraTween.target,ease);camera.position.add(controls.target.clone().sub(before));camera.zoom=THREE.MathUtils.lerp(cameraTween.zoom,cameraTween.endZoom,ease);camera.updateProjectionMatrix();if(t===1)cameraTween=null;}
   if(cityTour){cityTour.elapsed+=dt;if(cityTour.elapsed>5){cityTour.elapsed=0;cityTour.index++;if(cityTour.index>=cityViews.length){cityTour=null;resetView();$('activity-text').textContent='Your idea. Your city. Choose an address.';}else nextCityView();}}
-  controls.update();crowdEnd(now);renderer.render(scene,camera);
+  controls.update();updateSunAndFog();crowdEnd(now);renderer.render(scene,camera);
   document.body.classList.toggle('is-close',camera.zoom>.42);
   for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
 }

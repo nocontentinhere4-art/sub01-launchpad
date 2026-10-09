@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import {toon,toonify} from './toon.js';
+import {toon,nightColor} from './toon.js';
 import {crossingState} from './city-crowd.js';
+import {addStreet,hash,LIGHT} from './city-street.js';
 export function trainPosition(seconds,offset=0){
  const t=((seconds+offset)%108+108)%108;
  const ease=v=>v*v*(3-2*v);
@@ -13,6 +14,19 @@ export function trainPosition(seconds,offset=0){
  if(t<103)return -26-40*ease((t-87)/16);
  return -66;
 }
+// Distant skyline (brief 3.11, 3.10): three clusters with gaps (one left open for Fuji), three depth layers whose values
+// step lighter with distance, widths 2–6 and skewed heights 8–30 with no fixed pitch, 1 in 6 with a crown.
+export const SKYLINE={day:['#7D8E98','#9AA8B0','#B7C1C4'],night:['#24304A','#202B43','#1B263C']};
+export function skylinePlan(){
+ const out=[],groups=[['n',-75,-40],['n',-17,50],['w',-66,-30]];
+ groups.forEach(([edge,from,to],g)=>{for(let layer=0;layer<3;layer++){let u=from+hash(g,layer,1)*3;
+  while(u<to){const r=k=>hash(g,layer,u,k),w=2+4*r(1),d=2.4+2.6*r(2),h=Math.min(30,8+22*r(3)**1.8+layer*2*r(4));
+   const off=6+layer*7.5+r(5)*3,x=edge==='n'?u+w/2:-71-off-d/2,z=edge==='n'?-71-off-d/2:u+w/2;
+   const crown=r(6)<1/6?['setback','mast','helipad','light'][Math.floor(r(7)*4)]:null;
+   out.push({x,z,w:edge==='n'?w:d,d:edge==='n'?d:w,h,layer,crown,edge,seed:r(8)});
+   u+=w+(r(9)<.14+layer*.1?3+r(10)*5:.25+r(10)*.9)+layer*1.8;}}});
+ return out;
+}
 // Infrastructure and distant skyline use shared meshes. No new external assets.
 export function addCityLife(parent){
  const root=new THREE.Group();parent.add(root);
@@ -20,14 +34,24 @@ export function addCityLife(parent){
  const solid=[],windows=[],water=[];
  const item=(list,x,y,z,w,h,d,color)=>list.push({x,y,z,w,h,d,color});
  const mat=toon({roughness:.86});
- const emissive=new THREE.MeshBasicMaterial({color:'#ffffff'});
- function batch(items,material){const mesh=new THREE.InstancedMesh(geo,material,items.length);items.forEach((s,i)=>{dummy.position.set(s.x,s.y,s.z);dummy.rotation.set(0,0,0);dummy.scale.set(s.w,s.h,s.d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,new THREE.Color(s.color));});root.add(mesh);return mesh;}
- // Dense horizon, distinct stepped crowns rather than uniform slab heights.
- for(let i=0;i<40;i++){
-  const x=-71+i*3.65,z=-77-(i%3)*4,h=7+(i*7%19),width=2.1+(i%3)*.4;
-  item(solid,x,h/2,z,width,h,3,'#496b80');item(solid,x,h+.5,z,width*.7,1,width*.8,'#668597');
-  if(i%4===0)item(solid,x,h+1.8,z,.12,2,.12,'#edb166');
-  for(let y=1;y<h;y+=1.6)for(const dx of [-.6,.6])item(windows,x+dx,y,z+1.52,.27,.62,.035,i%3?'#9cbdbf':'#ffc68b');
+ const emissive=new THREE.MeshBasicMaterial({color:'#ffffff',toneMapped:false});
+ function batch(items,material,g=geo){const mesh=new THREE.InstancedMesh(g,material,items.length);items.forEach((s,i)=>{dummy.position.set(s.x,s.y,s.z);dummy.rotation.set(s.rx||0,0,s.rz||0);dummy.scale.set(s.w,s.h,s.d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,new THREE.Color(s.color));});root.add(mesh);return mesh;}
+ // Skyline bodies are unlit flat values (exact brief colours, fog on top); faces are pre-shaded through vertex colours.
+ const skyline=skylinePlan(),skyGeo=geo.clone(),shade=[.88,.9,1.05,1,1,.88];   // +x −x +y −y +z −z
+ skyGeo.setAttribute('color',new THREE.Float32BufferAttribute(Array.from({length:24},(_,v)=>Array(3).fill(shade[Math.floor(v/4)])).flat(),3));
+ const skyItems=[];
+ for(const b of skyline){const top=b.h,c=SKYLINE.day[b.layer];
+  item(skyItems,b.x,top/2,b.z,b.w,top,b.d,c);
+  if(b.crown==='setback')item(skyItems,b.x,top+1.4,b.z,b.w*.62,2.8,b.d*.62,c);
+  if(b.crown==='mast'||b.crown==='light')item(skyItems,b.x,top+1.6,b.z,.14,3.2,.14,c);
+  if(b.crown==='helipad')item(skyItems,b.x,top+.12,b.z,Math.min(b.w,b.d)*.86,.24,Math.min(b.w,b.d)*.86,SKYLINE.day[Math.min(2,b.layer+1)]);
+  // Night: 10–20% of window slots lit on the faces the camera sees, a few whole office floors, aviation lights on masts.
+  const faces=b.edge==='n'?[['z',b.w],['x',b.d]]:[['x',b.d],['z',b.w]],rate=.1+b.seed*.1;
+  for(let y=1.4;y<top-.6;y+=1.55)for(const [axis,span] of faces){const cols=Math.max(1,Math.floor(span/1.1));
+   if(hash(b.x,y,axis==='x'?1:2,30)<.035){axis==='z'?item(windows,b.x,y,b.z+b.d/2+.03,b.w*.84,.42,.04,'#FFE6B8'):item(windows,b.x+b.w/2+.03,y,b.z,.04,.42,b.d*.84,'#FFE6B8');continue;}
+   for(let c=0;c<cols;c++){if(hash(b.x,b.z,y,c,axis==='x'?3:4)>=rate)continue;const t=(c+.5)/cols-.5,k=hash(b.x,y,c,31),col=k<.55?'#FFC27A':k<.88?'#FFE6B8':'#D8E6F0';
+    axis==='z'?item(windows,b.x+t*span,y,b.z+b.d/2+.03,.48,.6,.04,col):item(windows,b.x+b.w/2+.03,y,b.z+t*span,.04,.6,.48,col);}}
+  if(b.crown==='light'||b.crown==='mast')item(windows,b.x,top+3.25,b.z,.28,.28,.28,'#FF5A4A');
  }
  // Waterfront to the east, with a promenade and three bridges.
  item(water,79,-.05,2,11,.1,153,'#26708a');item(solid,72.8,.25,2,1.5,.35,153,'#829ba0');item(solid,85.3,.25,2,1.5,.35,153,'#829ba0');
@@ -50,7 +74,16 @@ export function addCityLife(parent){
  const treeSites=[];
  for(const x of [72.8,85.3])for(let z=-67;z<=73;z+=10){if([-38,2,42].some(bridge=>Math.abs(z-bridge)<4))continue;treeSites.push({x,z});item(solid,x,1.35,z,.22,2.2,.22,'#876551');}
  for(const x of [-41,-17])for(const z of [-1,5])item(solid,x,1.9,z,.1,3.4,.1,'#536274');
- batch(solid,mat);batch(windows,emissive);const river=batch(water,new THREE.MeshBasicMaterial({color:'#b1d5df'}));
+ // Utility poles, lamps and fittings join the shared solid batch; cables and light pools are one draw call each.
+ const street=addStreet(root);solid.push(...street.items);
+ // The Roppongi lantern street gets warm pools of its own.
+ for(const z of [-1,5])for(let x=-39;x<=-19;x+=5)street.addLightPool(x+hash(x,z)*1.5,z+(z<0?.9:-.9),LIGHT.lantern,1.9,{strength:.42,group:'lanterns'});
+ const solidMesh=batch(solid,mat);solidMesh.castShadow=true;solidMesh.receiveShadow=true;
+ const skyMat=new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false}),skyMesh=batch(skyItems,skyMat,skyGeo);skyMesh.name='skyline';
+ // Their feet dissolve into the fog colour (ground haze), so the skyline stands behind the city instead of on nothing.
+ skyMat.onBeforeCompile=sh=>{sh.vertexShader='varying float vSkyY;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n vSkyY=(modelMatrix*instanceMatrix*vec4(transformed,1.)).y;');
+  sh.fragmentShader='varying float vSkyY;\n'+sh.fragmentShader.replace('#include <fog_fragment>','#include <fog_fragment>\n #ifdef USE_FOG\n gl_FragColor.rgb=mix(gl_FragColor.rgb,fogColor,.85*(1.-smoothstep(0.,11.,vSkyY)));\n #endif');};
+ const windowMesh=batch(windows,emissive);windowMesh.visible=false;const river=batch(water,new THREE.MeshBasicMaterial({color:'#b1d5df'}));
  const blossoms=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),toon({roughness:1}),treeSites.length*3);root.add(blossoms);
  treeSites.forEach((p,i)=>{for(let j=0;j<3;j++){dummy.position.set(p.x+(j-1)*.68,2.5+(j%2)*.48,p.z+(j%2)*.35);dummy.rotation.set(.1*i,.4*i,.1*j);dummy.scale.set(1.02,.88,.95);dummy.updateMatrix();blossoms.setMatrixAt(i*3+j,dummy.matrix);blossoms.setColorAt(i*3+j,new THREE.Color(['#d9a3ba','#e7bdc6','#c990b0'][(i+j)%3]));}});
  const petalTime={value:0},petalGeometry=new THREE.BufferGeometry();
@@ -95,5 +128,9 @@ export function addCityLife(parent){
   river.material.color.setHSL(.54,.32,currentNight?.49+Math.sin(seconds*.65)*.025:.72);
  }
  update(0);
- return {update,setNight(value){currentNight=value;mat.color.set(value?'#9cb6c9':'#ffffff');emissive.color.set(value?'#ffffff':'#8b9c9a');},root,river,trains};
+ const skyColor=new THREE.Color(),white=new THREE.Color('#ffffff');
+ return {update,setNight(value){currentNight=value;mat.color.copy(value?nightColor('walls'):white);windowMesh.visible=value;street.setNight(value);
+   // Skyline values swap per layer; crowns keep the colour of their own layer.
+   skyItems.forEach((s,i)=>{const layer=SKYLINE.day.indexOf(s.color);skyMesh.setColorAt(i,skyColor.set(value?SKYLINE.night[layer]:s.color));});skyMesh.instanceColor.needsUpdate=true;},
+  root,river,trains,street,skyline:skyMesh,addLightPool:street.addLightPool,clearLightPools:street.clearLightPools};
 }

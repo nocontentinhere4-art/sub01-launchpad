@@ -140,3 +140,6 @@
 /* ===== end explore mode ===== */
 /* explore: the roaming model's name tag */
 .world-label.roam-tag{pointer-events:none;cursor:default;background:var(--orange);color:#272720;border-color:var(--orange);padding:4px 8px}.world-label.roam-tag::after{background:var(--orange)}
+/* Sky (art brief 3.9): the canvas is transparent and this gradient is the sky; at night a city-glow band at the horizon. */
+#world{background:linear-gradient(#C9D8E2,#EFE6D6)}
+.is-night #world{background:linear-gradient(#0D1726,#2A3550 80%,#4A3F57)}
