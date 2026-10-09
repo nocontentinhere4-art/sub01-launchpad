@@ -11,9 +11,9 @@
   <div id="app">
     <div id="world" aria-label="Interactive 3D neighborhood"></div>
     <header class="topbar">
-      <a class="brand" href="#" aria-label="SUB-01 neighborhood home"><span class="brand-mark">S<span>01</span></span><span>SUBZERONE<small>TOKYO / BLOCK 001</small></span></a>
+      <a class="brand" href="#" aria-label="SUB-01 neighborhood home"><span class="brand-mark">S<span>01</span></span><span>SUBZERONE<small>TOKYO / YOUR CITY</small></span></a>
       <div class="preview-badge"><i></i> CONCEPT PREVIEW</div>
-      <button class="button button-dark" id="idea-button">Bring an idea <span>↗</span></button>
+      <button class="button button-dark" id="idea-button">Build in Tokyo <span>↗</span></button>
     </header>
     <section class="intro">
       <span class="eyebrow">ONE BRAIN. A CITY YOU CAN LIVE IN.</span>
@@ -22,8 +22,8 @@
     </section>
     <div id="labels" aria-hidden="true"></div>
     <aside class="project-panel" id="project-panel">
-      <div class="panel-heading"><span class="eyebrow">TOKYO / BLOCK 001</span><span class="count" id="project-count">04</span></div>
-      <div id="project-list"></div>
+      <div class="panel-heading"><span class="eyebrow">TOKYO / YOUR CITY</span><span class="count" id="project-count">04</span></div>
+      <label class="sr-only" for="district-select">Explore district</label><select id="district-select"><option value="">Entire city</option><option value="shiba">Shiba / Tokyo Tower</option><option value="shinjuku">Shinjuku</option><option value="akihabara">Akihabara</option><option value="shibuya">Shibuya</option><option value="harajuku">Harajuku</option><option value="nakameguro">Nakameguro</option><option value="ebisu">Ebisu</option><option value="roppongi">Roppongi</option></select><div class="city-shortcuts"><button id="home-view">SUB-01’s home</button><button id="tower-view">Tokyo Tower ↗</button></div><div id="project-list"></div>
       <button id="tour-button" class="button button-orange">Meet your dev <span>→</span></button>
       <p class="panel-footnote">Explore the concept. Projects and events here are demo examples.</p>
     </aside>
@@ -39,7 +39,7 @@
       <button class="icon-button" id="day-night" aria-label="Switch to night">☾</button>
     </nav>
     <div class="world-hint">DRAG TO EXPLORE <span>·</span> SELECT A BUILDING</div>
-    <div id="loading" class="loading"><div class="loading-mark">01</div><strong>Opening the neighborhood</strong><span id="loading-text">Making room for your ideas…</span></div>
+    <div id="loading" class="loading"><div class="loading-mark">01</div><strong>Opening Tokyo</strong><span id="loading-text">Making room for your ideas…</span></div>
     <div class="dialog-backdrop" id="detail-backdrop" hidden>
       <section class="detail-card" role="dialog" aria-modal="true" aria-labelledby="detail-name">
         <button class="close-button" id="detail-close" aria-label="Close project">×</button>
@@ -55,15 +55,16 @@
     <div class="dialog-backdrop" id="idea-backdrop" hidden>
       <section class="idea-card" role="dialog" aria-modal="true" aria-labelledby="idea-title">
         <button class="close-button" id="idea-close" aria-label="Close idea form">×</button>
-        <span class="eyebrow">LEAVE SOMETHING AT HIS DOOR</span><h2 id="idea-title">What should he build?</h2>
-        <p>Your first idea becomes a draft in this neighborhood.</p>
+        <span class="eyebrow">LEAVE SOMETHING AT HIS DOOR</span><h2 id="idea-title">Give your idea an address.</h2>
+        <p>Take a building or an empty lot. Make something that belongs here.</p>
         <form id="idea-form">
+          <label for="plot-address">Your address</label><select id="plot-address" required></select>
           <label for="project-name">Project name</label><input id="project-name" name="name" maxlength="40" required placeholder="Something worth opening a door for" />
           <label for="project-idea">The idea</label><textarea id="project-idea" name="idea" maxlength="400" required rows="3" placeholder="An arcade for people who keep buying the top…"></textarea>
-          <p class="form-error" id="form-error" role="alert"></p>
-          <button class="button button-orange" type="submit">Leave the brief <span>↗</span></button>
+          <div class="form-grid"><div><label for="building-ticker">Concept ticker</label><input id="building-ticker" required maxlength="10" placeholder="YOURCOIN" /></div><div><label for="building-type">Building style</label><select id="building-type"><option value="project">Project HQ</option><option value="apartment">Apartments</option><option value="studio">Studio</option></select></div></div><label for="building-color">Facade color</label><select id="building-color"><option value="orange">Orange</option><option value="mint">Mint</option><option value="violet">Violet</option><option value="sand">Sand</option></select><p class="form-error" id="form-error" role="alert"></p>
+          <button class="button button-orange" type="submit">Create this place <span>↗</span></button>
         </form>
-        <p class="disclosure">Saved on this device only. This preview does not launch a token or send your idea to a server.</p>
+        <p class="disclosure">Your building is saved on this device only. No purchase, global ownership, real token launch or deployed website.</p>
       </section>
     </div>
     <div class="dialog-backdrop" id="resident-backdrop" hidden>

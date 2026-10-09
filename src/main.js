@@ -3,12 +3,16 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { places, readDrafts, createDraft, STORAGE_KEY, tourStops, residence, RESIDENT_KEY, readResident, validateResident } from './state.js';
+import { places, readDrafts, tourStops, residence, RESIDENT_KEY, readResident, validateResident } from './state.js';
+
+import {cityPlots,districts,tower,CITY_KEY,readBuildings,createBuilding,plotView} from './city-state.js';
+import {createCity} from './city.js';
 
 const $ = id => document.getElementById(id);
 const mobile = matchMedia('(max-width:600px)').matches;
 const reducedMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
 let drafts = readDrafts(localStorage);
+let cityBuildings=readBuildings(localStorage),cityRenderer,selectedLot=null;
 let resident = readResident(localStorage), residentCharacter, residentMixer;
 let selectedPlace = places[0], night = false, follow = false, currentDialog = null, previousFocus = null;
 let character, mixer, actions, activeAction, tour = null, cameraTween = null, toastTimer;
@@ -16,7 +20,7 @@ const floorY = 0.24;
 const labels = [], interactive = [], cache = new Map();
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#eee9df');
-const camera = new THREE.OrthographicCamera(-18, 18, 18, -18, 0.1, 150);
+const camera = new THREE.OrthographicCamera(-18, 18, 18, -18, 0.1, 400);
 camera.position.set(27, 31, 35);
 const renderer = new THREE.WebGLRenderer({ antialias: !mobile, alpha: false, powerPreference: 'low-power' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, mobile ? 1.25 : 1.5));
@@ -29,7 +33,7 @@ $('world').append(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 2);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
-controls.minZoom = .6; controls.maxZoom = 2.8;
+controls.minZoom = .12; controls.maxZoom = 2.8;
 controls.minPolarAngle = .3; controls.maxPolarAngle = 1.1;
 controls.enablePan = true;
 controls.addEventListener('start', () => { follow = false; cameraTween = null; });
@@ -196,7 +200,10 @@ function play(name) {
 
 function renderList() {
   $('project-list').replaceChildren();
-  for (const p of [...places,{...residence, name:resident?resident.name+' / 03':residence.name,status:resident?'$'+resident.ticker+' · concept':residence.status},...drafts.map(d=>({ ...d, kind:'YOUR DRAFT', symbol:'+', color:'#d6a577', description:d.idea }))]) {
+  const district=$('district-select').value;
+  const available=cityPlots.filter(p=>!district||p.district===district).map(p=>plotView(p,cityBuildings));
+  const landmarks=[tower,...places,{...residence, name:resident?resident.name+' / 03':residence.name,status:resident?'$'+resident.ticker+' · concept':residence.status},...drafts.map(d=>({ ...d, kind:'YOUR DRAFT', symbol:'+', color:'#d6a577', description:d.idea }))];
+  for (const p of district?[...available,...landmarks]:[...available.filter(p=>p.claimed),...landmarks,...available.filter(p=>!p.claimed)]) {
     const button=document.createElement('button');button.className='project-row';button.setAttribute('aria-label',`Open ${p.name}`);
     const icon=document.createElement('span');icon.className='project-symbol';icon.textContent=p.symbol;icon.style.background=p.color+'25';icon.style.color=p.color;
     const meta=document.createElement('span');meta.className='project-meta';
@@ -205,7 +212,7 @@ function renderList() {
     meta.append(title,status);const arrow=document.createElement('span');arrow.className='project-arrow';arrow.textContent='↗';
     button.append(icon,meta,arrow);button.onclick=()=>showPlace(p);$('project-list').append(button);
   }
-  $('project-count').textContent=String(places.length+1+drafts.length).padStart(2,'0');
+  $('project-count').textContent=String(places.length+2+drafts.length+available.length).padStart(2,'0');
 }
 function openDialog(id) {
   previousFocus=document.activeElement;currentDialog=$(id);currentDialog.hidden=false;
@@ -219,27 +226,37 @@ function showPlace(p) {
   selectedPlace=p;$('detail-name').textContent=p.name;$('detail-category').textContent=p.kind;
   $('detail-description').textContent=p.description;$('detail-state').textContent=p.status;
   $('detail-icon').textContent=p.symbol;$('detail-icon').style.background=p.color+'25';$('detail-icon').style.color=p.color;
-  $('visit-button').textContent=p.id==='residence'?'Try your own apartment →':p.x===undefined?'View the brief':'Visit this place →';
+  $('visit-button').textContent=cityPlots.some(l=>l.id===p.id)?(p.claimed?'Visit your building →':'Take this address →'):p.id==='residence'?'Try your own apartment →':p.x===undefined?'View the brief':'Visit this place →';
   openDialog('detail-backdrop');
 }
 function focusPlace(p) {
   follow=false;
   if(p.x===undefined){notify('Your brief is saved here. Building integration comes next.');return;}
-  cameraTween={ start: controls.target.clone(), target: new THREE.Vector3(p.x,0,p.z), zoom:camera.zoom, endZoom:1.65, elapsed:0 };
+  cameraTween={ start: controls.target.clone(), target: new THREE.Vector3(p.x,p.id==='tower'?8:2,p.z), zoom:camera.zoom, endZoom:p.id==='tower'?1:1.65, elapsed:0 };
 }
 function notify(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;toastTimer=setTimeout(()=>{$('toast').hidden=true;},4500);}
 function startTour(){if(!character)return;tour={ index:0, elapsed:0, from:character.position.clone() };$('tour-button').disabled=true;play('Wave');$('activity-text').textContent=tourStops[0].text;follow=false;}
 function resize(){const w=innerWidth,h=innerHeight,aspect=w/h;const half=mobile?18:16.5;camera.left=-half*aspect;camera.right=half*aspect;camera.top=half;camera.bottom=-half;camera.updateProjectionMatrix();renderer.setSize(w,h);}
-function resetView(){follow=false;cameraTween=null;camera.position.set(27,31,35);controls.target.set(0,1.5,2);camera.zoom=mobile?.72:.82;camera.updateProjectionMatrix();controls.update();}
+function resetView(){follow=false;cameraTween=null;camera.position.set(85,100,110);controls.target.set(0,4,2);camera.zoom=mobile?.15:.33;camera.updateProjectionMatrix();controls.update();}
 
-$('idea-button').onclick=()=>openDialog('idea-backdrop');
+function openBuildForm(plot){
+ selectedLot=plot||cityPlots.find(p=>!cityBuildings.some(b=>b.plotId===p.id));
+ if(!selectedLot){notify('Every address in this local preview is taken.');return;}
+ $('plot-address').replaceChildren();
+ for(const p of cityPlots.filter(p=>!cityBuildings.some(b=>b.plotId===p.id))){const option=document.createElement('option');option.value=p.id;option.textContent=p.name+' / '+(p.vacant?'Open lot':'Building');$('plot-address').append(option);}
+ $('plot-address').value=selectedLot.id;$('form-error').textContent='';openDialog('idea-backdrop');
+}
+$('idea-button').onclick=()=>openBuildForm();
+$('district-select').onchange=()=>{renderList();const d=districts.find(d=>d.id===$('district-select').value);if(d){follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(d.x,2,d.z),zoom:camera.zoom,endZoom:mobile?.36:.72,elapsed:0};}else resetView();};
+$('home-view').onclick=()=>focusPlace(places[0]);
+$('tower-view').onclick=()=>focusPlace(tower);
 $('idea-close').onclick=$('detail-close').onclick=closeDialog;
 for(const id of ['idea-backdrop','detail-backdrop']) $(id).onclick=e=>{if(e.target===$(id))closeDialog();};
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape')closeDialog();
   if(e.key==='Tab'&&currentDialog){const nodes=[...currentDialog.querySelectorAll('button,input,textarea,select')].filter(n=>!n.disabled);const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){last.focus();e.preventDefault();}else if(!e.shiftKey&&document.activeElement===last){first.focus();e.preventDefault();}}
 });
-$('visit-button').onclick=()=>{closeDialog();focusPlace(selectedPlace);if(selectedPlace.id==='residence'){if(resident){$('resident-name').value=resident.name;$('resident-ticker').value=resident.ticker;$('resident-color').value=resident.color;}openDialog('resident-backdrop');}};
+$('visit-button').onclick=()=>{closeDialog();if(cityPlots.some(p=>p.id===selectedPlace.id)&&!selectedPlace.claimed){openBuildForm(selectedPlace);return;}focusPlace(selectedPlace);if(selectedPlace.id==='residence'){if(resident){$('resident-name').value=resident.name;$('resident-ticker').value=resident.ticker;$('resident-color').value=resident.color;}openDialog('resident-backdrop');}};
 $('resident-close').onclick=closeDialog;
 $('resident-backdrop').onclick=e=>{if(e.target===$('resident-backdrop'))closeDialog();};
 $('resident-form').onsubmit=e=>{e.preventDefault();try{
@@ -259,17 +276,15 @@ async function makeResident(){
  const clip=data.animations.find(a=>a.name==='Idle');if(clip)residentMixer.clipAction(clip).play();updateResident();
 }
 $('idea-form').onsubmit=e=>{
-  e.preventDefault();
-  try{
-    const draft=createDraft($('project-name').value,$('project-idea').value,drafts);
-    const next=[...drafts,draft]; localStorage.setItem(STORAGE_KEY,JSON.stringify(next));drafts=next;
-    renderList();closeDialog();$('idea-form').reset();$('form-error').textContent='';notify('Brief received. Your idea has a place in the neighborhood.');
-    $('activity-text').textContent='A new brief is waiting at the door.';
-  }catch(error){$('form-error').textContent=error.message;}
+ e.preventDefault();try{
+  const building=createBuilding($('plot-address').value,$('project-name').value,$('project-idea').value,$('building-ticker').value,$('building-type').value,$('building-color').value,cityBuildings);
+  const next=[...cityBuildings,building];localStorage.setItem(CITY_KEY,JSON.stringify(next));cityBuildings=next;cityRenderer.redraw(next);renderList();closeDialog();$('idea-form').reset();
+  const p=plotView(cityPlots.find(p=>p.id===building.plotId),cityBuildings);addLabel(p,building.type==='project'?8.7:building.type==='studio'?4.7:6.7);focusPlace(p);notify(building.name+' now has an address in your city.');$('activity-text').textContent='A new building is ready to explore.';
+ }catch(error){$('form-error').textContent=error.message;}
 };
 $('tour-button').onclick=startTour;
 $('follow-button').onclick=()=>{if(!character)return;follow=!follow;if(follow){camera.zoom=1.7;camera.updateProjectionMatrix();}notify(follow?'Following SUB-01.':'Free camera.');};
-for(const [id,factor] of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{camera.zoom=THREE.MathUtils.clamp(camera.zoom*factor,.6,2.8);camera.updateProjectionMatrix();};
+for(const [id,factor] of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{camera.zoom=THREE.MathUtils.clamp(camera.zoom*factor,.12,2.8);camera.updateProjectionMatrix();};
 $('reset-view').onclick=resetView;
 $('day-night').onclick=()=>{
   night=!night;scene.background.set(night?'#b9bcb2':'#eee9df');hemi.intensity=night?1.1:2.5;sunlight.intensity=night?.5:3.2;roomLight.intensity=night?7:0;
@@ -280,9 +295,12 @@ renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.cli
 renderer.domElement.addEventListener('pointerup',e=>{
   if(!down||Math.hypot(e.clientX-down.x,e.clientY-down.y)>6)return;
   pointer.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);raycaster.setFromCamera(pointer,camera);
-  const hit=raycaster.intersectObjects(interactive,false)[0];if(hit?.object.userData.place)showPlace(hit.object.userData.place);
+  const hit=raycaster.intersectObjects(interactive,false)[0];if(hit&&cityRenderer?.select(hit))return;if(hit?.object.userData.place)showPlace(hit.object.userData.place);
 });
-addEventListener('resize',resize);resize();resetView();renderList();groundwork();
+addEventListener('resize',resize);resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings);addLabel(tower,21);
+for(const b of cityBuildings){const p=plotView(cityPlots.find(p=>p.id===b.plotId),cityBuildings);addLabel(p,b.type==='project'?8.7:b.type==='studio'?4.7:6.7);}
+for(const d of districts){const element=document.createElement('button');element.className='world-label district-label';element.textContent=d.name.toUpperCase();element.onclick=()=>{$('district-select').value=d.id;$('district-select').onchange();};$('labels').append(element);labels.push({element,district:true,position:new THREE.Vector3(d.x,.4,d.z+11.4)});}
+
 const clock=new THREE.Clock();let lastRender=0;
 function animate(now){
   requestAnimationFrame(animate);
@@ -299,7 +317,7 @@ function animate(now){
   if(character){const m=character.userData.marker;m.position.copy(character.position);m.position.y+=2+(reducedMotion?0:Math.sin(now*.002)*.04);m.rotation.y=now*.0005;if(follow)controls.target.lerp(character.position,.07);}
   if(cameraTween){cameraTween.elapsed+=dt;const t=Math.min(cameraTween.elapsed/.75,1),ease=1-(1-t)**3;controls.target.lerpVectors(cameraTween.start,cameraTween.target,ease);camera.zoom=THREE.MathUtils.lerp(cameraTween.zoom,cameraTween.endZoom,ease);camera.updateProjectionMatrix();if(t===1)cameraTween=null;}
   controls.update();renderer.render(scene,camera);
-  for(const label of labels){const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
+  for(const label of labels){if(label.district&&camera.zoom>.9){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
 }
 requestAnimationFrame(animate);
 async function initialize(){try{

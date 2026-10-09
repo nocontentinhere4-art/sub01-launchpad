@@ -14,7 +14,7 @@ Do not couple skyline height, avatar status or access to token price. Show verif
 
 City map → one active block → one interior. These are different detail levels. The overview should use a 2D map or instanced untextured building masses, not thousands of detailed interiors. Loading an interior unloads or pauses the block detail. Each district has an immutable asset manifest and versioned snapshot.
 
-Proposed limits, to be profiled on real phones: 24–40 simple buildings in the active block, at most 12 visible animated residents, shared atlas textures, capped resolution, 30 FPS mobile target, no screen-space reflections or volumetric effects. The prototype currently loads one small block, all its models and two characters; streaming/LOD is not yet implemented.
+Proposed limits, to be profiled on real phones: 24–40 simple buildings in the active block, at most 12 visible animated residents, shared atlas textures, capped resolution, 30 FPS mobile target, no screen-space reflections or volumetric effects. The prototype now loads the original furnished center and eight lightweight surrounding districts (48 addresses), all models and two characters; streaming/LOD is not yet implemented. The surrounding buildings, windows and tower lattice use instanced geometry.
 
 Distance reduces avatars to icons. Distant animation pauses. Nearby residents use shared character meshes and a small animation library. Avoid a unique high-resolution texture per user and avoid rendering third-party websites into every window. Open project sites as normal web views.
 
@@ -39,6 +39,9 @@ Fee configuration belongs to the verified launch flow. Apartment possession alon
 https://github.com/jeantimex/tokyo (reviewed 2026-10-09) reconstructs real Tokyo areas from PLATEAU, OpenStreetMap and elevation data and warns that its live demo is not recommended for mobile browsers. Its binary tile pipeline is useful architectural inspiration. This prototype does not bundle that repository’s code, geographic data or assets. Any later geographic import needs separate data-source and attribution review.
 
 ## What can be tried today
+
+Explore district → choose a building/lot → Take this address → fill name, idea, concept ticker, style and color → Create this place. The geometry changes immediately, the address becomes assigned in this browser and recovers after reload. The city is a stylized grid using Tokyo district names, not geographic data.
+
 
 Orange Apartments → Try your own apartment → name, color and concept ticker. A local profile and avatar survive reload on the same browser. Every viewer has the same demo unit; there is no global reservation, minted coin or wallet identity yet.
 

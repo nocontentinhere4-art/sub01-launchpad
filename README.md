@@ -1,6 +1,6 @@
 # SUB-01 · The neighborhood
 
-A lightweight isometric prototype for SUB-01’s Tokyo launchpad: a home/workspace, three project buildings, a residential block, an animated developer, and a neighborhood you can explore. The current block is fictional and Tokyo-inspired; it is not a geographically accurate reconstruction.
+A lightweight isometric prototype for SUB-01’s Tokyo launchpad: a home/workspace, three project buildings, a residential block, an animated developer, and an expanded city you can explore. Eight surrounding districts add 48 addresses and an original Tokyo Tower landmark. The current block is fictional and Tokyo-inspired; it is not a geographically accurate reconstruction.
 
 ## Run
 
@@ -21,13 +21,16 @@ Open http://127.0.0.1:8791. For production, run `npm run build` and serve `dist/
 - A local resident profile with name, avatar color and concept ticker. A second character appears outside Orange Apartments; the example apartment is not exclusive or owned.
 - A fixed demo walk from home to the Workshop and back.
 - Project inspection, camera orbit/pan/zoom, follow mode and day/night lighting.
-- A validated idea form, safe text rendering and recovery of drafts from browser local storage.
+- Choose one of 48 addresses, take an existing building or an empty lot, and create an apartment block, studio or project HQ with a name, description, concept ticker and facade color.
+- Created buildings appear in the city and recover from local storage after reload; duplicate claims are prevented in the current browser.
+- District navigation, home/Tokyo Tower shortcuts and safe text rendering. Legacy idea briefs remain readable.
+- Shared instanced geometry batches the surrounding city, windows, roofs and tower lattice without new downloaded assets.
 - Responsive desktop/mobile interface, capped pixel ratio, 30 FPS target on mobile and reduced shadow resolution.
 - A private GitHub repository. No credentials, private keys or authenticated browser state are part of this project.
 
 ## What this preview does not do
 
-The demo routine is scripted and does not connect to SUB-01's brain. The example projects have no deployed tokens, functional games or music products. Drafts stay on the current device. There are no purchases, real fee payments, X account connections or real token launches. The UI labels this as a concept preview.
+The demo routine is scripted and does not connect to SUB-01's brain. The example projects have no deployed tokens, functional games or music products. Drafts and building assignments stay on the current device. Addresses are not exclusive across users. All 48 lightweight addresses load together; geographic streaming and shared ownership remain future work. There are no purchases, real fee payments, X account connections or real token launches. The UI labels this as a concept preview.
 
 ## Next integration
 
