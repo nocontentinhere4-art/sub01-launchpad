@@ -15,6 +15,7 @@ let drafts = readDrafts(localStorage);
 let cityBuildings=readBuildings(localStorage),cityRenderer,selectedLot=null;
 let resident = readResident(localStorage), residentCharacter, residentMixer;
 let selectedPlace = places[0], night = false, follow = false, currentDialog = null, previousFocus = null;
+let cityTour=null;
 let character, mixer, actions, activeAction, tour = null, cameraTween = null, toastTimer;
 const floorY = 0.24;
 const labels = [], interactive = [], cache = new Map();
@@ -33,10 +34,10 @@ $('world').append(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 2);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
-controls.minZoom = .12; controls.maxZoom = 2.8;
+controls.minZoom = .07; controls.maxZoom = 2.8;
 controls.minPolarAngle = .3; controls.maxPolarAngle = 1.1;
 controls.enablePan = true;
-controls.addEventListener('start', () => { follow = false; cameraTween = null; });
+controls.addEventListener('start', () => { cityTour=null;follow = false; cameraTween = null; });
 const hemi = new THREE.HemisphereLight('#fff9e9', '#8c9a78', 2.5); scene.add(hemi);
 const sunlight = new THREE.DirectionalLight('#fff3da', 3.2);
 sunlight.position.set(-12, 24, 13); sunlight.castShadow = true;
@@ -230,14 +231,14 @@ function showPlace(p) {
   openDialog('detail-backdrop');
 }
 function focusPlace(p) {
-  follow=false;
+  cityTour=null;follow=false;
   if(p.x===undefined){notify('Your brief is saved here. Building integration comes next.');return;}
-  cameraTween={ start: controls.target.clone(), target: new THREE.Vector3(p.x,p.id==='tower'?8:2,p.z), zoom:camera.zoom, endZoom:p.id==='tower'?1:1.65, elapsed:0 };
+  cameraTween={ start: controls.target.clone(), target: new THREE.Vector3(p.x,p.id==='tower'?14:2,p.z), zoom:camera.zoom, endZoom:p.id==='tower'?.7:1.65, elapsed:0 };
 }
 function notify(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;toastTimer=setTimeout(()=>{$('toast').hidden=true;},4500);}
-function startTour(){if(!character)return;tour={ index:0, elapsed:0, from:character.position.clone() };$('tour-button').disabled=true;play('Wave');$('activity-text').textContent=tourStops[0].text;follow=false;}
+function startTour(){cityTour=null;if(!character)return;tour={ index:0, elapsed:0, from:character.position.clone() };$('tour-button').disabled=true;play('Wave');$('activity-text').textContent=tourStops[0].text;follow=false;}
 function resize(){const w=innerWidth,h=innerHeight,aspect=w/h;const half=mobile?18:16.5;camera.left=-half*aspect;camera.right=half*aspect;camera.top=half;camera.bottom=-half;camera.updateProjectionMatrix();renderer.setSize(w,h);}
-function resetView(){follow=false;cameraTween=null;camera.position.set(85,100,110);controls.target.set(0,6,-6);camera.zoom=mobile?.14:.29;camera.updateProjectionMatrix();controls.update();}
+function resetView(){cityTour=null;follow=false;cameraTween=null;camera.position.set(85,100,110);controls.target.set(0,8,-7);camera.zoom=mobile?.09:.20;camera.updateProjectionMatrix();controls.update();}
 
 function openBuildForm(plot){
  selectedLot=plot||cityPlots.find(p=>!cityBuildings.some(b=>b.plotId===p.id));
@@ -247,7 +248,11 @@ function openBuildForm(plot){
  $('plot-address').value=selectedLot.id;$('form-error').textContent='';openDialog('idea-backdrop');
 }
 $('idea-button').onclick=()=>openBuildForm();
-$('district-select').onchange=()=>{renderList();const d=districts.find(d=>d.id===$('district-select').value);if(d){follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(d.x,2,d.z),zoom:camera.zoom,endZoom:mobile?.36:.72,elapsed:0};}else resetView();};
+$('city-tour').onclick=()=>{cityTour={index:0,elapsed:0};nextCityView();};
+const cityViews=[{x:-29,z:-28,y:12,zoom:.63,text:'Tokyo Tower / Shiba'},{x:29,z:2,y:4,zoom:.72,text:'Shibuya / Neon crossing'},{x:55,z:-58,y:16,zoom:.48,text:'Broadcast tower / Skyline'},{x:79,z:2,y:1,zoom:.56,text:'Waterfront / Bridges'},{x:-26,z:78,y:4,zoom:.56,text:'Metro / City in motion'}];
+function nextCityView(){const v=cityViews[cityTour.index];follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(v.x,v.y,v.z),zoom:camera.zoom,endZoom:mobile?v.zoom*.55:v.zoom,elapsed:0};$('activity-text').textContent=v.text;}
+
+$('district-select').onchange=()=>{cityTour=null;renderList();const d=districts.find(d=>d.id===$('district-select').value);if(d){follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(d.x,2,d.z),zoom:camera.zoom,endZoom:mobile?.36:.72,elapsed:0};}else resetView();};
 $('home-view').onclick=()=>focusPlace(places[0]);
 $('tower-view').onclick=()=>focusPlace(tower);
 $('idea-close').onclick=$('detail-close').onclick=closeDialog;
@@ -284,7 +289,7 @@ $('idea-form').onsubmit=e=>{
 };
 $('tour-button').onclick=startTour;
 $('follow-button').onclick=()=>{if(!character)return;follow=!follow;if(follow){camera.zoom=1.7;camera.updateProjectionMatrix();}notify(follow?'Following SUB-01.':'Free camera.');};
-for(const [id,factor] of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{camera.zoom=THREE.MathUtils.clamp(camera.zoom*factor,.12,2.8);camera.updateProjectionMatrix();};
+for(const [id,factor] of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{camera.zoom=THREE.MathUtils.clamp(camera.zoom*factor,.07,2.8);camera.updateProjectionMatrix();};
 $('reset-view').onclick=resetView;
 $('day-night').onclick=()=>{
   night=!night;scene.background.set(night?'#112638':'#eee9df');hemi.intensity=night?1.5:2.5;hemi.color.set(night?'#8bbacd':'#fff9e9');sunlight.intensity=night?.7:3.2;roomLight.intensity=night?7:0;cityRenderer?.setNight(night);
@@ -297,7 +302,8 @@ renderer.domElement.addEventListener('pointerup',e=>{
   pointer.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);raycaster.setFromCamera(pointer,camera);
   const hit=raycaster.intersectObjects(interactive,false)[0];if(hit&&cityRenderer?.select(hit))return;if(hit?.object.userData.place)showPlace(hit.object.userData.place);
 });
-addEventListener('resize',resize);resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings);addLabel(tower,21);
+$('district-select').replaceChildren();const all=document.createElement('option');all.value='';all.textContent='Entire city';$('district-select').append(all);for(const d of districts){const option=document.createElement('option');option.value=d.id;option.textContent=d.name;$('district-select').append(option);}
+addEventListener('resize',resize);resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings);addLabel(tower,32);
 for(const b of cityBuildings){const p=plotView(cityPlots.find(p=>p.id===b.plotId),cityBuildings);addLabel(p,b.type==='project'?8.7:b.type==='studio'?4.7:6.7);}
 for(const d of districts){const element=document.createElement('button');element.className='world-label district-label';element.textContent=d.name.toUpperCase();element.onclick=()=>{$('district-select').value=d.id;$('district-select').onchange();};$('labels').append(element);labels.push({element,district:true,position:new THREE.Vector3(d.x,.4,d.z+11.4)});}
 
@@ -305,7 +311,7 @@ const clock=new THREE.Clock();let lastRender=0;
 function animate(now){
   requestAnimationFrame(animate);
   if(document.hidden||now-lastRender<(mobile?1000/30:1000/45))return;
-  lastRender=now;const dt=Math.min(clock.getDelta(),.08);mixer?.update(dt);if(residentCharacter?.visible)residentMixer?.update(dt);
+  lastRender=now;cityRenderer?.update(reducedMotion?0:now*.001);const dt=Math.min(clock.getDelta(),.08);mixer?.update(dt);if(residentCharacter?.visible)residentMixer?.update(dt);
   if(tour&&character){
     const stop=tourStops[tour.index];tour.elapsed+=dt;const t=Math.min(tour.elapsed/stop.duration,1);
     const destination=new THREE.Vector3(stop.x,.335,stop.z);
@@ -316,8 +322,9 @@ function animate(now){
   }
   if(character){const m=character.userData.marker;m.position.copy(character.position);m.position.y+=2+(reducedMotion?0:Math.sin(now*.002)*.04);m.rotation.y=now*.0005;if(follow)controls.target.lerp(character.position,.07);}
   if(cameraTween){cameraTween.elapsed+=dt;const t=Math.min(cameraTween.elapsed/.75,1),ease=1-(1-t)**3;controls.target.lerpVectors(cameraTween.start,cameraTween.target,ease);camera.zoom=THREE.MathUtils.lerp(cameraTween.zoom,cameraTween.endZoom,ease);camera.updateProjectionMatrix();if(t===1)cameraTween=null;}
+  if(cityTour){cityTour.elapsed+=dt;if(cityTour.elapsed>5){cityTour.elapsed=0;cityTour.index++;if(cityTour.index>=cityViews.length){cityTour=null;resetView();$('activity-text').textContent='Your idea. Your city. Choose an address.';}else nextCityView();}}
   controls.update();renderer.render(scene,camera);
-  for(const label of labels){if(label.district&&camera.zoom>.9){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
+  for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
 }
 requestAnimationFrame(animate);
 async function initialize(){try{

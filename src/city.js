@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {addCityLife} from './city-life.js';
 import {addTokyoStyle} from './tokyo-style.js';
 import {cityPlots,districts,tower,plotView,buildingColors} from './city-state.js';
 export function createCity(scene,interactive,showPlace,buildings){
@@ -15,7 +16,7 @@ export function createCity(scene,interactive,showPlace,buildings){
   for(let i=-12;i<=12;i+=3)add('marks',d.x+i,.205,d.z,.9,.015,.09,'#e4ddc8');
  }
  // Vertical connecting boulevards and crosswalks.
- for(const x of [-14.5,14.5]){add('roads',x,.17,2,2.6,.05,87,'#6d786f');for(let z=-36;z<=40;z+=3)add('marks',x,.21,z,.08,.01,.8,'#ddd8c7');}
+ for(const x of [-43.5,-14.5,14.5,43.5]){add('roads',x,.17,2,2.6,.05,147,'#6d786f');for(let z=-66;z<=70;z+=3)add('marks',x,.21,z,.08,.01,.8,'#ddd8c7');}
  for(const x of [-29,29])for(const z of [-28,2,32])for(let i=-3;i<=3;i++)add('marks',x+i*.48,.21,z,.25,.015,3.2,'#f1ead7');
  let renderGroups=[],style,currentNight=false;
  const dummy=new THREE.Object3D();
@@ -62,9 +63,9 @@ export function createCity(scene,interactive,showPlace,buildings){
    }
   }
  }
- const lattice=new THREE.InstancedMesh(beamGeom,mat,beams.length);beams.forEach((b,i)=>{lattice.setMatrixAt(i,b.matrix);lattice.setColorAt(i,new THREE.Color(b.color));});root.add(lattice);
- batch([{x:tower.x,y:8.8,z:tower.z,w:3.7,h:.8,d:3.7,color:'#fff1de'},{x:tower.x,y:9,z:tower.z,w:3.8,h:.28,d:3.8,color:'#df6530'},{x:tower.x,y:14,z:tower.z,w:2,h:.6,d:2,color:'#f9dec4'},{x:tower.x,y:.2,z:tower.z,w:9,h:.12,d:9,color:'#e3d8c1'}]);
- const towerPick=new THREE.Mesh(new THREE.BoxGeometry(7,20,7),new THREE.MeshBasicMaterial({visible:false}));towerPick.position.set(tower.x,10,tower.z);towerPick.userData.place=tower;root.add(towerPick);interactive.push(towerPick);
- style=addTokyoStyle(root,buildings);
- return {redraw,setNight(value){currentNight=value;windowMat.emissiveIntensity=value?.45:0;style.setNight(value);mat.color.set(value?'#bdcedd':'#ffffff');},select(hit){if(hit.object.userData.cityPlot&&hit.instanceId!==undefined){showPlace(plotView(cityPlots[hit.instanceId],buildings));return true;}return false;}};
+ const lattice=new THREE.InstancedMesh(beamGeom,mat,beams.length);beams.forEach((b,i)=>{lattice.setMatrixAt(i,b.matrix);lattice.setColorAt(i,new THREE.Color(b.color));});const towerGroup=new THREE.Group();root.add(towerGroup);towerGroup.add(lattice);towerGroup.scale.y=1.5;
+ batch([{x:tower.x,y:8.8,z:tower.z,w:3.7,h:.8,d:3.7,color:'#fff1de'},{x:tower.x,y:9,z:tower.z,w:3.8,h:.28,d:3.8,color:'#df6530'},{x:tower.x,y:14,z:tower.z,w:2,h:.6,d:2,color:'#f9dec4'},{x:tower.x,y:.2,z:tower.z,w:9,h:.12,d:9,color:'#e3d8c1'}],towerGroup);
+ const towerPick=new THREE.Mesh(new THREE.BoxGeometry(7,30,7),new THREE.MeshBasicMaterial({visible:false}));towerPick.position.set(tower.x,15,tower.z);towerPick.userData.place=tower;root.add(towerPick);interactive.push(towerPick);
+ style=addTokyoStyle(root,buildings);const life=addCityLife(root);
+ return {redraw,update(seconds){life.update(seconds);},setNight(value){currentNight=value;windowMat.emissiveIntensity=value?.45:0;style.setNight(value);life.setNight(value);mat.color.set(value?'#bdcedd':'#ffffff');},select(hit){if(hit.object.userData.cityPlot&&hit.instanceId!==undefined){showPlace(plotView(cityPlots[hit.instanceId],buildings));return true;}return false;}};
 }

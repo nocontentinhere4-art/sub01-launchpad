@@ -47,8 +47,8 @@ export function addTokyoStyle(parent,buildings=[]){
  }
  batch(highrise,stone);lights=batch(glow,light);
  // The snow cap is jagged along its lower edge, sharing the mountain silhouette.
- const radius=20,height=21,segments=12,vertices=[],colors=[];
- const center=new THREE.Vector3(-34,0,-56);
+ const radius=30,height=19,segments=12,vertices=[],colors=[];
+ const center=new THREE.Vector3(-55,0,-122);
  for(let i=0;i<segments;i++){
   const a=i/segments*Math.PI*2,b=(i+1)/segments*Math.PI*2;
   const baseA=new THREE.Vector3(Math.cos(a)*radius,0,Math.sin(a)*radius),baseB=new THREE.Vector3(Math.cos(b)*radius,0,Math.sin(b)*radius);

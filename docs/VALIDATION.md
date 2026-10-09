@@ -22,3 +22,9 @@
 Original procedural Fuji, skyline additions, storefront canopies, cars, lamps, vending machines and one generated sign atlas. The city module now uses 14 meshes in the browser (13 without the DOM-generated sign atlas in Node tests), rather than the previous 9. Windows support night emission and the interface uses a dark palette. The reference photos themselves are not bundled. Existing 10 state/render tests and production build pass. Resource counts exclude the furnished center and characters and are not measured FPS.
 
 Chrome desktop and 390 x 844 viewport: sign atlas shader compiled with no logged warnings/errors; night toggle, district navigation and project inspection remained available. Smartphone viewport checks are not real iPhone performance measurements.
+
+## Larger city / infrastructure pass
+
+24 districts and 144 addresses, keeping the original first 48 address IDs and coordinates. Added a static batched skyline, waterfront, 3 bridges, elevated rail and 2 animated trains, a secondary broadcast tower, Shibuya feature tower and generated billboard. Tokyo Tower is taller. The city tour uses five camera stops and cancels on manual navigation. The render counts reported in previous sections describe those earlier revisions; this version adds infrastructure meshes and a billboard texture. No public ownership service or token deployment was added.
+
+11 Node tests pass, including stable original address coordinates, local project recovery and moving trains with bounded routes. Production build succeeds (640.11 kB / 168.45 kB gzip JavaScript). Chrome desktop: the five-stop tour completed and returned to the overview; existing local projects remained visible. Chrome 390 x 844: Odaiba district selection and its first address were accessible, with no logged warnings/errors. The viewport override was reset after testing. These are browser checks, not actual iPhone GPU benchmarks.

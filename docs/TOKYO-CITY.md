@@ -14,7 +14,7 @@ Do not couple skyline height, avatar status or access to token price. Show verif
 
 City map → one active block → one interior. These are different detail levels. The overview should use a 2D map or instanced untextured building masses, not thousands of detailed interiors. Loading an interior unloads or pauses the block detail. Each district has an immutable asset manifest and versioned snapshot.
 
-Proposed limits, to be profiled on real phones: 24–40 simple buildings in the active block, at most 12 visible animated residents, shared atlas textures, capped resolution, 30 FPS mobile target, no screen-space reflections or volumetric effects. The prototype now loads the original furnished center and eight lightweight surrounding districts (48 addresses), all models and two characters; streaming/LOD is not yet implemented. The surrounding buildings, windows and tower lattice use instanced geometry.
+Proposed limits, to be profiled on real phones: 24–40 simple buildings in the active block, at most 12 visible animated residents, shared atlas textures, capped resolution, 30 FPS mobile target, no screen-space reflections or volumetric effects. The prototype now loads the original furnished center and twenty-four lightweight surrounding districts (144 addresses), all models and two characters; streaming/LOD is not yet implemented. The surrounding buildings, windows and tower lattice use instanced geometry.
 
 Distance reduces avatars to icons. Distant animation pauses. Nearby residents use shared character meshes and a small animation library. Avoid a unique high-resolution texture per user and avoid rendering third-party websites into every window. Open project sites as normal web views.
 

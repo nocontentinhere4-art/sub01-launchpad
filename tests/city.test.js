@@ -13,13 +13,20 @@ test('saved city projects recover, with invalid and duplicate address records re
  assert.deepEqual(readBuildings({getItem:()=>'{invalid'}),[]);assert.equal(plotView(cityPlots[0],recovered).claimed,true);
 });
 test('city addresses are unique, separated and the geometry stays batched after creation',()=>{
- assert.equal(cityPlots.length,48);assert.equal(new Set(cityPlots.map(p=>p.id)).size,48);
+ assert.equal(cityPlots.length,144);assert.equal(new Set(cityPlots.map(p=>p.id)).size,144);
  const scene=new THREE.Scene(),interactive=[];const city=createCity(scene,interactive,()=>{},[]);
- assert.equal(interactive.length,2);assert.equal(interactive[0].count,48);
+ assert.equal(interactive.length,2);assert.equal(interactive[0].count,144);
  const meshes=()=>{let count=0;scene.traverse(n=>{if(n.isMesh)count++;});return count;};
- const initial=meshes();city.redraw([build()]);assert.equal(meshes(),initial);assert.ok(initial<25);
+ const initial=meshes();city.redraw([build()]);assert.equal(meshes(),initial);assert.ok(initial<40);
 });
 test('clicking an instanced city building resolves its project after a redraw',()=>{
  let selected;const city=createCity(new THREE.Scene(),[],p=>selected=p,[]);
  city.redraw([build()]);assert.equal(city.select({object:{userData:{cityPlot:true}},instanceId:0}),true);assert.equal(selected.name,'Tokyo Radio');assert.equal(selected.claimed,true);
+});
+
+import {addCityLife} from '../src/city-life.js';
+test('city expansion preserves old addresses and trains move within the rail route',()=>{
+ assert.equal(cityPlots.find(p=>p.id==='shibuya-6').x,37);assert.equal(cityPlots.find(p=>p.id==='shibuya-6').z,8);
+ const life=addCityLife(new THREE.Group());life.update(0);const x=life.trains[0].position.x;life.update(5);assert.notEqual(life.trains[0].position.x,x);
+ for(const seconds of [0,5,60,1000]){life.update(seconds);for(const train of life.trains)assert.ok(train.position.x>=-72&&train.position.x<=73);}
 });

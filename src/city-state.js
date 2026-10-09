@@ -10,13 +10,16 @@ export const districts=[
  {id:'ebisu',name:'Ebisu',x:-29,z:32,color:'#b8a276'},
  {id:'roppongi',name:'Roppongi',x:-29,z:2,color:'#8a9fa7'},
 ];
+const outerNames=['ginza','asakusa','ueno','ikebukuro','nakano','kanda','tsukiji','odaiba','yoyogi','meguro','shinagawa','sumida','daikanyama','nihonbashi','koenji','shimokitazawa'];
+let outerIndex=0;
+for(let row=-2;row<=2;row++)for(let col=-2;col<=2;col++)if(Math.abs(row)===2||Math.abs(col)===2){const id=outerNames[outerIndex++];districts.push({id,name:id[0].toUpperCase()+id.slice(1),x:col*29,z:row*30+2,color:['#758fa4','#bb8c83','#82a29c','#b5a377'][outerIndex%4]});}
 export const cityPlots=districts.flatMap((d,di)=>Array.from({length:6},(_,i)=>({
  id:`${d.id}-${i+1}`,district:d.id,districtName:d.name,name:`${d.name.split(' /')[0]} ${String(i+1).padStart(2,'0')}`,
- x:d.x+[-8,0,8][i%3],z:d.z+(i<3?-6:6),height:3+((di*3+i*7)%6),
+ x:d.x+[-8,0,8][i%3],z:d.z+(i<3?-6:6),height:di<8?3+((di*3+i*7)%6):5+((di*3+i*7)%12),
  vacant:i===5,color:d.color,symbol:i===5?'+':'▥',kind:'TOKYO / AVAILABLE SPACE',status:i===5?'Open lot':'Available building',
  description:'Choose this address for an apartment, studio or project. Customize it in the local city preview. No purchase, global ownership or token launch.'
 })));
-export const tower={id:'tower',name:'Tokyo Tower',x:-29,z:-28,height:21,color:'#f2773a',symbol:'△',kind:'TOKYO / LANDMARK',status:'City landmark',description:'The center of Shiba. An original, stylized Tokyo Tower made from lightweight shared geometry. This city is inspired by Tokyo, not an accurate map.'};
+export const tower={id:'tower',name:'Tokyo Tower',x:-29,z:-28,height:32,color:'#f2773a',symbol:'△',kind:'TOKYO / LANDMARK',status:'City landmark',description:'The center of Shiba. An original, stylized Tokyo Tower made from lightweight shared geometry. This city is inspired by Tokyo, not an accurate map.'};
 export const buildingColors={orange:'#f4864e',mint:'#80a897',violet:'#a19bc4',sand:'#d4bf91'};
 export function createBuilding(plotId,name,idea,ticker,type,color,existing=[],id=crypto.randomUUID()){
  if(!cityPlots.some(p=>p.id===plotId))throw new Error('Choose an available city address.');
