@@ -6,7 +6,7 @@
 // Building base sits at y = BASE_Y (top of the district concrete).
 //
 // Lot (a building, from cityLayout().lots or subLotsOf()):
-//  { id, plotId|null, district, role:'sub'|'filler'|'corner'|'interior', user:bool, building|null,
+//  { id, plotId|null, district, role:'sub'|'filler'|'interior', user:bool, building|null,
 //    x, z            footprint centre (world)
 //    width, depth    footprint along x / along z
 //    setback         distance of the front face behind the lot line (street side)
@@ -32,7 +32,8 @@
 // frontFace(plotId) → '+z'|'-z'.  subLotsOf(plotId,buildings) → {front, lots, spots, user} for that plot.
 import {cityPlots,districts,buildingColors} from './city-state.js';
 
-export const GROUND=3.0,STOREY=2.5,PARAPET=.6,BASE_Y=.12,JOINT=.08,LOT_LINE=3.3,EDGE=13.1;
+export const GROUND=3.0,STOREY=2.5,PARAPET=.6,BASE_Y=.12,JOINT=.08,LOT_LINE=3.3,EDGE=11.0;
+// EDGE: facades stop 3.5 short of the boulevard centres (14.5 from a district centre), clear of 1A's boulevard poles at 3.3.
 export const heightFor=(floors,type)=>type==='T5'?GROUND+STOREY+1:floors<1?0:GROUND+STOREY*(floors-1)+PARAPET;
 
 export function hashString(s){let h=2166136261;for(const c of String(s)){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}return h>>>0;}
@@ -110,7 +111,6 @@ function sideElements(d,s,buildings){
  // s = -1: the row at d.z-6 (fronts face +z); s = 1: the row at d.z+6 (fronts face −z).
  const front=s<0?'+z':'-z',plots=cityPlots.filter(p=>p.district===d.id&&(s<0?p.z<d.z:p.z>d.z)).sort((a,b)=>a.x-b.x);
  const el=[];
- {const r=rng(`${d.id}:${s}:cornerL`),w=between(r,1.9,2.1);el.push({kind:'building',role:'corner',x:d.x-EDGE+2.2-.05-w/2,width:w,seed:`${d.id}:${s}:cornerL`});}
  plots.forEach((p,k)=>{
   const b=buildings.find(b=>b.plotId===p.id),r=rng(p.id+':split');
   if(p.vacant&&!b){const kind=r()<.65?'coin-parking':'shrine';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
@@ -134,7 +134,6 @@ function sideElements(d,s,buildings){
    el.push(...(left?parts:parts.reverse()));}
   else el.push({kind:'spot',spot:'vending',x:(g0+g1)/2,width:2.2,machines:2+(gr()<.35?1:0)});
  });
- {const r=rng(`${d.id}:${s}:cornerR`),w=between(r,1.9,2.1);el.push({kind:'building',role:'corner',x:d.x+EDGE-2.2+.05+w/2,width:w,seed:`${d.id}:${s}:cornerR`});}
  return {front,el};
 }
 
@@ -153,6 +152,8 @@ function layoutDistrict(d,buildings,out){
    if(e.kind==='spot'&&e.spot==='vending'){Object.assign(e,{kind:'building',role:'filler',width:1.8,seed:`${d.id}:${e.x.toFixed(2)}:fill`,gap:'pencil'});delete e.spot;}}
   for(let i=0;i<side.el.length&&streetFill(side.el,d)<.85;i++){const e=side.el[i];
    if(e.kind==='spot'&&e.splitOpen){Object.assign(e,{kind:'building',role:'sub',width:2.2-JOINT,user:false,seed:`${e.plotId}:open`});delete e.spot;}}
+  for(let i=0;i<side.el.length&&streetFill(side.el,d)<.85;i++){const e=side.el[i];
+   if(e.kind==='spot'&&e.pole){const j=side.el[i-1]?.gap==='alley'?i-1:i+1,p=side.el[j];p.x=(p.x+e.x)/2;p.width=1.9;p.gap='pencil';side.el.splice(i,1);i--;}}
  }
  const konbini=hashString(d.id+':konbini')%2===0;
  for(const [si,{front,el}] of sides.entries()){
@@ -199,12 +200,13 @@ function layoutDistrict(d,buildings,out){
    let roof=pick(r,e.type==='T5'?TILE_ROOFS:ROOFS);if(roof===prevRoof)roof=pick(r,e.type==='T5'?TILE_ROOFS:ROOFS);
    prevWall=wall;prevRoof=roof;
    const depth=e.user?4.8:e.type==='T5'?between(r,3.6,4.2):e.type==='T3'||e.type==='T7'?between(r,4.8,5.2):between(r,4.2,5.2);
-   const setback=e.type==='T5'?.8:e.user?.1:r()*.3,frontZ=lotLine-fz*setback,z=frontZ-fz*depth/2;
+   // Protrusions (balconies 0.9, pencil balconies 0.5) stay ≥ 3.0 from the street centre, clear of 1A's pole crossarms.
+   const setback=e.type==='T5'?.8:e.type==='T3'?.6+(e.user?0:r()*.3):e.type==='T2'?.2+r()*.1:e.user?.1:r()*.3,frontZ=lotLine-fz*setback,z=frontZ-fz*depth/2;
    const shop=e.shopForce||(e.user&&e.type==='T3'?'entrance':shopFor(r,e.type,e.width));
    const lot={id:e.seed,plotId:e.plotId||null,district:d.id,role:e.role,user:!!e.user,building:e.building||null,x:e.x,z,width:e.width,depth,setback,front,frontZ,
     type:e.type,floors:e.floors,height:heightFor(e.floors,e.type),wall,roof,shop,
     stripe:shop==='konbini'?KONBINI[hashString(d.id)%3]:null,
-    awning:['glazed','noren'].includes(shop)&&r()<.34?{color:pick(r,AWNINGS),depth:between(r,.6,.9),y:between(r,2.6,2.95)}:null,
+    awning:['glazed','noren'].includes(shop)&&r()<.34?{color:pick(r,AWNINGS),depth:Math.min(between(r,.6,.9),LOT_LINE+setback-2.55),y:between(r,2.6,2.95)}:null,
     stair:e.type==='T1'&&r()<.5,gap:e.gap||null,
     leftH:0,rightH:0,bays:[],sideAC:0,sideWindows:Math.floor(r()*3)};
    if(e.type==='T5')lot.eave=GROUND+STOREY;

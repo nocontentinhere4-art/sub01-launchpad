@@ -9,7 +9,7 @@ import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial} from './
 const wallMaterial=params=>(T.wallMaterial||T.toon)(params);
 // Night multipliers are plain 0–1 factors (brief 3.9: walls ×#6F7D99, ground ×#55617A), not sRGB colours.
 const factor=hex=>new THREE.Color().setHex(parseInt(hex.slice(1),16),THREE.LinearSRGBColorSpace);
-const NIGHT_WALL=factor('#6F7D99'),NIGHT_GROUND=factor('#55617A'),DAY=new THREE.Color(1,1,1);
+const NIGHT_WALL=T.nightColor?T.nightColor('walls'):factor('#6F7D99'),NIGHT_GROUND=T.nightColor?T.nightColor('ground'):factor('#55617A'),DAY=new THREE.Color(1,1,1);
 const WHITE=new THREE.Color('#ffffff'),BLACK=new THREE.Color('#000000');
 const tint=(hex,f)=>{const c=new THREE.Color(hex);return f>0?c.lerp(WHITE,f):c.lerp(BLACK,-f);};
 const GLASS_LOW='#3D525B',GLASS_HIGH='#5E7881',AC='#E5E1D6',METAL='#5B6466';
@@ -46,7 +46,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    if(light&&v.light){col.set(v.light).multiplyScalar((v.glow??1)*.55);light[i*3]=col.r;light[i*3+1]=col.g;light[i*3+2]=col.b;}
   });
   if(lit)geo.setAttribute('nightLight',new THREE.InstancedBufferAttribute(light,3));
-  mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;mesh.receiveShadow=true;mesh.castShadow=false;mesh.computeBoundingSphere();parent.add(mesh);return mesh;
+  mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;mesh.receiveShadow=true;mesh.castShadow=material===wallMat;mesh.computeBoundingSphere();parent.add(mesh);return mesh;
  }
 
  // ---------- Ground (brief 3.7, plan item 8) ----------
@@ -104,7 +104,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   else if(shop==='entrance'||shop==='house'){const side=r()<.5?-1:1,du=side*Math.max(0,w/2-.65);F('windows',du,1.1,.02,.9,2.0,.05,shop==='house'?'#5A4636':GLASS_LOW,!st.dark&&shop!=='house'&&r()<.6?{light:'#FFE6B8',glow:.7}:undefined);
    if(shop==='entrance')F('walls',-du*.2-side*.4,1.0,.03,Math.min(1.2,w-1.4),1.1,.06,'#8E9290');
    else if(w>2){F('windows',-side*Math.max(0,w/2-1),1.75,.02,1.0,1.0,.04,GLASS_LOW,glass(0));F('walls',-side*Math.max(0,w/2-1),1.22,.06,1.15,.06,.12,sill);}}
-  else if(shop==='konbini'){F('windows',0,1.35,.02,w*.85,2.4,.06,GLASS_HIGH,{light:'#EAF4FF'});lot.stripe.forEach((c,i)=>F('walls',0,3.06+i*.117,.05,w+.02,.117,.1,c));for(const du of [.35,.8])F('walls',w/2-du,.45,.45,.38,.9,.38,'#4B6A8A');}
+  else if(shop==='konbini'){F('windows',0,1.35,.02,w*.85,2.4,.06,GLASS_HIGH,{light:'#EAF4FF'});lot.stripe.forEach((c,i)=>F('walls',0,3.06+i*.117,.05,w+.02,.117,.1,c));for(const du of [.35,.8])F('walls',w/2-du,.45,.2,.38,.9,.38,'#4B6A8A');pools.push([lot.x,lot.frontZ+fz*.9,'#EAF4FF',Math.min(3.2,w*.6),.6]);}
   if(lot.awning&&t!=='T4')F('walls',0,lot.awning.y,lot.awning.depth/2,w-.2,.2,lot.awning.depth,lot.awning.color,{rx:fz*.17});
   if(t==='T4'&&shop!=='house'&&shop!=='pilotis')F('walls',0,2.95,.3,w,.12,.6,'#5B6466',{rx:fz*.17});
   // Upper floors: one rhythm per facade (brief 3.4.4).
@@ -153,7 +153,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   const fz=s.front==='+z'?1:-1,y0=BASE_Y,F=(key,u,y,v,w,h,d,c,o)=>add(key,s.x+u,y0+y,s.frontZ+fz*v,w,h,d,c,o),r=rng(s.id+':spot');
   const car=(u,v)=>{const c=CARS[Math.floor(r()*CARS.length)];F('walls',u,.45,v,.95,.55,1.9,c);F('walls',u,.9,v-.1,.85,.42,1.0,tint(c,-.12));};
   if(s.kind==='alley'){F('roofs',0,.01,-s.depth/2,s.width,.02,s.depth,'#8E8C84');if(s.pole)F('walls',0,3.5,-.35,.16,7,.16,'#B7B4AA');F('walls',s.acSide*(s.width/2-.17),2.2,-s.depth*.45,.3,.6,.8,AC);}
-  else if(s.kind==='vending'){const n=s.machines||2;for(let i=0;i<n;i++){const u=(i-(n-1)/2)*.95,c=['#EDEDE8','#C63B34','#2E6FB0'][Math.floor(r()*3)];F('walls',u,.875,-.4,.9,1.75,.65,c);F('windows',u,1.25,-.06,.7,.35,.04,'#CFE3EA',{light:'#EAF4FF'});}F('walls',(n/2)*.95+.1,.4,-.4,.35,.8,.45,'#7D8B8E');}
+  else if(s.kind==='vending'){const n=s.machines||2;for(let i=0;i<n;i++){const u=(i-(n-1)/2)*.95,c=['#EDEDE8','#C63B34','#2E6FB0'][Math.floor(r()*3)];F('walls',u,.875,-.4,.9,1.75,.65,c);F('windows',u,1.25,-.06,.7,.35,.04,'#CFE3EA',{light:'#EAF4FF'});}pools.push([s.x,s.frontZ+fz*.5,'#EAF4FF',1.6,.45]);F('walls',(n/2)*.95+.1,.4,-.4,.35,.8,.45,'#7D8B8E');}
   else if(s.kind==='parking'||s.kind==='coin-parking'){
    F('roofs',0,.02,-s.depth/2,s.width-.15,.04,s.depth-.15,'#646B6C');
    const n=s.bays||1,bw=(s.width-.3)/n;
@@ -180,12 +180,13 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   return h;
  }
 
- let renderGroups=[],style,currentNight=false;const heights=new Map(),counts={};
+ let renderGroups=[],style,life,currentNight=false,pools=[];
+ const applyPools=()=>{if(!life?.addLightPool)return;life.clearLightPools('konbini');for(const [x,z,c,r,s] of pools)life.addLightPool(x,z,c,r,{group:'konbini',strength:s});};const heights=new Map(),counts={};
  const picks=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial({visible:false}),cityPlots.length);
  picks.userData.cityPlot=true;root.add(picks);interactive.push(picks);
  const setPick=(i,x,z,w,h,d)=>{dummy.position.set(x,BASE_Y+h/2,z);dummy.rotation.set(0,0,0);dummy.scale.set(w,h,d);dummy.updateMatrix();picks.setMatrixAt(i,dummy.matrix);};
  function redraw(next){buildings=next;for(const g of renderGroups){root.remove(g);g.dispose();if(g.geometry!==geometry)g.geometry.dispose();}renderGroups=[];
-  batches={roads:[],marks:[],walls:[],windows:[],roofs:[]};heights.clear();ground();
+  batches={roads:[],marks:[],walls:[],windows:[],roofs:[]};heights.clear();pools=[];ground();
   const layout=cityLayout(buildings),userPlots=new Set(layout.lots.filter(l=>l.user).map(l=>l.plotId));
   for(const lot of layout.lots){
    const b=lot.user?buildings.find(x=>x.plotId===lot.plotId):null;
@@ -203,6 +204,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   picks.instanceMatrix.needsUpdate=true;picks.computeBoundingSphere();
   for(const key of ['roads','marks','walls','windows','roofs']){counts[key]=batches[key].length;renderGroups.push(batch(batches[key],root,MATS[key],key==='windows'));}
   if(style){style.dispose();style=addTokyoStyle(root,buildings);style.setNight(currentNight);}
+  applyPools();
  }
  redraw(buildings);
 
@@ -227,7 +229,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  for(const sx of [-1,1])for(const sz of [-1,1]){beamDummy.position.set(tower.x+sx*3.05,.3,tower.z+sz*3.05);beamDummy.quaternion.identity();beamDummy.scale.set(.7,.4,.7);beamDummy.updateMatrix();beams.push({m:beamDummy.matrix.clone(),color:'#B8B3A8'});}
  const lattice=batch(beams.map(b=>({...b,glow:b.light===ORANGE?.6:.9})),root,towerMat,true);
  const towerPick=new THREE.Mesh(new THREE.BoxGeometry(7,33,7),new THREE.MeshBasicMaterial({visible:false}));towerPick.position.set(tower.x,16.5,tower.z);towerPick.userData.place=tower;root.add(towerPick);interactive.push(towerPick);
- style=addTokyoStyle(root,buildings);const life=addCityLife(root),crowd=addCityCrowd(root,options),traffic=addCityTraffic(root);
+ style=addTokyoStyle(root,buildings);life=addCityLife(root);applyPools();const crowd=addCityCrowd(root,options),traffic=addCityTraffic(root);
  return {redraw,crowd,lattice,
   heightOf:plotId=>heights.get(plotId)??null,
   stats:()=>({...counts,tower:beams.length,drawCalls:renderGroups.length+1}),
