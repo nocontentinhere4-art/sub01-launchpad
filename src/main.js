@@ -99,10 +99,6 @@ function box(w, h, d, color, x, y, z, parent = scene) {
   const object = new THREE.Mesh(geometries.get(key), toon({ color, roughness: .9 }));
   object.position.set(x, y, z); object.castShadow = true; object.receiveShadow = true; parent.add(object); return object;
 }
-function cylinder(r, h, color, x, y, z, parent = scene) {
-  const object = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 8), toon({ color, roughness: 1 }));
-  object.position.set(x, y, z); object.castShadow = true; object.receiveShadow = true; parent.add(object); return object;
-}
 function sign(text, x, y, z, color = '#fff8e8', scale = 3) {
   const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
   const ctx = canvas.getContext('2d'); ctx.fillStyle = '#292d26'; ctx.fillRect(0, 0, 512, 128);
@@ -136,39 +132,48 @@ async function model(kind, name, x, z, size, rotation = 0, by = 'width', y = flo
   parent.add(wrapper); return wrapper;
 }
 
+// Hero block (art direction wave 2B): the same concrete, asphalt and sidewalk as city.js, buildings at the city's storey
+// scale (ground floor 3.0, storeys 2.5), and street trees only along the block's street edges.
+const HERO={concrete:'#A9A79D',asphalt:'#7A7F7C',sidewalk:'#B4B1A7',kerb:'#CFCBC0',top:.135,kitScale:1.7};
 function groundwork() {
-  // Concrete block, not lawn (brief 3.9): the hero block matches the districts' block concrete and side-street asphalt.
   box(28, .65, 26, '#9C9A91', 0, -.37, 2);
-  box(27.7, .18, 25.7, '#A9A79D', 0, .045, 2);
-  // The central street connects the project's small, walkable parcels.
-  box(27.7, .035, 3.5, '#7A7F7C', 0, .165, 1.6);
-  box(27.7, .055, .52, '#B4B1A7', 0, .175, -.4);
-  box(27.7, .055, .52, '#B4B1A7', 0, .175, 3.6);
-  // A Japanese side street has no centre line.
-  for (const x of [-6, 3.4]) box(1.25, .04, 3, '#CFCBC0', x, .18, -1.5);
-  for (const x of [-3.5, 8]) box(1.25, .04, 3, '#CFCBC0', x, .18, 5.25);
-  for (const p of places) {
-    box(p.id === 'home' ? 7.6 : 6.7, .12, p.id === 'home' ? 6.9 : 6.4, '#d9d4bd', p.x, .2, p.z);
+  box(27.7, .18, 25.7, HERO.concrete, 0, .045, 2);
+  // The central street connects the project's walkable parcels; a Japanese side street has no centre line.
+  box(27.7, .035, 3.5, HERO.asphalt, 0, .165, 1.6);
+  box(27.7, .055, .52, HERO.sidewalk, 0, .175, -.4);
+  box(27.7, .055, .52, HERO.sidewalk, 0, .175, 3.6);
+  box(7.6, .12, 6.9, HERO.sidewalk, places[0].x, .2, places[0].z);
+  makeApartments();
+  // Street trees (brief 3.7): a 2.2 trunk and two stacked crowns, not a lollipop; two instanced meshes for the lot.
+  const trees=[[-12.8,-.5],[9.8,-.5],[-12.6,3.75],[-4.4,3.75],[2.4,3.75],[12.6,3.75]];
+  const trunks=new THREE.InstancedMesh(new THREE.CylinderGeometry(.09,.13,2.2,6),toon({color:'#876551',roughness:1}),trees.length);
+  const crowns=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0),toon({roughness:1}),trees.length*2);
+  const m=new THREE.Object3D(),c=new THREE.Color();
+  trees.forEach(([x,z],i)=>{
+    m.position.set(x,HERO.top+1.1,z);m.rotation.set(0,0,0);m.scale.set(1,1,1);m.updateMatrix();trunks.setMatrixAt(i,m.matrix);
+    for(let j=0;j<2;j++){const k=i*2+j;m.position.set(x+(j?.15:-.1),HERO.top+(j?3.55:2.7),z+(j?-.1:.1));m.rotation.set(.2*j,.7*i+.9*j,0);
+      m.scale.set(j?.85:1.3,j?.75:.9,j?.85:1.25);m.updateMatrix();crowns.setMatrixAt(k,m.matrix);crowns.setColorAt(k,c.set(j?'#8FA66B':'#6F8F5E'));}
+  });
+  for(const t of [trunks,crowns]){t.castShadow=true;t.receiveShadow=true;t.instanceMatrix.needsUpdate=true;scene.add(t);}
+}
+// Orange Apartments: a small RC mansion at the city scale, 3 floors (3.0 + 2.5 + 2.5 + parapet 0.6), balconies facing
+// the camera, a glass entrance and the ORANGE / 03 fascia.
+function makeApartments(){
+  const r=residence,W=4.4,D=4.0,H=3+2.5*2+.6,y0=HERO.top,front=r.z+D/2,wall='#eac09b',band='#f2d2b4';
+  box(W+1,.08,D+1.2,HERO.sidewalk,r.x,y0+.04,r.z+.1);
+  const apartment=box(W,H,D,wall,r.x,y0+H/2,r.z);apartment.userData.place=r;interactive.push(apartment);
+  box(W-.24,.03,D-.24,'#7C8A80',r.x,y0+H+.015,r.z);
+  box(1.5,1.8,1.6,'#d3ab88',r.x-W/2+.95,y0+H+.9,r.z-D/2+1.0);
+  // Ground floor: glass entrance, a mailbox wall and the fascia.
+  box(.95,2.0,.06,'#3D525B',r.x+.9,y0+1.0,front+.02);
+  box(1.3,1.1,.08,'#8E9290',r.x-.6,y0+1.0,front+.03);
+  sign('ORANGE / 03',r.x,y0+2.55,front+.06,'#ffac70',2.2);
+  for(let k=1;k<3;k++){const y=y0+3+2.5*(k-1);
+    box(W-.4,2.0,.04,'#5E7881',r.x,y+1.25,front+.02);
+    box(W+.02,1.0,.9,band,r.x,y+.45,front+.45);
+    box(.8,.6,.3,'#E5E1D6',r.x+(k===1?1.4:-1.4),y+1.25,front+.2);
   }
-  box(3.5, .08, 3.8, '#c6c6a6', -10.5, .2, 8.5);
-  for (const x of [-12.1, -8.9]) for (const z of [7, 10]) cylinder(.06, .9, '#f4eada', x, .7, z);
-  // Original residential block: shared primitive geometry, no additional textures.
-  const apartment=box(2.8,4.1,3,'#eac09b',-10.5,2.35,8.5);
-  apartment.userData.place=residence;interactive.push(apartment);
-  for(let floor=0;floor<3;floor++){
-    for(const x of [-11.3,-10.1])box(.55,.6,.04,'#76968d',x,1+floor*1.05,10.03);
-    box(3,.12,.55,'#e8dec9',-10.5,.65+floor*1.05,10.1);
-  }
-  box(3.1,.2,3.2,'#59665c',-10.5,4.5,8.5);
-  sign('ORANGE / 03',-10.5,.55,10.05,'#ffac70',2.2);
-  addLabel(residence,5.1);
-  // Low-cost stylized trees supplement the downloaded city kit.
-  const positions = [[-12,-7],[-11,5],[-12,12],[12,-6],[12,12],[1,12],[6,-9],[-1,-8]];
-  for (const [x,z] of positions) {
-    cylinder(.12, 1.2, '#8c6f50', x, .8, z);
-    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(.95, 0),toon({ color: '#879b70', roughness: 1 }));
-    crown.scale.y = 1.2; crown.position.set(x, 1.8, z); crown.castShadow = true; scene.add(crown);
-  }
+  addLabel(r,y0+H+.7);
 }
 async function makeHome() {
   const p = places[0];
@@ -202,19 +207,20 @@ async function makeHome() {
   addLabel(p,3.25);
 }
 async function makeBuildings() {
+  // KayKit buildings scaled ×1.7 so their doors are about 2.0 tall like the city's (brief 3.1), on a paved forecourt.
   await Promise.all(places.slice(1).map(async (p,i) => {
-    const object = await model('city', ['building_C_withoutBase','building_B_withoutBase','building_A_withoutBase'][i],p.x,p.z,4.7);
+    const object = await model('city', ['building_C_withoutBase','building_B_withoutBase','building_A_withoutBase'][i],p.x,p.z,4.7*HERO.kitScale,0,'width',HERO.top);
     object.userData.place = p; object.traverse(n => { if(n.isMesh) {n.userData.place = p;interactive.push(n);} });
-    const height = new THREE.Box3().setFromObject(object).max.y;
-    addLabel(p,height+.6);
-    sign(['WORKSHOP','BAD IDEA ARCADE','MIDNIGHT STUDIO'][i],p.x,1.3,p.z+2.5,p.id === 'arcade' ? '#ffae6c' : '#f0ecd8',3.3);
+    const bounds = new THREE.Box3().setFromObject(object), size = bounds.getSize(new THREE.Vector3());
+    box(size.x+.9,.06,size.z+.9,HERO.sidewalk,p.x,HERO.top+.03,p.z);
+    addLabel(p,bounds.max.y+.6);
+    sign(['WORKSHOP','BAD IDEA ARCADE','MIDNIGHT STUDIO'][i],p.x,2.55,bounds.max.z+.06,p.id === 'arcade' ? '#ffae6c' : '#f0ecd8',3.3);
   }));
   await Promise.all([
     model('city','bench',-11.4,4.9,1.7,0),
-    model('city','streetlight',-1,.15,3,0,'height'),
-    model('city','streetlight',10.8,3.8,3,Math.PI,'height'),
+    model('city','streetlight',-1,.15,4.6,0,'height'),
+    model('city','streetlight',10.8,3.8,4.6,Math.PI,'height'),
     model('city','car_hatchback',-10.5,1.7,2.5,Math.PI/2),
-    ...[[-2,-6],[6,-5],[10,9],[-6,11]].map(([x,z])=>model('city','bush',x,z,1.3)),
   ]);
 }
 async function makeCharacter() {
@@ -239,7 +245,9 @@ function crowdEnd(now){
     viewDir.subVectors(controls.target,camera.position).normalize();groundCenter.copy(controls.target);if(viewDir.y<-.05)groundCenter.addScaledVector(viewDir,controls.target.y/-viewDir.y);
     const halfW=(camera.right-camera.left)/camera.zoom/2,halfH=(camera.top-camera.bottom)/camera.zoom/2/Math.max(.3,-viewDir.y);
     crowdGPU.end(groundCenter,Math.hypot(halfW,halfH)+2);}
-  if(now-crowdStatsAt>500){crowdStatsAt=now;const c=crowdGPU.stats;renderer.domElement.dataset.crowd=`${crowdNear?'near':'far'} ${c.instances} ${c.triangles} ${c.drawCalls}`;}
+  if(now-crowdStatsAt>500){crowdStatsAt=now;const c=crowdGPU.stats;renderer.domElement.dataset.crowd=`${crowdNear?'near':'far'} ${c.instances} ${c.triangles} ${c.drawCalls}`;
+    // City diagnostics: city.js instances drawn (detail on/off), then the whole frame's draw calls and triangles.
+    const s=cityRenderer?.stats();if(s)renderer.domElement.dataset.city=`${s.instances} ${s.detail?'detail':'core'} ${renderer.info.render.calls} ${renderer.info.render.triangles}`;}
 }
 
 function renderList() {
@@ -295,7 +303,14 @@ function focusPlace(p) {
 function notify(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;toastTimer=setTimeout(()=>{$('toast').hidden=true;},4500);}
 function meetDev(){cityTour=null;if(!character)return;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();notify(goal?.text||'Following SUB-01.');}
 function resize(){const w=innerWidth,h=innerHeight,aspect=w/h;const half=mobile?18:16.5;camera.left=-half*aspect;camera.right=half*aspect;camera.top=half;camera.bottom=-half;camera.updateProjectionMatrix();renderer.setSize(w,h);roomView?.resize(aspect);}
-function resetView(){cityTour=null;follow=false;cameraTween=null;camera.position.set(85,100,110);controls.target.set(0,8,-7);camera.zoom=mobile?.09:.20;camera.updateProjectionMatrix();controls.update();}
+// Camera (wave 2B): ortho at a fixed yaw of 36° (avoids two equal faces). CAMERA.pitch is the one tunable: wave 1 sat at
+// 32.5°; at that angle a 2-floor near-row building (6.1 tall) hides ~6 units of ground behind it, i.e. the whole side
+// street, so it is raised to 40° (hides ~0.97 × height) — the street and the far ground floors read at district zoom.
+// Every tween only translates the camera, so the pitch set here holds until the user orbits.
+const CAMERA={pitch:40,yaw:36,distance:168};
+function aimCamera(target){const p=THREE.MathUtils.degToRad(CAMERA.pitch),y=THREE.MathUtils.degToRad(CAMERA.yaw),d=CAMERA.distance;
+  controls.target.copy(target);camera.position.set(target.x+d*Math.cos(p)*Math.sin(y),target.y+d*Math.sin(p),target.z+d*Math.cos(p)*Math.cos(y));}
+function resetView(){cityTour=null;follow=false;cameraTween=null;aimCamera(new THREE.Vector3(0,8,-7));camera.zoom=mobile?.09:.19;camera.updateProjectionMatrix();controls.update();}
 
 // The mailbox needs a signed-in resident. Each step opens the next one.
 async function openBuildForm(plot){
@@ -475,7 +490,7 @@ async function pollWorld(){
   const opened=items.filter(b=>b.phase==='open'&&!cityBuildings.some(o=>o.plotId===b.plotId&&o.phase==='open'));
   cityBuildings=items;cityRenderer.redraw(items);residents.set(residentList());renderList();
   for(const l of worldLabels){l.element.remove();labels.splice(labels.indexOf(l),1);}worldLabels.length=0;
-  for(const b of items.filter(b=>b.type==='project')){const plot=cityPlots.find(p=>p.id===b.plotId);addLabel({...placeFor(plot),name:b.ticker?`${b.name} · $${b.ticker}`:b.name,color:b.phase==='open'?'#ffcf6e':'#fb752b'},b.phase==='open'?10.6:b.phase==='thinking'?4.2:Math.max(3,8*b.progress)+2.4);worldLabels.push(labels.at(-1));}
+  for(const b of items.filter(b=>b.type==='project')){const plot=cityPlots.find(p=>p.id===b.plotId);addLabel({...placeFor(plot),name:b.ticker?`${b.name} · $${b.ticker}`:b.name,color:b.phase==='open'?'#ffcf6e':'#fb752b'},(cityRenderer.heightOf(b.plotId)??3)+(b.phase==='open'?2.6:1.4));worldLabels.push(labels.at(-1));}
   if(opened.length&&worldKey&&$('activity-text'))notify(`${opened[0].name} just opened its doors.`);
  }
  cityEvents.decorate(cityBuildings,world.events);
@@ -502,6 +517,8 @@ function animate(now){
   if(character){const m=character.userData.marker,fl=markerFlash>now?Math.abs(Math.sin(now*.012)):0;m.scale.setScalar(1+fl*.9);m.material.emissiveIntensity=.25+fl*2.5;m.position.copy(character.position);m.position.y+=2+(reducedMotion?0:Math.sin(now*.002)*.04);m.rotation.y=now*.0005;if(follow){const before=controls.target.clone();controls.target.lerp((followObj||character).position,.07);camera.position.add(controls.target.clone().sub(before));}}
   if(cameraTween){cameraTween.elapsed+=dt;const t=Math.min(cameraTween.elapsed/.75,1),ease=1-(1-t)**3;const before=controls.target.clone();controls.target.lerpVectors(cameraTween.start,cameraTween.target,ease);camera.position.add(controls.target.clone().sub(before));camera.zoom=THREE.MathUtils.lerp(cameraTween.zoom,cameraTween.endZoom,ease);camera.updateProjectionMatrix();if(t===1)cameraTween=null;}
   if(cityTour){cityTour.elapsed+=dt;if(cityTour.elapsed>5){cityTour.elapsed=0;cityTour.index++;if(cityTour.index>=cityViews.length){cityTour=null;resetView();$('activity-text').textContent='Your idea. Your city. Choose an address.';}else nextCityView();}}
+  // Overview LOD: below zoom 0.3 the city skips AC units, small roof items, side pipes and road marks.
+  cityRenderer?.setDetail(camera.zoom>=.3);
   controls.update();updateSunAndFog();crowdEnd(now);renderer.render(scene,camera);
   document.body.classList.toggle('is-close',camera.zoom>.42);
   for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}

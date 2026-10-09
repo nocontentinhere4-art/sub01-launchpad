@@ -19,12 +19,13 @@
 //    stripe          konbini band colours [3] or null
 //    awning          {color, depth, y} or null
 //    stair           T1 external steel stair (drawn on the back face)
-//    roofItems       [{kind:'bulkhead'|'tank'|'tankRound'|'condenser'|'cooling'|'antenna'|'billboard'|'garden'|'rail'|'vent',
+//    roofItems       [{kind:'bulkhead'|'tank'|'tankRound'|'condenser'|'cooling'|'antenna'|'billboard'|'garden'|'vent',
 //                      u, v, w, d, h, color}]   u along +x, v toward the front, both from the footprint centre
 //    bays            T3: per upper floor, [{ac, acSide:-1|1, laundry}] per 1.9 bay;  T2: per upper floor [{balcony}]
 //    sideAC          number of AC units stacked on the exposed side wall (T1/T2)
 //    sideWindows     0–2 small windows on the exposed side wall
-//    leftH, rightH   heights of the touching neighbours along the street (0 = open) }
+//    leftH, rightH   heights of the touching neighbours along the street (0 = open)
+//    slab            true on the one tall building of its district (HEIGHTS[class].slab floors, far row) }
 //
 // Spot (open ground, from cityLayout().spots): { id, plotId|null, district, kind:'alley'|'vending'|'parking'|
 //    'coin-parking'|'shrine', x, z, width, depth, front, frontZ, bays?, cars? }   vacant plots → T8 coin parking or shrine.
@@ -45,12 +46,18 @@ export const CATEGORY={shinjuku:'neon',shibuya:'neon',akihabara:'neon',roppongi:
  ginza:'office',nihonbashi:'office',shinagawa:'office',tsukiji:'office',odaiba:'office',kanda:'office',
  ebisu:'home',nakameguro:'home',nakano:'home',meguro:'home',harajuku:'home',yoyogi:'home',daikanyama:'home',koenji:'home',
  shiba:'old',asakusa:'old',ueno:'old',sumida:'old',shimokitazawa:'old'};
+// Type mix per character (which typologies a district builds) …
 const PROFILE={
- neon:{floors:[3,6],mix:{T1:6,T4:2,T5:0,T3:2,T7:1}},
- office:{floors:[3,7],mix:{T1:3,T4:1,T5:0,T3:1.5,T7:4}},
- home:{floors:[2,4],mix:{T1:1,T4:3,T5:1.5,T3:4,T7:0}},
- old:{floors:[2,3],mix:{T1:.5,T4:4,T5:3,T3:1,T7:0}}};
-const TYPE_FLOORS={T1:[3,6],T2:[2,5],T3:[3,5],T4:[2,3],T5:[2,2],T6:[1,1],T7:[5,8]};
+ neon:{mix:{T1:6,T4:2,T5:0,T3:2,T7:1}},
+ office:{mix:{T1:3,T4:1,T5:0,T3:1.5,T7:4}},
+ home:{mix:{T1:1,T4:3,T5:1.5,T3:4,T7:0}},
+ old:{mix:{T1:.5,T4:4,T5:3,T3:1,T7:0}}};
+// … and a height class per district (how tall it builds; wave 2B readability, real-13 grain): mostly low houses with
+// exactly ONE slab per district on the far row, so streets and ground floors read from the camera.
+export const HEIGHT_CLASS={shinjuku:'high',shibuya:'high',ginza:'high',shinagawa:'high',odaiba:'high',
+ akihabara:'mid',roppongi:'mid',harajuku:'mid',nihonbashi:'mid',kanda:'mid',ikebukuro:'mid'};
+export const HEIGHTS={low:{floors:[2,3],slab:[5,6]},mid:{floors:[3,5],slab:[7,7]},high:{floors:[4,7],slab:[8,9]}};
+export const heightClass=districtId=>HEIGHT_CLASS[districtId]||'low';
 // Which sides of a district street get a raised sidewalk (with curb and tactile strip on commercial ones).
 export function sidewalkSides(districtId){const c=CATEGORY[districtId]||'home';if(c==='neon'||c==='office')return [-1,1];if(c==='old')return [];return [hashString(districtId+':walk')&1?-1:1];}
 export const isCommercial=id=>['neon','office'].includes(CATEGORY[id]);
@@ -70,7 +77,10 @@ function chooseType(r,width,category){
  const table=Object.entries(mix).filter(([t,w])=>w>0&&ok(t));
  return table.length?pick(r,table):width>4.05?'T3':'T4';
 }
-function floorRange(type,category){const [a,b]=TYPE_FLOORS[type],[c,d]=PROFILE[category].floors,lo=Math.max(a,c),hi=Math.min(b,d);return lo<=hi?[lo,hi]:[a,b];}
+function floorRange(type,cls){const [lo,hi]=HEIGHTS[cls].floors;
+ if(type==='T5')return [2,2];if(type==='T6')return [1,1];if(type==='T4')return [2,3];
+ if(type==='T7')return [Math.max(lo,5),Math.max(hi,5)];if(type==='T3')return [Math.max(lo,3),Math.max(hi,3)];
+ return [lo,hi];}
 function shopFor(r,type,width){
  if(type==='T5')return 'house';if(type==='T6')return 'konbini';
  if(type==='T7')return pick(r,[['glazed',7],['entrance',2],['pilotis',width>=3?1:0]]);
@@ -89,10 +99,10 @@ function roofRecipe(r,lot,category){
  if(r()<.15)want.push({kind:'tankRound',w:Math.min(1,W*.45),d:Math.min(1,W*.45),h:1.2,color:'#8FAFBF',slots:['FL','FR','BL','BR']});
  if((t==='T1'||t==='T7'||t==='T6')&&r()<(t==='T6'?1:.6)){const n=Math.max(1,Math.min(2+Math.floor(r()*3),Math.floor(W/.8)));want.push({kind:'condenser',n,w:n*.8-.1,d:.7,h:.7,slots:['FR','FL','BR','BL']});}
  if(t==='T7')want.push({kind:'cooling',w:Math.min(1.4,W*.4),d:Math.min(1.4,D*.3),h:1.2,slots:['BR','BL','FR','FL']});
- if(['T2','T3','T4'].includes(t)&&r()<.5)want.push({kind:'antenna',w:.8,d:.8,h:2,slots:['FL','FR','BR','BL']});
+ if(['T2','T3','T4'].includes(t)&&r()<.3)want.push({kind:'antenna',w:.8,d:.8,h:2,slots:['FL','FR','BR','BL']});
  if(t==='T3'&&r()<.15)want.push({kind:'garden',w:Math.min(1.6,W*.45),d:.9,h:.5,slots:['FL','FR']});
- if(r()<.5)want.push({kind:'rail',w:W,d:D,h:1});
- while(want.length<2)want.push({kind:'vent',w:.5+r()*.3,d:.5,h:.6,slots:['FR','BL','FL','BR']});
+ // No safety rails (budget, wave 2B); low roofs (≤ 2 floors) need only one item.
+ while(want.length<(lot.floors<=2?1:2))want.push({kind:'vent',w:.5+r()*.3,d:.5,h:.6,slots:['FR','BL','FL','BR']});
  const used=new Set(),narrow=W<1.7;
  for(const it of want){if(items.length>=5)break;
   if(it.kind==='rail'){items.push({kind:'rail',u:0,v:0,w:W,d:D,h:1,color:'#7F8A88',sides:r()<.5?'FL':'FR'});continue;}
@@ -155,29 +165,49 @@ function layoutDistrict(d,buildings,out){
   for(let i=0;i<side.el.length&&streetFill(side.el,d)<.85;i++){const e=side.el[i];
    if(e.kind==='spot'&&e.pole){const j=side.el[i-1]?.gap==='alley'?i-1:i+1,p=side.el[j];p.x=(p.x+e.x)/2;p.width=1.9;p.gap='pencil';side.el.splice(i,1);i--;}}
  }
+ const cls=heightClass(d.id),classLo=HEIGHTS[cls].floors[0];
  const konbini=hashString(d.id+':konbini')%2===0;
  for(const [si,{front,el}] of sides.entries()){
   const s=si?1:-1,fz=fzOf(front),lotLine=d.z-fz*LOT_LINE;
+  // Corner fillers (open ground or the street end beside them): half become a 1-storey kiosk or, while the edge
+  // stays ≥ 85 % building face, a vending gap.
+  el.forEach((e,i)=>{if(e.kind!=='building'||e.role!=='filler')return;
+   const r=rng(e.seed+':corner');if(el[i-1]?.kind==='building'&&el[i+1]?.kind==='building'||r()>=.5)return;
+   if(r()<.4&&e.width>=1.8){e.kind='spot';e.spot='vending';e.machines=2;if(streetFill(el,d)>=.85)return;e.kind='building';delete e.spot;delete e.machines;}
+   e.kiosk=true;e.shopForce=r()<.7?'glazed':'shutter';});
   const blds=el.filter(e=>e.kind==='building');
+  // Pencils only where a lot is too narrow for anything else: fillers become shop-houses (T4) or, in low districts,
+  // old houses (T5); narrow sub-lots in low districts are mostly shop-houses too. Target ≤ 25 % T2.
   for(const e of blds){
    const r=rng(e.seed+':type');
-   if(e.user){const t=e.building.type;e.type=t==='project'?'T1':t==='studio'?'T4':'T3';e.fixed=t==='project'?6:t==='studio'?3:5;}
-   else e.type=chooseType(r,e.role==='sub'?e.width+JOINT:e.width,category);
-   if(e.type==='T5'&&e.role!=='sub')e.type='T2';
+   if(e.user){const t=e.building.type;e.type=t==='project'?'T1':t==='studio'?'T4':'T3';e.fixed=t==='project'?6:t==='studio'?3:5;continue;}
+   if(e.kiosk)e.type='T4';
+   else if(e.role==='filler')e.type=cls==='low'?(r()<.3&&e.width>=1.6?'T5':'T4'):r()<.5?'T4':'T2';
+   else{e.type=chooseType(r,e.role==='sub'?e.width+JOINT:e.width,category);if(e.type==='T2'&&cls==='low'&&r()<.6)e.type='T4';}
+   if(e.type==='T7'&&cls==='low')e.type='T3';
   }
   if(konbini&&s===(hashString(d.id+':kside')&1?1:-1)){
    const c=blds.filter(e=>!e.user&&e.width>=3.5).sort((a,b)=>(b.type==='T3')-(a.type==='T3')||b.width-a.width)[0];
    if(c){if(c.type!=='T3')c.type='T6';c.shopForce='konbini';}
   }
+  // One slab per district, on the far row (behind the street from the camera) and never on a user's plot.
+  if(s<0){const taken=new Set(blds.filter(e=>e.user).map(e=>e.plotId));
+   const c=blds.filter(e=>!e.user&&e.role==='sub'&&e.width>=2.5&&!taken.has(e.plotId)&&!e.shopForce);
+   if(c.length){const e=c[Math.floor(dr()*c.length)],w=e.width+JOINT;e.slab=true;
+    e.type=cls==='high'?(w>4.05?'T7':'T1'):cls==='mid'&&w>4.05&&category==='office'?'T7':w>=3.8?'T3':'T1';}}
   // Floors: base from the plot's height plus a hashed ±2, then no two touching neighbours alike.
   for(const e of blds){
    const p=e.plotId&&cityPlots.find(p=>p.id===e.plotId),r=rng(e.seed+':floors');
-   // The row nearest the camera (+z side of the street) stays lower so the street and the far facades read.
-   let [lo,hi]=floorRange(e.type,category);if(s>0)hi=Math.max(lo,Math.min(hi,lo+1));
+   let [lo,hi]=e.slab?HEIGHTS[cls].slab:floorRange(e.type,cls);
+   if(e.kiosk)lo=hi=1;
+   // The row nearest the camera (+z side of the street) stays ≤ the district minimum + 1, and 40 % of it drops to
+   // 1–2 floors, so the street and the far ground floors read through it.
+   else if(s>0&&!e.fixed){hi=Math.min(hi,classLo+1);lo=Math.min(lo,hi);
+    if(e.type!=='T5'&&r()<.4){lo=1;hi=2;if(['T1','T2','T3','T7'].includes(e.type))e.type='T4';}}
    const t=p?Math.min(1,Math.max(0,(p.height-3)/13)):r(),u=Math.pow(.5*t+.5*rng(d.id+e.seed)(),1.5);
    e.range=[lo,hi];e.desired=e.fixed??Math.max(lo,Math.min(hi,Math.round(lo+(hi-lo)*u+Math.floor(r()*5)-2)));
    // Lots sharing a plot with the user's building stay at least two floors below it.
-   const own=e.plotId&&!e.fixed&&blds.find(x=>x.fixed&&x.plotId===e.plotId);if(own){e.range=[Math.min(lo,Math.max(1,own.fixed-2)),Math.max(1,Math.min(hi,own.fixed-2))];e.desired=Math.min(e.desired,e.range[1]);}
+   const own=e.plotId&&!e.fixed&&blds.find(x=>x.fixed&&x.plotId===e.plotId);if(own){e.range=[Math.min(lo,Math.max(1,own.fixed-2)),Math.max(1,Math.min(hi,own.fixed-2))];e.desired=Math.min(e.desired,e.range[1]);e.ownCap=e.range[1];}
   }
   blds.forEach((e,i)=>{
    if(e.fixed){e.floors=e.fixed;return;}
@@ -187,7 +217,8 @@ function layoutDistrict(d,buildings,out){
    inRange.sort((a,b)=>Math.abs(a-e.desired)-Math.abs(b-e.desired));
    let ok=tryList(inRange);
    if(!ok.length&&e.type==='T5'){e.type='T4';ok=tryList([3,2]);}
-   if(!ok.length)ok=tryList([e.desired+1,e.desired-1,e.desired+2,e.desired-2].filter(f=>f>=1&&f<=9));
+   if(!ok.length){const cap=Math.min(e.ownCap??9,e.slab?9:s>0?classLo+1:HEIGHTS[cls].floors[1]),alt=[e.desired+1,e.desired-1,e.desired+2,e.desired-2].filter(f=>f>=1&&f<=9);
+    ok=tryList(alt.filter(f=>f<=cap));if(!ok.length)ok=tryList(alt);}
    e.floors=ok[0];
   });
   // Colours, depth, ground floor and details.
@@ -207,12 +238,13 @@ function layoutDistrict(d,buildings,out){
     type:e.type,floors:e.floors,height:heightFor(e.floors,e.type),wall,roof,shop,
     stripe:shop==='konbini'?KONBINI[hashString(d.id)%3]:null,
     awning:['glazed','noren'].includes(shop)&&r()<.34?{color:pick(r,AWNINGS),depth:Math.min(between(r,.6,.9),LOT_LINE+setback-2.55),y:between(r,2.6,2.95)}:null,
-    stair:e.type==='T1'&&r()<.5,gap:e.gap||null,
-    leftH:0,rightH:0,bays:[],sideAC:0,sideWindows:Math.floor(r()*3)};
+    stair:e.type==='T1'&&r()<.5,gap:e.gap||null,slab:!!e.slab,
+    leftH:0,rightH:0,bays:[],sideAC:0,sideWindows:r()<.45?1:0};
    if(e.type==='T5')lot.eave=GROUND+STOREY;
    if(e.type==='T3'){const n=Math.max(1,Math.floor(e.width/1.9));for(let f=1;f<lot.floors;f++)lot.bays.push(Array.from({length:n},()=>({ac:r()<.6,acSide:r()<.5?-1:1,laundry:r()<.25})));}
    if(e.type==='T2')for(let f=1;f<lot.floors;f++)lot.bays.push([{balcony:r()<.5}]);
-   if((e.type==='T1'||e.type==='T2')&&r()<.45)lot.sideAC=2+Math.floor(r()*4);
+   // Side AC stacks: T1 2–4, pencils fewer and shorter (budget, wave 2B).
+   if(e.type==='T1'&&r()<.45)lot.sideAC=2+Math.floor(r()*3);else if(e.type==='T2'&&r()<.25)lot.sideAC=1+Math.floor(r()*2);
    lot.roofItems=roofRecipe(rng(e.seed+':roof'),lot,category);
    e.lot=lot;out.lots.push(lot);
   });
@@ -229,7 +261,7 @@ function layoutDistrict(d,buildings,out){
  const slots=[];
  for(const s of [-1,1]){let x=d.x-EDGE+.2;const r=rng(`${d.id}:interior:${s}`);while(true){const w=between(r,3.4,4.8),gap=between(r,.6,2.4);if(x+w>d.x+EDGE-.2)break;slots.push({s,x:x+w/2,width:w});x+=w+gap;}}
  const order=slots.map(v=>({v,k:dr()})).sort((a,b)=>a.k-b.k).map(o=>o.v);
- const parking=order.shift(),houses=order.slice(0,3+Math.floor(dr()*4));
+ const parking=order.shift(),houses=order.slice(0,3+Math.floor(dr()*3));
  if(parking){const front=parking.s<0?'-z':'+z',fz=fzOf(front),zc=d.z+parking.s*11.4;
   out.spots.push({id:`${d.id}:interior:parking`,plotId:null,district:d.id,kind:'coin-parking',x:parking.x,z:zc,width:Math.max(parking.width,4.2),depth:4.2,front,frontZ:zc+fz*2.1,cars:[0,1,2].filter(()=>dr()<.5),bays:3});}
  for(const h of houses){const r=rng(`${d.id}:house:${h.x.toFixed(2)}`),front=h.s<0?'-z':'+z',fz=fzOf(front),tile=r()<.7,type=tile?'T5':'T4';

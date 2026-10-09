@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {cityLayout,subLotsOf,frontFace,heightFor,GROUND,STOREY,PARAPET} from '../src/lots.js';
+import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET} from '../src/lots.js';
 import {cityPlots,districts,buildingColors} from '../src/city-state.js';
 import {frontOf} from '../src/world-sync.js';
 import {createCity} from '../src/city.js';
@@ -31,17 +31,55 @@ test('lots: every plot is covered; vacant plots are T8 spots; the user takes the
  const u=subLotsOf('shibuya-2',user);assert.equal(u.user.wall,buildingColors.orange);assert.equal(u.user.type,'T1');
  assert.equal(u.user.width,Math.max(...u.lots.map(l=>l.width)));assert.equal(subLotsOf('shibuya-5',user).user.type,'T3');
 });
-test('lots: density per district stays in the brief range; roofs carry 2–5 off-centre items',()=>{
+test('lots: density per district stays in the brief range; roofs carry 1–5 off-centre items (2+ above two floors), no rails',()=>{
  const L=cityLayout([]);
- for(const d of districts){const lots=L.lots.filter(l=>l.district===d.id);assert.ok(lots.length>=14&&lots.length<=26,`${d.id} ${lots.length}`);
+ for(const d of districts){const lots=L.lots.filter(l=>l.district===d.id);assert.ok(lots.length>=12&&lots.length<=26,`${d.id} ${lots.length}`);
   assert.equal(L.spots.filter(s=>s.district===d.id&&s.kind==='coin-parking'&&!s.plotId).length,1);
   const houses=lots.filter(l=>l.role==='interior').length;assert.ok(houses>=3&&houses<=6);}
- for(const l of L.lots)if(l.type!=='T5'){assert.ok(l.roofItems.length>=2&&l.roofItems.length<=5,l.id);
-  for(const it of l.roofItems)if(it.kind!=='rail')assert.ok(Math.hypot(it.u,it.v)>.2||l.width<2.2,`${l.id} ${it.kind} centred`);}
+ for(const l of L.lots)if(l.type!=='T5'){assert.ok(l.roofItems.length>=(l.floors<=2?1:2)&&l.roofItems.length<=5,l.id);
+  for(const it of l.roofItems){assert.notEqual(it.kind,'rail');assert.ok(Math.hypot(it.u,it.v)>.2||l.width<2.2,`${l.id} ${it.kind} centred`);}}
+});
+// Wave 2B readability: height classes, one slab per district, a low near row, few pencils.
+const street=L=>L.lots.filter(l=>l.role!=='interior');
+test('lots: height profiles per district class, with exactly one slab on the far row',()=>{
+ for(const buildings of [[],user]){const L=cityLayout(buildings);
+  for(const d of districts){const cls=heightClass(d.id),[lo,hi]=HEIGHTS[cls].floors,[s0,s1]=HEIGHTS[cls].slab;
+   const lots=street(L).filter(l=>l.district===d.id),slabs=lots.filter(l=>l.slab),rest=lots.filter(l=>!l.slab&&!l.user);
+   assert.equal(slabs.length,1,`${d.id} slabs`);const s=slabs[0];
+   assert.ok(s.floors>=s0&&s.floors<=s1&&s.front==='+z'&&!s.user,`${d.id} slab ${s.floors} ${s.front}`);
+   for(const l of rest)assert.ok(l.floors<=hi&&l.floors<s.floors,`${d.id} ${l.id} ${l.type}${l.floors} > ${hi}`);
+   if(cls==='low')assert.ok(rest.filter(l=>l.floors<=3).length/rest.length>=.9,`${d.id} mostly 2–3 floors`);
+   if(cls==='high')assert.ok(rest.filter(l=>l.floors>=4).length/rest.length>=.3,`${d.id} reads tall`);}}
+ assert.deepEqual(['koenji','asakusa','ebisu'].map(heightClass),['low','low','low']);
+ assert.deepEqual(['akihabara','roppongi'].map(heightClass),['mid','mid']);assert.deepEqual(['shinjuku','shibuya','ginza'].map(heightClass),['high','high','high']);
+});
+test('lots: the near row (fronts −z) stays ≤ the class minimum + 1 and ~40 % of it is 1–2 floors',()=>{
+ const L=cityLayout([]);let low=0,n=0;
+ for(const l of street(L).filter(l=>l.front==='-z'&&!l.user)){const min=HEIGHTS[heightClass(l.district)].floors[0];
+  assert.ok(l.floors<=min+1,`${l.id} ${l.floors}`);n++;if(l.floors<=2)low++;}
+ // 40 % chance on top of the low-district rows that are 2–3 floors anyway: measured over high/mid districts only.
+ const hm=street(L).filter(l=>l.front==='-z'&&heightClass(l.district)!=='low');
+ const share=hm.filter(l=>l.floors<=2).length/hm.length;assert.ok(share>=.3&&share<=.6,`near-row 1–2 floor share ${share.toFixed(2)}`);
+ assert.ok(n>100&&low/n>.5);
+});
+test('lots: pencils are ≤ 25 % of lots; corner fillers turn into kiosks or vending gaps',()=>{
+ for(const buildings of [[],user]){const L=cityLayout(buildings),pencils=L.lots.filter(l=>l.type==='T2').length;
+  assert.ok(pencils/L.lots.length<=.25,`T2 share ${(pencils/L.lots.length).toFixed(3)}`);
+  assert.ok(L.lots.some(l=>l.role==='filler'&&l.floors===1),'1-storey kiosks');
+  assert.ok(L.spots.some(s=>s.kind==='vending'),'vending gaps');}
+});
+test('lots: the user building stands ≥ 2 floors above the other lots on its plot',()=>{
+ for(const b of [...user,{plotId:'koenji-4',type:'studio',color:'sand'},{plotId:'shinjuku-1',type:'project',color:'violet'}]){
+  const s=subLotsOf(b.plotId,[b]);assert.ok(s.user,b.plotId);
+  for(const l of s.lots)if(!l.user)assert.ok(l.floors<=s.user.floors-2,`${b.plotId} ${l.id} ${l.floors} vs ${s.user.floors}`);}
 });
 test('city: one batch per kind, picks cover the user sub-lot, heightOf follows the new storey scale',()=>{
  const scene=new THREE.Scene(),interactive=[],city=createCity(scene,interactive,()=>{},user);
- const st=city.stats();assert.ok(st.drawCalls<=6);assert.ok(st.walls>3000&&st.windows>500&&st.roofs>1000);
+ const st=city.stats();assert.ok(st.drawCalls<=6);assert.ok(st.walls>2000&&st.windows>500&&st.roofs>1000);
+ // Budget (wave 2B): the city's own boxes stay under 7,500; overview LOD drops details without extra draw calls.
+ assert.ok(st.instances<7500,`city instances ${st.instances}`);
+ city.setDetail(false);const far=city.stats();assert.ok(far.instances<st.instances-1000&&!far.detail&&far.drawCalls===st.drawCalls);city.setDetail(true);
+ assert.equal(city.stats().instances,st.instances);
  const u=subLotsOf('shibuya-2',user).user;assert.equal(city.heightOf('shibuya-2'),u.height);
  const m=new THREE.Matrix4(),pos=new THREE.Vector3(),q=new THREE.Quaternion(),sc=new THREE.Vector3();
  interactive[0].getMatrixAt(cityPlots.findIndex(p=>p.id==='shibuya-2'),m);m.decompose(pos,q,sc);
