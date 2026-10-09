@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {toon,toonify} from './toon.js';
 import {districts} from './city-state.js';
 
 const mod=(n,d)=>((n%d)+d)%d;
@@ -19,7 +20,7 @@ export function sidewalkState(seconds,index){
 export function addCityCrowd(parent,{mobile=false}={}){
  const root=new THREE.Group();root.name='Tokyo street life';parent.add(root);
  const count=mobile?48:80,headsCount=count;
- const boxes=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({roughness:.85}),count*14);
+ const boxes=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),toon({roughness:.85}),count*14);
  const heads=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),boxes.material,headsCount);
  boxes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);heads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
  // Explicit bounds cover complete routes, so animated instances do not vanish at the initial position.

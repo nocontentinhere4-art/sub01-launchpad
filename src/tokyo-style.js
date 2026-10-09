@@ -1,17 +1,19 @@
 import * as THREE from 'three';
+import {toon,toonify} from './toon.js';
 import {cityPlots} from './city-state.js';
+const underway=b=>['thinking','scaffold','stopped'].includes(b?.phase);
 // Shared geometry and one atlas interpret the references without photo textures.
 export function addTokyoStyle(parent,buildings=[]){
  const root=new THREE.Group();parent.add(root);
  const geometry=new THREE.BoxGeometry(1,1,1),dummy=new THREE.Object3D();
- const stone=new THREE.MeshStandardMaterial({roughness:.95}),light=new THREE.MeshBasicMaterial();
+ const stone=toon({roughness:.95}),light=new THREE.MeshBasicMaterial();
  const solids=[],glow=[];
  const item=(list,x,y,z,w,h,d,color,rotation=0)=>list.push({x,y,z,w,h,d,color,rotation});
  function batch(items,material){const mesh=new THREE.InstancedMesh(geometry,material,items.length);items.forEach((v,i)=>{dummy.position.set(v.x,v.y,v.z);dummy.rotation.set(0,v.rotation||0,0);dummy.scale.set(v.w,v.h,v.d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,new THREE.Color(v.color));});root.add(mesh);return mesh;}
  const accents=['#fb7738','#25b8c8','#d96999','#f4c15d'];
  // Storefront canopies, AC units and small ground-floor neon bands.
  for(const [i,p] of cityPlots.entries()){
-  const built=buildings.find(b=>b.plotId===p.id);if(p.vacant&&!built)continue;
+  const built=buildings.find(b=>b.plotId===p.id);if(p.vacant&&!built||underway(built))continue;
   const height=built?(built.type==='project'?8:built.type==='studio'?4:6):p.height;
   item(solids,p.x,.52,p.z+2.6,4.9,.18,.55,'#344650');
   item(solids,p.x,1.7,p.z+2.65,4.9,.2,.7,i%2?'#d3784c':'#547e83');
@@ -58,7 +60,7 @@ export function addTokyoStyle(parent,buildings=[]){
   tri(baseA,edgeB,baseB,i%2?'#607b91':'#7891a2');tri(baseA,edgeA,edgeB,i%2?'#607b91':'#7891a2');tri(edgeA,summit,edgeB,i%2?'#d6e6ec':'#eef0de');
  }
  const mountainGeometry=new THREE.BufferGeometry();mountainGeometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));mountainGeometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));mountainGeometry.computeVertexNormals();
- const mountain=new THREE.Mesh(mountainGeometry,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide}));mountain.position.copy(center);root.add(mountain);
+ const mountain=new THREE.Mesh(mountainGeometry,toon({vertexColors:true,roughness:1,side:THREE.DoubleSide}));mountain.position.copy(center);root.add(mountain);
  // Atlas labels are generic signs, not copied business brands.
  let signMesh;
  if(typeof document!=='undefined'){
@@ -68,7 +70,7 @@ export function addTokyoStyle(parent,buildings=[]){
   words.forEach((word,i)=>{const x=i%4*256,y=Math.floor(i/4)*256;ctx.fillStyle=bg[i%4];ctx.fillRect(x,y,256,256);ctx.strokeStyle='#f9ebc5';ctx.lineWidth=7;ctx.strokeRect(x+10,y+10,236,236);ctx.fillStyle=i%4===2?'#334b57':'#fff3dd';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 46px sans-serif';if(i<4||i===10||i===11){[...word].forEach((c,j)=>ctx.fillText(c,x+128,y+35+j*45,205));}else{ctx.font='bold 39px monospace';ctx.fillText(word,x+128,y+114,215);ctx.font='20px monospace';ctx.fillText('TOKYO / 01',x+128,y+175,215);}});
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
   const signs=[];
-  cityPlots.forEach((p,i)=>{const built=buildings.find(b=>b.plotId===p.id);if(p.vacant&&!built)return;const height=built?(built.type==='project'?8:built.type==='studio'?4:6):p.height;signs.push({x:p.x-2,y:height*.55,z:p.z+2.48,w:.75,h:Math.min(4,height*.75),r:0,tile:i%16});if(['shibuya','akihabara','roppongi'].includes(p.district)){signs.push({x:p.x,y:height+1.3,z:p.z+1.9,w:3.3,h:2,r:0,tile:(i+4)%16});signs.push({x:p.x+2.54,y:height*.6,z:p.z+.6,w:1.3,h:3,r:Math.PI/2,tile:(i+1)%16});}});
+  cityPlots.forEach((p,i)=>{const built=buildings.find(b=>b.plotId===p.id);if(p.vacant&&!built||underway(built))return;const height=built?(built.type==='project'?8:built.type==='studio'?4:6):p.height;signs.push({x:p.x-2,y:height*.55,z:p.z+2.48,w:.75,h:Math.min(4,height*.75),r:0,tile:i%16});if(['shibuya','akihabara','roppongi'].includes(p.district)){signs.push({x:p.x,y:height+1.3,z:p.z+1.9,w:3.3,h:2,r:0,tile:(i+4)%16});signs.push({x:p.x+2.54,y:height*.6,z:p.z+.6,w:1.3,h:3,r:Math.PI/2,tile:(i+1)%16});}});
   const signGeometry=new THREE.PlaneGeometry(1,1);signGeometry.setAttribute('signTile',new THREE.InstancedBufferAttribute(new Float32Array(signs.flatMap(s=>[s.tile%4,Math.floor(s.tile/4)])),2));
   const signMaterial=new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide});
   signMaterial.onBeforeCompile=shader=>{shader.vertexShader='attribute vec2 signTile;\n'+shader.vertexShader;shader.vertexShader=shader.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\n#ifdef USE_MAP\nvMapUv = (vMapUv + signTile) / vec2(4.0,4.0);\n#endif');};signMaterial.customProgramCacheKey=()=> 'tokyo-sign-atlas-v1';

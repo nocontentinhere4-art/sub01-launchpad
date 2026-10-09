@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {toon,toonify} from './toon.js';
 import {crossingState} from './city-crowd.js';
 export function trainPosition(seconds,offset=0){
  const t=((seconds+offset)%108+108)%108;
@@ -18,7 +19,7 @@ export function addCityLife(parent){
  const geo=new THREE.BoxGeometry(1,1,1),dummy=new THREE.Object3D();
  const solid=[],windows=[],water=[];
  const item=(list,x,y,z,w,h,d,color)=>list.push({x,y,z,w,h,d,color});
- const mat=new THREE.MeshStandardMaterial({roughness:.86});
+ const mat=toon({roughness:.86});
  const emissive=new THREE.MeshBasicMaterial({color:'#ffffff'});
  function batch(items,material){const mesh=new THREE.InstancedMesh(geo,material,items.length);items.forEach((s,i)=>{dummy.position.set(s.x,s.y,s.z);dummy.rotation.set(0,0,0);dummy.scale.set(s.w,s.h,s.d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,new THREE.Color(s.color));});root.add(mesh);return mesh;}
  // Dense horizon, distinct stepped crowns rather than uniform slab heights.
@@ -50,7 +51,7 @@ export function addCityLife(parent){
  for(const x of [72.8,85.3])for(let z=-67;z<=73;z+=10){if([-38,2,42].some(bridge=>Math.abs(z-bridge)<4))continue;treeSites.push({x,z});item(solid,x,1.35,z,.22,2.2,.22,'#876551');}
  for(const x of [-41,-17])for(const z of [-1,5])item(solid,x,1.9,z,.1,3.4,.1,'#536274');
  batch(solid,mat);batch(windows,emissive);const river=batch(water,new THREE.MeshBasicMaterial({color:'#b1d5df'}));
- const blossoms=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),new THREE.MeshStandardMaterial({roughness:1}),treeSites.length*3);root.add(blossoms);
+ const blossoms=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),toon({roughness:1}),treeSites.length*3);root.add(blossoms);
  treeSites.forEach((p,i)=>{for(let j=0;j<3;j++){dummy.position.set(p.x+(j-1)*.68,2.5+(j%2)*.48,p.z+(j%2)*.35);dummy.rotation.set(.1*i,.4*i,.1*j);dummy.scale.set(1.02,.88,.95);dummy.updateMatrix();blossoms.setMatrixAt(i*3+j,dummy.matrix);blossoms.setColorAt(i*3+j,new THREE.Color(['#d9a3ba','#e7bdc6','#c990b0'][(i+j)%3]));}});
  const petalTime={value:0},petalGeometry=new THREE.BufferGeometry();
  petalGeometry.setAttribute('position',new THREE.Float32BufferAttribute(Array.from({length:160},(_,i)=>[i%2?73:85,.5+(i%17)*.2,-68+(i*11%142)]).flat(),3));
@@ -74,12 +75,12 @@ export function addCityLife(parent){
  }
  // A slim, stepped broadcast tower adds a second silhouette.
  const sky=new THREE.Group();root.add(sky);sky.position.set(55,0,-58);
- const towerMat=new THREE.MeshStandardMaterial({color:'#809cad',roughness:.5});
+ const towerMat=toon({color:'#809cad',roughness:.5});
  for(const [r,h,y] of [[1.3,21,10.5],[.75,12,27],[.3,9,37.5]]){const m=new THREE.Mesh(new THREE.CylinderGeometry(r*.65,r,h,8),towerMat);m.position.y=y;sky.add(m);}
  for(const y of [21,31]){const m=new THREE.Mesh(new THREE.CylinderGeometry(2,2,.65,12),new THREE.MeshBasicMaterial({color:'#78c7d1'}));m.position.y=y;sky.add(m);}
  // Light bands on Shibuya's feature tower.
  const feature=new THREE.Group();feature.position.set(42,0,1);root.add(feature);
- const curved=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.8,12,12),new THREE.MeshStandardMaterial({color:'#285b68'}));curved.position.y=6;feature.add(curved);
+ const curved=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.8,12,12),toon({color:'#285b68'}));curved.position.y=6;feature.add(curved);
  for(const y of [3,7,11]){const ring=new THREE.Mesh(new THREE.CylinderGeometry(1.83,1.83,.2,12),new THREE.MeshBasicMaterial({color:y===7?'#fb974c':'#63d3db'}));ring.position.y=y;feature.add(ring);}
  // Large original billboard, generated once, with no video/network stream.
  if(typeof document!=='undefined'){

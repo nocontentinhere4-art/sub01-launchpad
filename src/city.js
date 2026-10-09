@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {toon,toonify} from './toon.js';
 import {addCityLife} from './city-life.js';
 import {addCityCrowd} from './city-crowd.js';
 import {addCityTraffic} from './city-traffic.js';
@@ -6,8 +7,8 @@ import {addTokyoStyle} from './tokyo-style.js';
 import {cityPlots,districts,tower,plotView,buildingColors} from './city-state.js';
 export function createCity(scene,interactive,showPlace,buildings,options={}){
  const root=new THREE.Group();scene.add(root);
- const geometry=new THREE.BoxGeometry(1,1,1),mat=new THREE.MeshStandardMaterial({roughness:1});
- const windowMat=new THREE.MeshStandardMaterial({roughness:.7,emissive:'#ffc378',emissiveIntensity:0});
+ const geometry=new THREE.BoxGeometry(1,1,1),mat=toon({roughness:1});
+ const windowMat=toon({roughness:.7,emissive:'#ffc378',emissiveIntensity:0});
  const batches={walls:[],windows:[],roofs:[],roads:[],marks:[]};
  const add=(key,x,y,z,w,h,d,color)=>batches[key].push({x,y,z,w,h,d,color});
  // Only the original central block contains detailed furniture/rigs.
@@ -30,7 +31,17 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  picks.userData.cityPlot=true;root.add(picks);interactive.push(picks);
  function redraw(next){buildings=next;for(const g of renderGroups){root.remove(g);g.dispose();}renderGroups=[];
   batches.walls=[];batches.windows=[];batches.roofs=[];
-  for(const [index,p] of cityPlots.entries()){const b=buildings.find(b=>b.plotId===p.id),height=b?(b.type==='project'?8:b.type==='studio'?4:6):p.height;
+  for(const [index,p] of cityPlots.entries()){const b=buildings.find(b=>b.plotId===p.id),full=b?(b.type==='project'?8:b.type==='studio'?4:6):p.height;
+   // Construction follows the real pipeline: fenced lot, scaffold rising with progress, wrapped facade, then open.
+   if(b?.phase==='thinking'){add('roofs',p.x,.25,p.z,5.8,.12,5.4,'#d9c79f');for(const [dx,dz,w,d] of [[0,-2.6,5.6,.08],[0,2.6,5.6,.08],[-2.8,0,.08,5.2],[2.8,0,.08,5.2]])add('walls',p.x+dx,.65,p.z+dz,w,.8,d,'#f0a35e');add('walls',p.x+1.8,1.6,p.z+2.4,.12,2.6,.12,'#46525a');add('windows',p.x+1.8,2.9,p.z+2.45,1.5,.9,.06,'#fb752b');
+    dummy.position.set(p.x,1,p.z);dummy.scale.set(5.8,1.5,5.4);dummy.updateMatrix();picks.setMatrixAt(index,dummy.matrix);continue;}
+   if(b?.phase==='scaffold'||b?.phase==='stopped'){const h=Math.max(1.2,full*Math.min(1,b.progress/.65)),grey=b.phase==='stopped';
+    add('walls',p.x,h/2+.24,p.z,4.6,h,4.4,grey?'#8f9393':'#bdb9ad');
+    for(let y=1;y<h+1.2;y+=1.3)for(const dz of [-2.55,2.55])add('walls',p.x,y+.24,p.z+dz,5.2,.07,.07,'#e9a84f');
+    for(const dx of [-2.55,2.55])for(const dz of [-2.55,2.55])add('walls',p.x+dx,(h+1.2)/2+.24,p.z+dz,.08,h+1.2,.08,'#e9a84f');
+    if(!grey){add('walls',p.x-3.4,6.5,p.z-1.5,.35,12.5,.35,'#f2b84b');add('walls',p.x-1.4,12.6,p.z-1.5,6,.3,.3,'#f2b84b');add('walls',p.x+1,11.6,p.z-1.5,.04,2,.04,'#46525a');}
+    dummy.position.set(p.x,h/2+.24,p.z);dummy.scale.set(5.8,Math.max(h,1.5),5.4);dummy.updateMatrix();picks.setMatrixAt(index,dummy.matrix);continue;}
+   const height=full;
    const pickHeight=p.vacant&&!b?1:height;dummy.position.set(p.x,pickHeight/2+.24,p.z);dummy.scale.set(5.8,pickHeight,5.4);dummy.rotation.set(0,0,0);dummy.updateMatrix();picks.setMatrixAt(index,dummy.matrix);
    if(p.vacant&&!b){add('roofs',p.x,.25,p.z,5.8,.12,5.4,'#e1c594');for(const dx of [-2.5,2.5])for(const dz of [-2.3,2.3])add('walls',p.x+dx,.7,p.z+dz,.12,1,.12,'#f9e9c5');continue;}
    const color=b?buildingColors[b.color]:['#91a7ae','#79969f','#b6a89a','#78908c'][index%4];
@@ -38,12 +49,15 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    add('roofs',p.x,height+.35,p.z,5.4,.22,5.2,'#e8e2ce');
    add('roofs',p.x+1,height+.75,p.z-.8,1.5,.65,1.2,'#a5b0a4');
    add('windows',p.x,.95,p.z+2.42,1.05,1.4,.07,'#354d48');
+   const lit=b&&b.phase!=='review';
    for(let floor=1;floor<height-1;floor+=1.5)for(const offset of [-1.6,0,1.6]){
-    add('windows',p.x+offset,floor+.75,p.z+2.42,.8,.85,.06,b?'#ffdf9f':'#668b87');
+    add('windows',p.x+offset,floor+.75,p.z+2.42,.8,.85,.06,lit?'#ffdf9f':'#668b87');
     add('windows',p.x+2.52,floor+.75,p.z+offset,.06,.85,.8,'#72938c');
    }
    if(b?.type==='apartment')for(let floor=1.2;floor<height;floor+=1.5)add('roofs',p.x,floor,p.z+2.7,5.3,.13,.6,'#f1e3ce');
    add('windows',p.x,.7,p.z+2.49,3,.25,.1,b?'#fb752b':'#ead7b9');
+   if(b?.phase==='review')add('windows',p.x,height*.55+.24,p.z+2.47,4.6,height*.7,.04,'#fb8a45');
+   if(b?.phase==='open')add('windows',p.x,height+1.3,p.z+.4,3.6,1.1,.25,'#ffcf6e');
   }
   picks.instanceMatrix.needsUpdate=true;picks.computeBoundingSphere();
   for(const key of ['walls','windows','roofs'])renderGroups.push(batch(batches[key],root,key==='windows'?windowMat:mat));

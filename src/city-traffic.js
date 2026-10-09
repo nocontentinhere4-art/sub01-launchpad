@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {toon,toonify} from './toon.js';
 
 export function vehicleState(seconds,index){
  if(index<4){
@@ -12,7 +13,7 @@ export function vehicleState(seconds,index){
 }
 export function addCityTraffic(parent){
  const root=new THREE.Group();parent.add(root);
- const count=16,parts=15,mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({roughness:.55}),count*parts);
+ const count=16,parts=15,mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),toon({roughness:.55}),count*parts);
  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,1,0),105);root.add(mesh);
  const dummy=new THREE.Object3D(),actor=new THREE.Object3D(),v=new THREE.Vector3();
  const colors=['#f0ba55','#e3e8e0','#2d434f','#df784b'];

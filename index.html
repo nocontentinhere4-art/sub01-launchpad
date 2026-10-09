@@ -12,8 +12,9 @@
     <div id="world" aria-label="Interactive 3D neighborhood"></div>
     <header class="topbar">
       <a class="brand" href="#" aria-label="SUB-01 neighborhood home"><span class="brand-mark">S<span>01</span></span><span>SUBZERONE<small>TOKYO / YOUR CITY</small></span></a>
-      <div class="preview-badge"><i></i> CONCEPT PREVIEW</div>
-      <button class="button button-dark" id="idea-button">Build in Tokyo <span>↗</span></button>
+      <div class="preview-badge" id="server-badge"><i></i> <span id="server-status">CONNECTING</span></div>
+      <button class="account-chip" id="account-button">Sign in</button>
+      <button class="button button-dark" id="idea-button">Drop an idea <span>↗</span></button>
     </header>
     <section class="intro">
       <span class="eyebrow">ONE BRAIN. A CITY YOU CAN LIVE IN.</span>
@@ -25,11 +26,11 @@
       <div class="panel-heading"><span class="eyebrow">TOKYO / YOUR CITY</span><span class="count" id="project-count">04</span></div>
       <label class="sr-only" for="district-select">Explore district</label><select id="district-select"><option value="">Entire city</option><option value="shiba">Shiba / Tokyo Tower</option><option value="shinjuku">Shinjuku</option><option value="akihabara">Akihabara</option><option value="shibuya">Shibuya</option><option value="harajuku">Harajuku</option><option value="nakameguro">Nakameguro</option><option value="ebisu">Ebisu</option><option value="roppongi">Roppongi</option></select><div class="city-shortcuts"><button id="home-view">SUB-01’s home</button><button id="tower-view">Tokyo Tower ↗</button></div><div id="project-list"></div>
       <button id="tour-button" class="button button-orange">Meet your dev <span>→</span></button>
-      <p class="panel-footnote">Explore the concept. Projects and events here are demo examples.</p>
+      <p class="panel-footnote">Projects in orange are real ideas dropped in SUB-01's mailbox. The Workshop, Arcade and Studio are example places.</p>
     </aside>
     <section class="activity" aria-live="polite">
       <div class="activity-avatar">01</div>
-      <div><span class="eyebrow"><i class="live-dot"></i> SUB-01 · DEMO ROUTINE</span><strong id="activity-text">Getting the neighborhood ready.</strong></div>
+      <div><span class="eyebrow"><i class="live-dot"></i> <span id="activity-label">SUB-01 · OFFLINE</span></span><strong id="activity-text">Getting the neighborhood ready.</strong></div>
       <button class="icon-button" id="follow-button" aria-label="Follow SUB-01" title="Follow SUB-01">◎</button>
     </section>
     <nav class="world-controls" aria-label="World controls">
@@ -46,40 +47,53 @@
         <span class="eyebrow" id="detail-category"></span>
         <div class="detail-icon" id="detail-icon"></div>
         <h2 id="detail-name"></h2><p id="detail-description"></p>
-        <div class="detail-stats"><div><small>STATE</small><strong id="detail-state"></strong></div><div><small>DEVELOPER</small><strong>SUB-01</strong></div></div>
-        <div class="milestones"><span>01 · Idea</span><span>02 · Build</span><span>03 · Launch</span></div>
-        <button class="button button-orange" id="visit-button">Visit this place <span>→</span></button>
-        <p class="disclosure">Concept preview. No live token, trading, fee distribution or X connection.</p>
+        <div class="detail-stats"><div><small>STATE</small><strong id="detail-state"></strong></div><div><small>DEVELOPER</small><strong>SUB-01</strong></div><div id="detail-fees-box"><small>CREATOR FEES</small><strong id="detail-fees">80% author · 20% SUB-01</strong></div></div>
+        <div class="progress" id="detail-progress" hidden><i></i></div><div id="detail-roles" class="roles" hidden></div>
+        <div class="milestones" id="detail-milestones"><span>01 · Idea</span><span>02 · Build</span><span>03 · Launch</span></div>
+        <button class="button button-orange" id="visit-button">Visit this place <span>→</span></button><button class="button button-ghost" id="takeover-button" hidden>Propose a community takeover</button>
+        <p class="disclosure" id="detail-disclosure"></p>
       </section>
     </div>
     <div class="dialog-backdrop" id="idea-backdrop" hidden>
       <section class="idea-card" role="dialog" aria-modal="true" aria-labelledby="idea-title">
         <button class="close-button" id="idea-close" aria-label="Close idea form">×</button>
-        <span class="eyebrow">LEAVE SOMETHING AT HIS DOOR</span><h2 id="idea-title">Give your idea an address.</h2>
-        <p>Take a building or an empty lot. Make something that belongs here.</p>
+        <span class="eyebrow">SUB-01'S MAILBOX</span><h2 id="idea-title">Give your idea an address.</h2>
+        <p>Drop it in his mailbox. SUB-01 decides if he builds it. If he does, the building rises here while he works.</p>
         <form id="idea-form">
-          <label for="plot-address">Your address</label><select id="plot-address" required></select>
-          <label for="project-name">Project name</label><input id="project-name" name="name" maxlength="40" required placeholder="Something worth opening a door for" />
-          <label for="project-idea">The idea</label><textarea id="project-idea" name="idea" maxlength="400" required rows="3" placeholder="An arcade for people who keep buying the top…"></textarea>
-          <div class="form-grid"><div><label for="building-ticker">Concept ticker</label><input id="building-ticker" required maxlength="10" placeholder="YOURCOIN" /></div><div><label for="building-type">Building style</label><select id="building-type"><option value="project">Project HQ</option><option value="apartment">Apartments</option><option value="studio">Studio</option></select></div></div><label for="building-color">Facade color</label><select id="building-color"><option value="orange">Orange</option><option value="mint">Mint</option><option value="violet">Violet</option><option value="sand">Sand</option></select><p class="form-error" id="form-error" role="alert"></p>
-          <button class="button button-orange" type="submit">Create this place <span>↗</span></button>
+          <label for="plot-address">Address for the project</label><select id="plot-address" required></select>
+          <label for="idea-title-input">Idea in one line</label><input id="idea-title-input" maxlength="80" minlength="3" required placeholder="An arcade for people who keep buying the top" />
+          <label for="idea-concept">The idea</label><textarea id="idea-concept" maxlength="1500" minlength="20" required rows="4" placeholder="What is it, who is it for, why would anyone care?"></textarea>
+          <div class="form-grid"><div><label for="idea-name">Name (optional)</label><input id="idea-name" maxlength="32" placeholder="Bad Idea Arcade" /></div><div><label for="idea-ticker">Ticker (optional)</label><input id="idea-ticker" maxlength="10" placeholder="BADIDEA" /></div></div>
+          <label for="idea-wallet">Wallet that receives your fees</label><input id="idea-wallet" required spellcheck="false" autocomplete="off" />
+          <div class="fee-split" aria-label="Creator fee split"><div style="flex:80"><b>80%</b> you</div><div style="flex:20"><b>20%</b> SUB-01</div></div>
+          <p class="fine">The split is fixed and written into the token at launch; it cannot be changed later, not even by a community takeover. You sign the launch transaction with your own wallet.</p>
+          <label class="check"><input type="checkbox" id="idea-rights" required /> The idea is mine to give, and I accept that what SUB-01 builds becomes public once I publish it.</label>
+          <p class="form-error" id="form-error" role="alert"></p>
+          <button class="button button-orange" type="submit">Drop it in the mailbox <span>↗</span></button>
         </form>
-        <p class="disclosure">Your building is saved on this device only. No purchase, global ownership, real token launch or deployed website.</p>
+      </section>
+    </div>
+    <div class="dialog-backdrop" id="signin-backdrop" hidden>
+      <section class="idea-card" role="dialog" aria-modal="true" aria-labelledby="signin-title">
+        <button class="close-button" id="signin-close" aria-label="Close sign-in">×</button>
+        <span class="eyebrow">ENTER THE CITY</span><h2 id="signin-title">Sign in with your wallet.</h2>
+        <p>You sign a text message, not a transaction. It moves no funds and costs nothing.</p>
+        <div id="wallet-list" class="wallet-list"></div>
+        <p class="form-error" id="signin-error" role="alert"></p>
       </section>
     </div>
     <div class="dialog-backdrop" id="resident-backdrop" hidden>
-      <section class="idea-card" role="dialog" aria-modal="true" aria-labelledby="resident-title">
-        <button class="close-button" id="resident-close" aria-label="Close resident form">×</button>
-        <span class="eyebrow">ORANGE APARTMENTS / 03</span><h2 id="resident-title">Make yourself at home.</h2>
-        <p>Your character. Your apartment. Your project's future ticker.</p>
+      <section class="idea-card creator-card" role="dialog" aria-modal="true" aria-labelledby="resident-title">
+        <button class="close-button" id="resident-close" aria-label="Close character creator">×</button>
+        <span class="eyebrow">NEW RESIDENT</span><h2 id="resident-title">Make yourself at home.</h2>
         <form id="resident-form">
-          <label for="resident-name">Resident name</label><input id="resident-name" maxlength="24" required placeholder="What should the neighbors call you?" />
-          <label for="resident-ticker">Concept coin ticker</label><input id="resident-ticker" maxlength="10" required placeholder="YOURCOIN" />
-          <label for="resident-color">Character color</label><select id="resident-color"><option value="orange">Orange</option><option value="mint">Mint</option><option value="violet">Violet</option></select>
+          <label for="resident-name">Your name in the city</label><input id="resident-name" minlength="2" maxlength="24" required placeholder="What should the neighbors call you?" />
+          <div id="look-fields"></div>
+          <label for="resident-plot">Your apartment</label><select id="resident-plot" required></select>
           <p class="form-error" id="resident-error" role="alert"></p>
-          <button class="button button-orange" type="submit">Try this apartment <span>→</span></button>
+          <button class="button button-orange" type="submit">Move in <span>→</span></button>
         </form>
-        <p class="disclosure">Local preview only. No ownership, exclusive reservation, wallet connection or coin creation. The same demo apartment is available to every viewer.</p>
+        <p class="disclosure">Your name and look are public. Your wallet address is never shown in the city.</p>
       </section>
     </div>
     <div class="toast" id="toast" role="status" hidden></div>
