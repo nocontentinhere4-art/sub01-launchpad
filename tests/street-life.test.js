@@ -37,3 +37,23 @@ test('up close the crowd hides its boxes and pushes every pedestrian to the GPU 
  assert.ok(pushed.some(p=>p.clip==='Walk'),'people walk');
  gpu.active=false;crowd.update(3,gpu);assert.equal(crowd.boxes.visible,true);
 });
+test('sidewalk walkers cluster at crossings, konbini and stations instead of spreading evenly',async()=>{
+ const {crowdHotspots}=await import('../src/city-crowd.js'),spots=crowdHotspots();
+ for(const kind of ['crossing','konbini','station'])assert.ok(spots.some(s=>s.kind===kind),kind);
+ for(const t of [3,40,200]){const pts=Array.from({length:144},(_,i)=>sidewalkState(t,i));
+  const near=pts.filter((p,i)=>pts.some((q,j)=>j!==i&&Math.hypot(p.x-q.x,p.z-q.z)<1.6)).length/pts.length;
+  const atSpot=pts.filter(p=>spots.some(s=>Math.hypot(p.x-s.x,p.z-s.z)<3)).length/pts.length;
+  assert.ok(near>.5,`only ${near} have someone within 1.6 at t=${t}`);assert.ok(atSpot>.35,`only ${atSpot} near a hotspot at t=${t}`);
+  assert.ok(pts.some(p=>!p.moving)&&pts.some(p=>p.moving),'some wait, some walk');
+  for(const p of pts)assert.ok(Number.isFinite(p.speed)&&p.speed>.5&&p.speed<1.1);}
+});
+test('traffic: dark-indigo taxis with roof signs, white kei trucks, green/cream buses, 15 boxes each',async()=>{
+ const {VEHICLE_KINDS}=await import('../src/city-traffic.js'),traffic=addCityTraffic(new THREE.Group()),c=new THREE.Color();
+ assert.equal(VEHICLE_KINDS.length,16);assert.equal(VEHICLE_KINDS.filter(k=>k==='taxi').length,5);assert.equal(VEHICLE_KINDS.filter(k=>k==='kei').length,3);
+ assert.deepEqual(VEHICLE_KINDS.flatMap((k,i)=>k==='bus'?[i]:[]),[9,13]);
+ const hex=(i,j)=>{traffic.mesh.getColorAt(i*15+j,c);return '#'+c.getHexString().toUpperCase();};
+ VEHICLE_KINDS.forEach((k,i)=>{
+  if(k==='taxi'){assert.equal(hex(i,0),'#1F2A44');assert.equal(hex(i,14),'#F0B23E');}
+  if(k==='kei')assert.equal(hex(i,0),'#EEEDE8');
+  if(k==='bus'){assert.equal(hex(i,0),'#3E7A5C');assert.equal(hex(i,1),'#EDE6D2');}});
+});

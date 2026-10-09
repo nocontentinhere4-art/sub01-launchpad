@@ -181,7 +181,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  }
 
  let renderGroups=[],style,life,currentNight=false,pools=[],showDetail=true;
- const applyPools=()=>{if(!life?.addLightPool)return;life.clearLightPools('konbini');for(const [x,z,c,r,s] of pools)life.addLightPool(x,z,c,r,{group:'konbini',strength:s});};const heights=new Map(),counts={};
+ const applyPools=()=>{if(!life?.addLightPool)return;style?.bindLife?.(life);life.clearLightPools('konbini');for(const [x,z,c,r,s] of pools)life.addLightPool(x,z,c,r,{group:'konbini',strength:s});};const heights=new Map(),counts={};
  const picks=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial({visible:false}),cityPlots.length);
  picks.userData.cityPlot=true;root.add(picks);interactive.push(picks);
  const setPick=(i,x,z,w,h,d)=>{dummy.position.set(x,BASE_Y+h/2,z);dummy.rotation.set(0,0,0);dummy.scale.set(w,h,d);dummy.updateMatrix();picks.setMatrixAt(i,dummy.matrix);};
