@@ -52,3 +52,31 @@ test('LOD picks the k nearest residents in range, with hysteresis; hidden boxes 
  const m=new THREE.Matrix4(),s=new THREE.Vector3();r.mesh.getMatrixAt(6,m);m.decompose(new THREE.Vector3(),new THREE.Quaternion(),s);assert.equal(s.length(),0);
  r.mesh.getMatrixAt(0,m);m.decompose(new THREE.Vector3(),new THREE.Quaternion(),s);assert.ok(s.length()>0);
 });
+
+// A fuller rig for emotes: spine, head and arms on top of the legs (Quaternius names).
+function armRig(){
+ const rig=fakeRig(),hips=rig.scene.children[0],bone=(name,parent,x,y,z)=>{const b=new THREE.Bone();b.name=name;b.position.set(x,y,z);parent.add(b);return b;};
+ const chest=bone('Chest',hips,0,.45,0),head=bone('Head',bone('Neck',chest,0,.12,0),0,.08,0);bone('HeadTop',head,0,.2,0);
+ for(const [s,x] of [['L',.1],['R',-.1]]){const up=bone('UpperArm'+s,bone('Shoulder'+s,chest,x,.05,0),x*.5,0,0),low=bone('LowerArm'+s,up,0,-.28,0);bone('Wrist'+s,low,0,-.25,0);}
+ rig.scene.updateMatrixWorld(true);return rig;
+}
+const finite=root=>{let ok=true;root.traverse(n=>{for(const v of [...n.position.toArray(),...n.quaternion.toArray(),...n.scale.toArray()])if(!Number.isFinite(v))ok=false;});return ok;};
+test('emotes: every one runs with finite transforms, finite ones end with onDone, stopEmote resets',async()=>{
+ const {EMOTES,EMOTE_DEFS}=await import('../src/characters.js');
+ const rig=armRig(),c=await loadCharacter({outfit:'hoodie'},{template:async()=>rig}),inner=c.root.children[0];
+ assert.equal(EMOTES.length,12);assert.equal(c.emote('nope'),false);
+ for(const name of EMOTES){
+  let done=0;assert.equal(c.emote(name,{onDone:()=>done++}),true,name);assert.equal(c.emoting,name);
+  for(let i=0;i<12;i++)c.update(.1);assert.ok(finite(c.root),name+' finite');
+  if(EMOTE_DEFS[name].time<Infinity){for(let i=0;i<60;i++)c.update(.1);assert.equal(done,1,name+' onDone once');assert.equal(c.emoting,null);}
+  c.stopEmote();if(name==='sleep'){assert.equal(c.posed,'lie','a sleeper stays lying until the caller stands it up');c.pose(null);}
+  assert.equal(c.emoting,null);assert.equal(inner.scale.x*inner.scale.y*inner.scale.z,1,name+' scale reset');
+  assert.ok(inner.position.length()<1e-9&&Math.abs(inner.rotation.x)+Math.abs(inner.rotation.z)<1e-9,name+' inner reset');
+  assert.equal(c.board.visible,false);c.root.position.set(0,0,0);
+ }
+ // Moonwalk slides the root forward; skate shows the board; a chair sit is kept by the floor-sit emote.
+ c.emote('moonwalk');for(let i=0;i<10;i++)c.update(.1);assert.ok(c.root.position.z>.2,'moonwalk moves forward');c.stopEmote();
+ c.emote('skate');c.update(.1);assert.equal(c.board.visible,true);c.stopEmote();assert.equal(c.board.visible,false);
+ c.pose('sit');c.emote('sit');c.update(.1);assert.equal(c.posed,'sit');c.stopEmote();c.pose(null);
+ c.dispose();
+});

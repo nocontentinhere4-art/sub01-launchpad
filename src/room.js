@@ -3,7 +3,11 @@ import {api} from './api.js';
 import {toon} from './toon.js';
 import {loadCharacter} from './characters.js';
 import {blockedTiles,route,mover} from './motion.js';
-import {makeResident,tick,choose,use as useAd,TRAITS,HOURS_PER_SECOND} from './needs.js';
+import {makeResident,tick,choose,use as useAd,TRAITS,HOURS_PER_SECOND,ADS} from './needs.js';
+import {createSpecial,SPECIAL_ITEMS,SPECIAL_TIERS,SPECIAL_DIMS,SPECIAL_LABELS,SPECIAL_USE,SPECIAL_SEAT,SPECIAL_ADS,TEXT_ITEMS,TEXT_MAX,HANGING,OVERHEAD} from './special-items.js';
+import {createPet,petFollow} from './accessories.js';
+import {EMOTES} from './characters.js';
+import {isUnlocked,tierOf,tierLabel} from './creator.js';
 // A resident's room: a cutaway studio (floor + left and back walls) furnished with Kenney Furniture Kit pieces.
 // It shares the city's renderer (one WebGL context); while it is open the city pauses.
 // Budget: geometry is shared (glTF templates + a module cache of shell geometry), one 512 shadow map, three lights
@@ -27,7 +31,23 @@ export const LEGACY={bed:'bedSingle',desk:'desk',chair:'chairDesk',couch:'lounge
 export const WALL_ITEMS=new Set(['wallWindow','wallWindowSlide','doorway','doorwayFront','lampWall']);
 export const LIMITS={coord:3.5,maxY:2.5,max:40};
 export const HALF=3.5,WALL_H=2.75;              // the floor is 7×7, walls stand at x=-3.5 (left) and z=-3.5 (back)
-const IN=new Set(ITEMS);
+// Unlockable procedural pieces (special-items.js): not Kenney GLBs, stored like furniture; locked ones are greyed in the drawer.
+export const SPECIAL=SPECIAL_ITEMS;
+const IN=new Set([...ITEMS,...SPECIAL_ITEMS]),IS_SPECIAL=new Set(SPECIAL_ITEMS);
+// Emote tiers, mirrored from the server's UNLOCKS (used when /api/world/options is not reachable).
+export const EMOTE_TIERS={wave:'resident',sit:'resident',think:'resident',sleep:'resident',dance:'resident',facepalm:'builder',cook:'builder',selfie:'builder',
+ karaoke:'founder',skate:'founder',celebrate:'launched',moonwalk:'launched'};
+export const FALLBACK_UNLOCKS={tiers:['resident','builder','founder','launched'],items:SPECIAL_TIERS,emotes:EMOTE_TIERS};
+const EMOTE_ICON={wave:'👋',sit:'🪑',think:'🤔',sleep:'💤',dance:'💃',facepalm:'🤦',cook:'🍳',selfie:'🤳',karaoke:'🎤',skate:'🛹',celebrate:'🎉',moonwalk:'🕺'};
+const EMOTE_TEXT={wave:'Hi!',sit:'Taking a seat.',think:'Hmm…',sleep:'Zzz…',dance:'Dancing.',facepalm:'Oh no.',cook:'Cooking something.',selfie:'Selfie!',
+ karaoke:'Singing.',skate:'Skating around.',celebrate:'Woo!',moonwalk:'Moonwalking.'};
+// The autonomy brain hears the special pieces too (added to needs.js ADS without replacing anything there).
+for(const [k,v] of Object.entries(SPECIAL_ADS))ADS[k]??=v;
+// The 403 a save gets for pieces the owner has not unlocked, as a sentence that names the tier.
+export function lockedMessage(err,unlocks=FALLBACK_UNLOCKS){
+ const list=Array.isArray(err?.body?.locked)?err.body.locked:[];if(!list.length)return null;
+ return 'Not unlocked yet: '+list.map(n=>`${label(n)} (${tierLabel(tierOf(unlocks.items,n)||tierOf(unlocks.emotes,n))||'a higher tier'})`).join(', ')+'.';
+}
 // [swatch colour, floor pattern]
 export const MATERIALS={
  floor:{white_oak:['#d9c4a0','planks'],honey_oak:['#c99a5b','planks'],walnut:['#7a5236','planks'],smoked_oak:['#5e5348','planks'],concrete:['#a3a29c','concrete'],tatami:['#c8c58a','tatami'],
@@ -61,9 +81,9 @@ const LABEL_FIX={bedSingle:'Single bed',bedDouble:'Double bed',cabinetBed:'Bed c
  ceilingFan:'Fan',pottedPlant:'Potted plant',plantSmall1:'Succulent',plantSmall2:'Small plant',plantSmall3:'Cactus',rugRectangle:'Rug',rugRound:'Round rug',rugSquare:'Square rug',
  rugDoormat:'Doormat',loungeSofa:'Sofa',loungeChair:'Armchair',loungeDesignSofa:'Design sofa',tableCoffee:'Coffee table',sideTable:'Side table',televisionModern:'TV',
  speakerSmall:'Small speaker',wallWindow:'Window',wallWindowSlide:'Sliding window',doorway:'Door',doorwayFront:'Front door',pillowBlue:'Blue pillow',bear:'Teddy bear',deskCorner:'Corner desk'};
-export const label=item=>LABEL_FIX[item]||item.replace(/([A-Z0-9])/g,' $1').replace(/^./,c=>c.toUpperCase()).trim();
+export const label=item=>LABEL_FIX[item]||SPECIAL_LABELS[item]||item.replace(/([A-Z0-9])/g,' $1').replace(/^./,c=>c.toUpperCase()).trim();
 // What tapping a piece makes the resident do.
-const ACTIONS={lie:['bedSingle','bedDouble','cabinetBed'],sit:['chair','chairCushion','chairDesk','loungeSofa','loungeChair','loungeDesignSofa'],
+const ACTIONS={lie:['bedSingle','bedDouble','cabinetBed'],sit:['chair','chairCushion','chairDesk','loungeSofa','loungeChair','loungeDesignSofa','goldToilet','plushPile'],
  work:['desk','deskCorner','computerScreen','computerKeyboard','computerMouse','laptop'],look:['wallWindow','wallWindowSlide'],
  toggle:['lampRoundFloor','lampSquareFloor','lampRoundTable','lampWall','ceilingFan'],leave:['doorway','doorwayFront'],walk:['rugRectangle','rugRound','rugSquare','rugDoormat']};
 const ACTION_OF=new Map(Object.entries(ACTIONS).flatMap(([a,list])=>list.map(i=>[i,a])));
@@ -87,7 +107,9 @@ export function upgradeRoom(room){
  const furniture=(Array.isArray(r.furniture)?r.furniture:[]).map(f=>{const item=Object.hasOwn(LEGACY,f?.item)?LEGACY[f.item]:f?.item;if(!IN.has(item))return null;
   const e={item,x:clampN(f.x,-LIMITS.coord,LIMITS.coord),z:clampN(f.z,-LIMITS.coord,LIMITS.coord),rot:[0,90,180,270].includes(f.rot)?f.rot:0};
   const y=clampN(f.y??DEFAULT_Y[item]??0,0,LIMITS.maxY);if(y>0)e.y=y;
-  if(WALL_ITEMS.has(item))e.wall=f.wall==='back'?'back':'left';return e;}).filter(Boolean).slice(0,LIMITS.max);
+  if(WALL_ITEMS.has(item))e.wall=f.wall==='back'?'back':'left';
+  if(TEXT_ITEMS.has(item)&&typeof f.text==='string'){const t=[...f.text.replace(/[\u0000-\u001f<>`]/g,'').trim()].slice(0,TEXT_MAX).join('');if(t)e.text=item==='neonTicker'?t.toUpperCase():t;}
+  return e;}).filter(Boolean).slice(0,LIMITS.max);
  return {materials:{floor:pick('floor',m.floor),walls:pick('walls',m.walls),accent:pick('accent',m.accent)},lighting:Object.hasOwn(LIGHTING,r.lighting)?r.lighting:'evening',
   window:Object.hasOwn(WINDOW_VIEWS,r.window)?r.window:'city_day',...(Number.isFinite(r.daylight)?{daylight:clampN(r.daylight,0,1)}:{}),furniture};
 }
@@ -101,6 +123,8 @@ export function clampEntry(entry,d){
  const e={...entry},lim=v=>Math.min(LIMITS.coord,Math.max(.05,HALF-v));
  if(WALL_ITEMS.has(e.item)){const half=Math.min(LIMITS.coord,Math.max(.05,HALF-d.w/2));
   if(e.wall==='back'){e.z=-LIMITS.coord;e.rot=0;e.x=clampN(e.x,-half,half);}else{e.wall='left';e.x=-LIMITS.coord;e.rot=90;e.z=clampN(e.z,-half,half);}
+ }else if(HANGING.has(e.item)){const half=Math.min(LIMITS.coord,Math.max(.05,HALF-d.w/2)),flush=clampN(-(HALF-d.d/2),-LIMITS.coord,LIMITS.coord);   // flat pieces hang flush, rot picks the wall
+  if(e.rot===90){e.x=flush;e.z=clampN(e.z,-half,half);}else{e.rot=0;e.z=flush;e.x=clampN(e.x,-half,half);}
  }else{const {hx,hz}=extent(e,d);e.x=clampN(e.x,-lim(hx),lim(hx));e.z=clampN(e.z,-lim(hz),lim(hz));}
  if(e.y!==undefined){e.y=clampN(e.y,0,LIMITS.maxY);if(!e.y)delete e.y;}
  return e;
@@ -134,7 +158,7 @@ export function riders(entries,i,dimsOf){
 // A spot to stand that is not inside furniture: the front first, then the other sides (or further from the wall).
 export function standSpot(entries,i,dimsOf){
  const e=entries[i],d=dimsOf(e.item),first=approach(e,d);
- const blocked=(x,z)=>entries.some((f,j)=>{if(j===i||WALL_ITEMS.has(f.item)||/^rug/.test(f.item)||(f.y||0)>0)return false;const df=dimsOf(f.item);if(!df)return false;const {hx,hz}=extent(f,df);return Math.abs(x-f.x)<hx+.2&&Math.abs(z-f.z)<hz+.2;});
+ const blocked=(x,z)=>entries.some((f,j)=>{if(j===i||WALL_ITEMS.has(f.item)||OVERHEAD.has(f.item)||/^rug/.test(f.item)||(f.y||0)>0)return false;const df=dimsOf(f.item);if(!df)return false;const {hx,hz}=extent(f,df);return Math.abs(x-f.x)<hx+.2&&Math.abs(z-f.z)<hz+.2;});
  const c=v=>Math.min(HALF-.35,Math.max(-HALF+.35,v)),cands=[first];
  if(e.wall==='left')for(const out of [.9,1.6,2.4])for(const side of [0,-1.1,1.1])cands.push({x:-HALF+out,z:c(e.z+side)});
  else if(e.wall==='back')for(const out of [.9,1.6,2.4])for(const side of [0,-1.1,1.1])cands.push({x:c(e.x+side),z:-HALF+out});
@@ -221,15 +245,20 @@ function boxCharacter(look={}){
 
 // ---------------------------------------------------------------- the room
 let openNow=null;
-export async function openRoom({plotId,mine}){
+// Unlock tiers for labels: the server's options when reachable (cached for the session), else the mirror above.
+let tiers=null;
+const loadTiers=()=>tiers||=api('/api/world/options').then(o=>o?.unlocks?.items?o.unlocks:FALLBACK_UNLOCKS).catch(()=>FALLBACK_UNLOCKS);
+export const specialDims=item=>SPECIAL_DIMS[item]&&{...SPECIAL_DIMS[item],ox:0,oy:0,oz:0};
+export async function openRoom({plotId,mine,me:viewer}){
  if(!host||openNow)return;openNow=plotId;
- try{await enter(plotId,mine);}catch(err){console.error(err);host.notify('The room could not be opened.');}
+ try{await enter(plotId,mine,viewer);}catch(err){console.error(err);host.notify('The room could not be opened.');}
  finally{openNow=null;}
 }
-async function enter(plotId,mine){
+async function enter(plotId,mine,viewer){
  let data;try{data=await api(`/api/rooms/${encodeURIComponent(plotId)}`);}catch(err){host.notify(err.status===404?'Nobody lives here yet.':'The room could not be loaded.');return;}
  const man=await loadManifest(),SCALE=kitScale(man),measured=new Map();
- const dimsOf=item=>measured.get(item)||dimsFrom(man,item,SCALE);
+ const dimsOf=item=>measured.get(item)||specialDims(item)||dimsFrom(man,item,SCALE);
+ const tierInfo=await loadTiers(),unlocks=(mine&&viewer?.unlocks)||data.unlocks||null;
  const owner=data.owner,scene=new THREE.Scene(),owned=[];
  let room=upgradeRoom(data.room),saved=JSON.stringify(room),closed=false;
  const own=m=>{owned.push(m);return m;};
@@ -281,8 +310,11 @@ async function enter(plotId,mine){
  // Furniture: one wrapper per entry, built from the cached template (geometry shared, materials shared unless tinted).
  const furnitureRoot=new THREE.Group();scene.add(furnitureRoot);
  const pieces=[];   // pieces[i] mirrors room.furniture[i]: {wrap, model}
+ const specials=new Set();   // live special pieces (animated each frame, disposed with their wrap)
+ const drop=wrap=>{const sp=wrap?.userData.special;if(sp){sp.dispose();specials.delete(sp);}wrap?.removeFromParent();};
  async function makePiece(entry){
   const wrap=new THREE.Group();wrap.userData.entry=entry;
+  if(IS_SPECIAL.has(entry.item)){if(closed)return wrap;const sp=createSpecial(entry.item,{text:entry.text,accent:MATERIALS.accent[room.materials.accent][0]});wrap.add(sp.root);wrap.userData.special=sp;specials.add(sp);return wrap;}
   let gltf;try{gltf=await model(entry.item);}catch{return wrap;}            // a missing model leaves an empty slot, never a crash
   if(closed)return wrap;
   const object=gltf.scene.clone(true);
@@ -315,7 +347,7 @@ async function enter(plotId,mine){
  async function build(){
   const list=room.furniture.slice();
   const wraps=await Promise.all(list.map(makePiece));if(closed)return;
-  furnitureRoot.clear();pieces.length=0;
+  for(const p of pieces)drop(p.wrap);furnitureRoot.clear();pieces.length=0;
   wraps.forEach((wrap,i)=>{pieces.push({wrap});furnitureRoot.add(wrap);place(i);});
   applyLook();
  }
@@ -348,14 +380,14 @@ async function enter(plotId,mine){
  const feet=new THREE.Mesh(PLANE,contactMat);feet.rotation.x=-Math.PI/2;feet.scale.set(.75,.75,1);feet.raycast=()=>{};scene.add(feet);
  // Movement the Sims/Habbo way (motion.js): tile routes around the furniture, a turn on the spot, a walk cycle driven by distance.
  const mv=mover({x:me.root.position.x,z:me.root.position.z,yaw:me.root.rotation.y,speed:1.5});
- const footprints=()=>room.furniture.filter(f=>!WALL_ITEMS.has(f.item)&&!/^rug/.test(f.item)&&!(f.y>0)).map(f=>{const d=dimsOf(f.item);if(!d)return null;const {hx,hz}=extent(f,d);return {x:f.x,z:f.z,hx,hz};}).filter(Boolean);
+ const footprints=()=>room.furniture.filter(f=>!WALL_ITEMS.has(f.item)&&!OVERHEAD.has(f.item)&&!/^rug/.test(f.item)&&!(f.y>0)).map(f=>{const d=dimsOf(f.item);if(!d)return null;const {hx,hz}=extent(f,d);return {x:f.x,z:f.z,hx,hz};}).filter(Boolean);
  // The Sims brain (needs.js): five traits drawn from the owner's name, needs that decay in game hours, a choice every few seconds
  // when nobody is tapping. Doors and lamps are left to taps: an autonomous "leave" would close the room under the visitor.
  const seed=[...owner.name].reduce((a,c)=>(a*31+c.charCodeAt(0))|0,7)>>>0;
- const brain=makeResident(Object.fromEntries(TRAITS.map((t,i)=>[t,((seed>>(i*6))&63)/63])));
+ const brain=makeResident(owner.traits||Object.fromEntries(TRAITS.map((t,i)=>[t,((seed>>(i*6))&63)/63])));
  let free=true,think=3;   // free: standing idle with nothing in hand; think: seconds to the next autonomous choice
  const timers=new Set(),later=(ms,fn)=>{const id=setTimeout(()=>{timers.delete(id);if(!closed)fn();},ms);timers.add(id);return id;};
- function stand(){me.pose(null);me.root.position.y=0;mv.set(me.root.position.x,me.root.position.z,me.root.rotation.y);}
+ function stand(){endShow();me.pose(null);me.root.position.y=0;mv.set(me.root.position.x,me.root.position.z,me.root.rotation.y);}
  function walkTo(x,z,then){
   const c=v=>Math.min(HALF-.3,Math.max(-HALF+.3,v));stand();free=false;
   const path=route(blockedTiles(footprints(),HALF),me.root.position,{x,z},HALF,mv.heading)||[{x:c(x),z:c(z)}];   // boxed in: walk straight
@@ -363,15 +395,17 @@ async function enter(plotId,mine){
  }
  function face(x,z){mv.face(Math.atan2(x-me.root.position.x,z-me.root.position.z));}
  function faceCamera(){face(camera.position.x,camera.position.z);}
- function use(i){
-  const e=room.furniture[i],d=dimsOf(e.item);if(!e||!d)return;const act=actionFor(e.item),spot=act==='lie'||act==='sit'?approach(e,d):standSpot(room.furniture,i,dimsOf),[px,py,pz]=renderPosition(e,d),a=e.rot*Math.PI/180;
-  useAd(brain,e.item);
+ function use(i,after){
+  const e=room.furniture[i],d=dimsOf(e?.item);if(!e||!d)return;const act=actionFor(e.item),spot=act==='lie'||act==='sit'?approach(e,d):OVERHEAD.has(e.item)?{x:e.x+.25,z:e.z+.25}:standSpot(room.furniture,i,dimsOf),[px,py,pz]=renderPosition(e,d),a=e.rot*Math.PI/180;
+  useAd(brain,e.item);lastSpot=spot;
   walkTo(spot.x,spot.z,()=>{
    const done=ms=>later(ms,()=>{me.play('Idle');free=true;});
-   if(act==='lie'){me.root.position.set(px,py+d.h*(SURFACE[e.item]||.5),pz);me.root.rotation.y=a;me.pose('lie');hud.say(ACTION_TEXT.lie);return;}
+   if(act==='lie'){me.root.position.set(px,py+d.h*(SURFACE[e.item]||.5),pz);me.root.rotation.y=a;me.pose('lie');hud.say(ACTION_TEXT.lie);after?.();return;}
+   if(act==='sit'&&IS_SPECIAL.has(e.item)){me.root.position.set(px,Math.max(0,py+SPECIAL_SEAT[e.item]-me.offsets.seat),pz);me.root.rotation.y=a;me.pose('sit');hud.say(SPECIAL_USE[e.item].say);return;}
    if(act==='sit'){const seat=py+d.h*(SURFACE[e.item]||.45);me.root.position.set(px+Math.sin(a)*-.05,Math.max(0,seat-me.offsets.seat),pz+Math.cos(a)*-.05);me.root.rotation.y=a;me.pose('sit');
-    if(workAfterSit){workAfterSit=false;me.play('Interact');hud.say(ACTION_TEXT.work);}else hud.say(ACTION_TEXT.sit);return;}
+    if(workAfterSit){workAfterSit=false;me.play('Interact');hud.say(ACTION_TEXT.work);}else hud.say(ACTION_TEXT.sit);after?.();return;}
    face(px,pz);
+   if(IS_SPECIAL.has(e.item)){useSpecial(i,done);return;}
    if(act==='toggle'){me.play('Interact');const wasLit=lampsLit&&lampIndex()===i;lampOn=i;lampsLit=!wasLit;applyLook();hud.say(lampsLit?`${label(e.item)} on.`:`${label(e.item)} off.`);done(1200);return;}
    if(act==='look'){me.play('Idle_Neutral');hud.say(ACTION_TEXT.look);done(5000);return;}
    if(act==='leave'){faceCamera();me.play('Wave');hud.say(ACTION_TEXT.leave);later(1900,close);return;}
@@ -390,6 +424,50 @@ async function enter(plotId,mine){
  function nearestSeat(p){let best=-1,dist=1.4;room.furniture.forEach((f,j)=>{if(actionFor(f.item)!=='sit'||/^lounge/.test(f.item))return;const k=Math.hypot(f.x-p.x,f.z-p.z);if(k<dist){dist=k;best=j;}});return best;}
  const useForWork=i=>{const e=room.furniture[i],d=dimsOf(e?.item);if(!d)return;const seat=nearestSeat(approach(e,d));if(seat>=0){workAfterSit=true;use(seat);}else use(i);};
 
+ // ------------------------------------------------ emotes and special pieces
+ // A show (an emote, a special piece in use, a skate loop) pauses autonomy: free=false until it ends, like use()'s done(ms).
+ let show=null,glide=null,party=0,lastSpot=null;
+ function endShow(){if(!show)return;const s=show;show=null;clearTimeout(s.timer);timers.delete(s.timer);if(s.hidden)s.hidden.visible=true;glide=null;me.stopEmote?.();
+  mv.set(me.root.position.x,me.root.position.z,me.root.rotation.y);}
+ function startShow(ms,extra={}){show={...extra,timer:later(ms,()=>{const s=show;endShow();if(!me.posed)me.play('Idle');free=true;s?.then?.();})};return show;}
+ // Skating: a loop through free tiles on its own mover; the board is the character's (characters.js), the floor one hides meanwhile.
+ function startGlide(){const blocked=blockedTiles(footprints(),HALF),cands=[[2,2],[2,-1.8],[-1.2,-1.6],[-1.4,2.2],[.4,2.8],[2.6,.2]].filter(([x,z])=>!blocked.has(`${Math.round(x/.5)},${Math.round(z/.5)}`));
+  let at={x:me.root.position.x,z:me.root.position.z},pts=[];for(let k=0;k<3;k++)for(const [x,z] of cands){const r=route(blocked,at,{x,z},HALF);if(r)pts.push(...r);at={x,z};}
+  if(!pts.length)return false;glide={mv:mover({x:me.root.position.x,z:me.root.position.z,yaw:me.root.rotation.y,speed:1.9,turnRate:6})};glide.mv.go(pts);return true;}
+ function useSpecial(i,done){
+  const e=room.furniture[i],sp=pieces[i]?.wrap.userData.special,u=SPECIAL_USE[e.item]||{ms:2500};if(!sp){done(1500);return;}
+  if(e.item==='karaokeMic'||HANGING.has(e.item))faceCamera();
+  const ms=sp.use(me);hud.say(u.say||`Using the ${label(e.item).toLowerCase()}.`);if(u.party)party=ms/1000;if(u.burst)party=Math.max(party,2.4);
+  const s=startShow(ms);if(u.glide&&startGlide()){s.hidden=sp.root;sp.root.visible=false;}
+ }
+ // The owner's emote bar. Sleep and sit use a bed or chair when there is one; loops stop after a while (or on any tap).
+ function doEmote(name){
+  if(editing)return;if(show?.emote===name){stand();free=true;me.play('Idle');return;}   // the same button again stops it
+  // Sitting or lying on something: hop off to where the resident stood to get on it (the Sims' instant "get up").
+  if(me.posed&&lastSpot){stand();me.root.position.set(lastSpot.x,0,lastSpot.z);mv.set(lastSpot.x,lastSpot.z,me.root.rotation.y);}
+  stand();free=false;const near=list=>{let best=-1,dist=1e9;room.furniture.forEach((f,j)=>{if(!list.includes(actionFor(f.item))||OVERHEAD.has(f.item))return;const k=Math.hypot(f.x-me.root.position.x,f.z-me.root.position.z);if(k<dist){dist=k;best=j;}});return best;};
+  hud.say(EMOTE_TEXT[name]||'');
+  if(name==='sleep'){const bed=near(['lie']);if(bed>=0){use(bed,()=>{me.emote?.('sleep');startShow(12000);});return;}useAd(brain,'bedSingle');}
+  if(name==='sit'){const seat=room.furniture.findIndex(f=>actionFor(f.item)==='sit'&&Math.hypot(f.x-me.root.position.x,f.z-me.root.position.z)<1.6);if(seat>=0){use(seat);return;}}
+  if(name==='moonwalk'){const p=me.root.position;me.root.rotation.y=Math.atan2(-p.x,-p.z);mv.set(p.x,p.z,me.root.rotation.y);}
+  if(name==='wave')faceCamera();
+  if(!me.emote?.(name,{onDone:()=>{if(show?.emote===name){endShow();free=true;me.play('Idle');}}})){me.play('Wave');later(2000,()=>{free=true;});return;}
+  startShow(name==='sit'||name==='sleep'?12000:name==='wave'?2400:8000,{emote:name});
+  if(name==='skate')startGlide();
+ }
+ // The pet (accessories.js) follows a point behind the owner; a cat curls up on the bed with a sleeper, dogs jump for joy.
+ let pet=null;const petGoal=new THREE.Object3D();
+ try{const p=owner.look?.pet;if(p?.kind){pet=createPet(p);pet.root.position.set(me.root.position.x+.8,0,me.root.position.z+.6);pet.root.traverse(n=>{if(n.isMesh){n.castShadow=false;n.raycast=()=>{};}});scene.add(pet.root);}}catch(err){console.warn('pet',err);pet=null;}
+ let petT=0;
+ function petStep(dt){
+  petT+=dt;const r=me.root.position,kind=pet.root.userData.kind,lying=me.posed==='lie',hop=me.emoting==='celebrate'||party>0;
+  petGoal.position.set(r.x,lying&&kind==='cat'?r.y:0,r.z);petGoal.rotation.y=me.root.rotation.y;
+  const st=petFollow(pet.root,petGoal,dt,{distance:lying?(kind==='cat'?-.55:-1.3):me.posed==='sit'?-.8:.85,speed:me.emoting==='skate'?3:2.2});
+  const curl=lying&&kind==='cat'&&!st.moving;pet.root.scale.y+=((curl?.7:1)-pet.root.scale.y)*Math.min(1,dt*4);
+  if(hop&&kind!=='cat'&&!lying)pet.root.position.y+=Math.abs(Math.sin(petT*7))*.28;
+  pet.update(dt,st);
+ }
+
  // ------------------------------------------------ editing (owner)
  let editing=false,selected=-1,drag=null;
  const marker=new THREE.Mesh(PLANE,own(new THREE.MeshBasicMaterial({color:'#fb752b',transparent:true,opacity:.35,depthWrite:false})));marker.rotation.x=-Math.PI/2;marker.visible=false;scene.add(marker);
@@ -400,22 +478,25 @@ async function enter(plotId,mine){
  function settle(i){const e=room.furniture[i];if(!e||WALL_ITEMS.has(e.item))return;if(SMALL.has(e.item)||e.y){const y=stackHeight(room.furniture,i,dimsOf);if(y>0)e.y=y;else delete e.y;}}
  function moveTo(i,x,z){const e=room.furniture[i],d=dimsOf(e.item);if(!d)return;let next={...e,x,z};const ride=riders(room.furniture,i,dimsOf),ox=e.x,oz=e.z;
   if(WALL_ITEMS.has(e.item))next.wall=x+HALF<z+HALF?'left':'back';
+  if(HANGING.has(e.item))next.rot=x+HALF<z+HALF?90:0;
   next=clampEntry(next,d);Object.assign(e,next);if(!next.y)delete e.y;settle(i);place(i);
   for(const j of ride){const r=room.furniture[j];Object.assign(r,clampEntry({...r,x:r.x+e.x-ox,z:r.z+e.z-oz},dimsOf(r.item)||d));place(j);}
   showMarker();applyLook();}
  const edit={
-  rotate(){const e=room.furniture[selected];if(!e||WALL_ITEMS.has(e.item))return;e.rot=(e.rot+90)%360;Object.assign(e,clampEntry(e,dimsOf(e.item)));place(selected);showMarker();},
+  rotate(){const e=room.furniture[selected];if(!e||WALL_ITEMS.has(e.item)||HANGING.has(e.item))return;e.rot=(e.rot+90)%360;Object.assign(e,clampEntry(e,dimsOf(e.item)));place(selected);showMarker();},
   raise(){const e=room.furniture[selected];if(!e||WALL_ITEMS.has(e.item))return;if(e.y)delete e.y;else{const y=stackHeight(room.furniture,selected,dimsOf);if(y>0)e.y=y;else hud.say('Move it over a desk, shelf or bed first.');}place(selected);select(selected);},
   deselect(){select(-1);},
-  remove(){if(selected<0)return;room.furniture.splice(selected,1);const [p]=pieces.splice(selected,1);p.wrap.removeFromParent();shadowsDirty=true;select(-1);applyLook();hud.count(room.furniture.length);},
+  remove(){if(selected<0)return;room.furniture.splice(selected,1);const [p]=pieces.splice(selected,1);drop(p.wrap);shadowsDirty=true;select(-1);applyLook();hud.count(room.furniture.length);},
   async add(item){
    if(room.furniture.length>=LIMITS.max){hud.say(`A room holds at most ${LIMITS.max} pieces.`);return;}
+   if(IS_SPECIAL.has(item)&&!isUnlocked('items',item,unlocks,tierInfo)){hud.say(`${label(item)} unlocks at ${tierLabel(tierOf(tierInfo.items,item))||'a higher tier'}.`);return;}
    const base=selected>=0?room.furniture[selected]:null;
    const entry={item,x:base&&SMALL.has(item)?base.x:(Math.random()-.5)*2,z:base&&SMALL.has(item)?base.z:(Math.random()-.5)*2+1,rot:0};
    if(WALL_ITEMS.has(item)){entry.wall='back';entry.x=0;}if(DEFAULT_Y[item])entry.y=DEFAULT_Y[item];
+   if(HANGING.has(item)){entry.z=-HALF;entry.x=Math.round((Math.random()-.5)*300)/100;}
    room.furniture.push(entry);pieces.push({wrap:new THREE.Group()});
    const wrap=await makePiece(entry);if(closed)return;const j=room.furniture.indexOf(entry);if(j<0)return;
-   pieces[j].wrap.removeFromParent();pieces[j]={wrap};furnitureRoot.add(wrap);
+   drop(pieces[j].wrap);pieces[j]={wrap};furnitureRoot.add(wrap);
    const d=dimsOf(item);if(d){Object.assign(entry,clampEntry(entry,d));settle(j);}place(j);applyLook();select(j);hud.count(room.furniture.length);
   },
   set(key,value){
@@ -423,9 +504,14 @@ async function enter(plotId,mine){
    else if(key==='daylight'){room.daylight=Math.round(value*100)/100;room.lighting=nearestPreset(value);}
    else if(key==='window')room.window=value;else room.materials[key]=value;
    if(key==='lighting'||key==='daylight')lampsLit=daylightAt(daylight()).lamps;applyLook();return room;},
-  async save(){room=upgradeRoom(room);const r=await api('/api/rooms/me',{method:'PUT',body:{room}});room.window=r?.room?.window||room.window;saved=JSON.stringify(room);},
+  // Text on a poster or ticker: the piece is rebuilt (its canvas texture is cached per text).
+  async text(value){const e=room.furniture[selected];if(!e||!TEXT_ITEMS.has(e.item))return;const t=[...String(value||'').trim()].slice(0,TEXT_MAX).join('');
+   if(t)e.text=e.item==='neonTicker'?t.toUpperCase():t;else delete e.text;const i=selected,wrap=await makePiece(e);if(closed||room.furniture[i]!==e){drop(wrap);return;}drop(pieces[i].wrap);pieces[i]={wrap};furnitureRoot.add(wrap);place(i);},
+  async save(){room=upgradeRoom(room);let r;try{r=await api('/api/rooms/me',{method:'PUT',body:{room}});}catch(err){throw new Error(lockedMessage(err,tierInfo)||err.message||'Could not save.');}
+   if(Array.isArray(r?.room?.furniture))room.furniture.forEach((f,i)=>{const t=r.room.furniture[i]?.text;if(t&&TEXT_ITEMS.has(f.item))f.text=t;});room.window=r?.room?.window||room.window;saved=JSON.stringify(room);},
   async revert(){room=upgradeRoom(JSON.parse(saved));hud.sync(room);lampsLit=daylightAt(daylight()).lamps;select(-1);await build();},
   start(){editing=true;stand();free=true;me.play('Idle');},stop(){editing=false;select(-1);},
+  emote:doEmote,
   dirty:()=>JSON.stringify(room)!==saved,
  };
 
@@ -456,21 +542,26 @@ async function enter(plotId,mine){
    const f=floorAt();if(f&&Math.abs(f.x)<=HALF&&Math.abs(f.z)<=HALF)walkTo(f.x,f.z);},
   update(dt){
    const r=me.root.position;
-   if(!me.posed){const p=mv.update(dt);
+   if(glide){const p=glide.mv.update(dt);r.x=p.x;r.z=p.z;me.root.rotation.y=p.yaw;if(!glide.mv.busy){glide=null;mv.set(r.x,r.z,p.yaw);}}
+   else if(me.emoting==='moonwalk'){}   // the character slides itself (characters.js); synced back to the mover below
+   else if(!me.posed){const p=mv.update(dt);
     if(!me.posed){r.x=p.x;r.z=p.z;me.root.rotation.y=p.yaw;   // the arrival callback may have put the resident on a bed or chair
      if(p.moving){me.play('Walk');me.stride?.(p.phase);}
      else if(p.fidget&&free){me.play('Idle_Neutral');later(2200,()=>{if(free&&!mv.busy)me.play('Idle');});}}}
    tick(brain,dt*HOURS_PER_SECOND);think-=dt;if(think<=0){think=3+Math.random()*4;autonomy();}
-   me.update(dt);feet.position.set(r.x,(me.posed==='lie'?r.y:0)+.012,r.z);feet.visible=me.posed!=='lie';
+   me.update(dt);
+   if(me.emoting==='moonwalk'){r.x=Math.min(HALF-.4,Math.max(-HALF+.4,r.x));r.z=Math.min(HALF-.4,Math.max(-HALF+.4,r.z));mv.set(r.x,r.z,me.root.rotation.y);}
+   if(party>0)party-=dt;for(const sp of specials)sp.update(dt);if(pet)petStep(dt);
+   feet.position.set(r.x,(me.posed==='lie'?r.y:0)+.012,r.z);feet.visible=me.posed!=='lie';
   },
   dispose(){
    closed=true;for(const id of timers)clearTimeout(id);
    canvas?.removeEventListener('pointerdown',onDown);removeEventListener('pointermove',onMove);removeEventListener('pointerup',onUp);removeEventListener('pointercancel',onUp);
-   me.dispose();for(const m of owned)m.dispose();scene.clear();
+   me.dispose();pet?.dispose();for(const sp of specials)sp.dispose();specials.clear();for(const m of owned)m.dispose();scene.clear();
    if(gl){gl.shadowMap.autoUpdate=cityAutoShadows;gl.shadowMap.needsUpdate=true;gl.setPixelRatio(cityRatio);}
   },
  };
- const hud=roomHud({owner,mine,room,edit,onClose:close,onWave(){if(mv.busy)return;stand();faceCamera();me.play('Wave');hud.say(`${owner.name} waves back.`);}});
+ const hud=roomHud({owner,mine,room,edit,plotId,guestbook:Array.isArray(data.guestbook)?data.guestbook:null,visits:data.visits,unlocks,tierInfo,viewer,onClose:close,onWave(){if(mv.busy)return;stand();faceCamera();me.play('Wave');hud.say(`${owner.name} waves back.`);}});
  function close(){if(closed)return;host.setView(null);hud.remove();view.dispose();}
  host.setView(view);
  hud.say(mine?`Welcome home, ${owner.name}. Tap the bed, the desk, the window, the door…`:`You are visiting ${owner.name}.`);
@@ -479,14 +570,21 @@ async function enter(plotId,mine){
 
 // ---------------------------------------------------------------- HUD: moodboard, daylight, catalog drawer
 const el=(tag,props={},...kids)=>{const n=Object.assign(document.createElement(tag),props);n.append(...kids.filter(k=>k!=null));return n;};
-function roomHud({owner,mine,room,edit,onClose,onWave}){
+function roomHud({owner,mine,room,edit,plotId,guestbook,visits,unlocks,tierInfo=FALLBACK_UNLOCKS,viewer,onClose,onWave}){
  const root=el('section',{className:'room-hud'});root.setAttribute('aria-label',`${owner.name}'s room`);
  const title=el('div',{},el('span',{className:'eyebrow',textContent:mine?'YOUR ROOM':'VISITING'}),el('strong',{textContent:`${owner.name}'s room`}));
  const close=el('button',{className:'button button-dark',textContent:'Back to the city ←',onclick:()=>{if(edit.dirty()&&!confirm('Leave without saving your changes?'))return;onClose();}});
  const bubble=el('div',{className:'room-bubble'});bubble.setAttribute('role','status');
  root.append(el('div',{className:'room-top'},title,close),bubble);
  const api2={say(t){bubble.textContent=t;},select(){},count(){},sync(){},remove(){root.remove();}};
+ if(guestbook)root.append(guestbookPanel({owner,mine,plotId,entries:guestbook,visits,viewer,say:api2.say}));
  if(!mine){root.append(el('button',{className:'button button-orange room-hi',textContent:`Say hi to ${owner.name}`,onclick:onWave}));document.body.append(root);return api2;}
+ // Emote bar: every emote, the locked ones greyed with the tier that opens them.
+ const emotes=el('div',{className:'room-emotes'});emotes.setAttribute('aria-label','Emotes');
+ for(const name of EMOTES){const open=isUnlocked('emotes',name,unlocks,tierInfo),tier=tierOf(tierInfo.emotes,name);
+  const b=el('button',{className:'room-emote'+(open?'':' is-locked'),title:open?name:`${name}: unlocks at ${tierLabel(tier)}`,onclick:()=>open?edit.emote(name):api2.say(`“${name}” unlocks at ${tierLabel(tier)||'a higher tier'}.`)},
+   el('span',{className:'room-emote-icon',textContent:EMOTE_ICON[name]||'•'}),el('small',{textContent:open?name:tierLabel(tier)}));b.dataset.emote=name;if(!open)b.setAttribute('aria-disabled','true');emotes.append(b);}
+ root.append(emotes);
 
  const editBtn=el('button',{className:'button button-orange room-edit',textContent:'Edit room'});
  const sheet=el('aside',{className:'room-editor',hidden:true});sheet.setAttribute('aria-label','Room editor');
@@ -511,9 +609,10 @@ function roomHud({owner,mine,room,edit,onClose,onWave}){
  slider.oninput=()=>markLight(edit.set('daylight',slider.value/100));light.append(lightRow,slider);
  // Catalog drawer
  const add=el('div',{className:'room-add'}),cats=el('div',{className:'room-chips room-cats'}),grid=el('div',{className:'room-catalog'}),counter=el('span',{className:'room-count'});
- const showCat=c=>{grid.replaceChildren(...CATALOG[c].map(item=>el('button',{className:'room-item',onclick:()=>edit.add(item)},el('span',{className:'room-item-dot'}),el('span',{textContent:label(item)}))));
+ const showCat=c=>{grid.replaceChildren(...(c==='special'?SPECIAL:CATALOG[c]).map(item=>{const open=!IS_SPECIAL.has(item)||isUnlocked('items',item,unlocks,tierInfo),tier=tierOf(tierInfo.items,item);
+   return el('button',{className:'room-item'+(IS_SPECIAL.has(item)?' room-item-special':'')+(open?'':' is-locked'),title:open?label(item):`Unlocks at ${tierLabel(tier)}`,onclick:()=>edit.add(item)},el('span',{className:'room-item-dot'}),el('span',{textContent:label(item)}),open?null:el('small',{className:'room-tier',textContent:tierLabel(tier)}));}));
   cats.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.id===c)));};
- for(const c of Object.keys(CATALOG)){const b=el('button',{className:'chip',textContent:CATEGORY_LABELS[c],onclick:()=>showCat(c)});b.dataset.id=c;cats.append(b);}
+ for(const c of [...Object.keys(CATALOG),'special']){const b=el('button',{className:'chip'+(c==='special'?' chip-special':''),textContent:c==='special'?'★ Special':CATEGORY_LABELS[c],onclick:()=>showCat(c)});b.dataset.id=c;cats.append(b);}
  add.append(el('p',{className:'fine'},'Tap to add. Drag a piece to move it, or select it and tap the floor. ',counter),cats,grid);showCat('sleep');
  const first=tab('mood','Moodboard',mood);tab('light','Daylight',light);tab('add','Add furniture',add);
  const save=el('button',{className:'button button-orange',textContent:'Save room'}),cancel=el('button',{className:'button button-dark',textContent:'Cancel'});
@@ -522,19 +621,45 @@ function roomHud({owner,mine,room,edit,onClose,onWave}){
  const tools=el('div',{className:'room-tools',hidden:true}),toolName=el('strong');
  const raise=el('button',{className:'chip',textContent:'⤒ Raise',onclick:()=>{edit.raise();}});
  const rotate=el('button',{className:'chip',textContent:'⟳ Rotate',onclick:()=>edit.rotate()});
- tools.append(toolName,rotate,raise,el('button',{className:'chip chip-danger',textContent:'✕ Delete',onclick:()=>edit.remove()}),el('button',{className:'chip',textContent:'Done',onclick:()=>edit.deselect()}));
+ const textIn=el('input',{type:'text',className:'room-text',maxLength:TEXT_MAX,placeholder:'Text',hidden:true});textIn.setAttribute('aria-label','Text on the piece');
+ let textTimer=0;textIn.oninput=()=>{clearTimeout(textTimer);textTimer=setTimeout(()=>edit.text(textIn.value),350);};
+ tools.append(toolName,textIn,rotate,raise,el('button',{className:'chip chip-danger',textContent:'✕ Delete',onclick:()=>edit.remove()}),el('button',{className:'chip',textContent:'Done',onclick:()=>edit.deselect()}));
  const sync=r=>{for(const [k,row] of Object.entries(swatchRows))row.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.id===r.materials[k])));
   viewRow.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.id===r.window)));
   markLight(r);counter.textContent=`${r.furniture.length}/${LIMITS.max}`;};
  sync(room);first.click();
- const open=on=>{sheet.hidden=!on;editBtn.hidden=on;root.classList.toggle('room-editing',on);if(on){edit.start();bubble.textContent='Edit mode: drag furniture, pick materials, add pieces.';}else{edit.stop();tools.hidden=true;}};
+ const open=on=>{sheet.hidden=!on;editBtn.hidden=on;emotes.hidden=on;root.classList.toggle('room-editing',on);if(on){edit.start();bubble.textContent='Edit mode: drag furniture, pick materials, add pieces.';}else{edit.stop();tools.hidden=true;}};
  editBtn.onclick=()=>open(true);
  save.onclick=async()=>{save.disabled=true;try{await edit.save();open(false);bubble.textContent='Saved. Visitors see it now.';}catch(err){bubble.textContent=err.message||'Could not save.';}finally{save.disabled=false;}};
  cancel.onclick=async()=>{await edit.revert();open(false);bubble.textContent='Changes discarded.';};
  root.append(editBtn,sheet,tools);document.body.append(root);
  return {...api2,
   select(entry){tools.hidden=!entry;if(!entry)return;toolName.textContent=label(entry.item);
-   const wall=WALL_ITEMS.has(entry.item);rotate.disabled=raise.disabled=wall;raise.textContent=entry.y?'⤓ Lower':'⤒ Raise';},
+   const wall=WALL_ITEMS.has(entry.item)||HANGING.has(entry.item);rotate.disabled=raise.disabled=wall;raise.textContent=entry.y?'⤓ Lower':'⤒ Raise';
+   textIn.hidden=!TEXT_ITEMS.has(entry.item);if(!textIn.hidden&&document.activeElement!==textIn)textIn.value=entry.text||'';},
   count(n){counter.textContent=`${n}/${LIMITS.max}`;},sync,
  };
+}
+
+// Guestbook: visitors leave a short note (1 per room per minute); the owner and each note's author may remove it.
+function guestbookPanel({owner,mine,plotId,entries,visits,viewer,say}){
+ let list=entries.slice();const base=`/api/rooms/${encodeURIComponent(plotId)}/guestbook`;
+ const toggle=el('button',{className:'button button-dark room-gb-toggle'}),panel=el('aside',{className:'room-guestbook',hidden:true});panel.setAttribute('aria-label','Guestbook');
+ const ul=el('ol',{className:'room-gb-list'}),status=el('p',{className:'room-gb-status'});status.setAttribute('role','status');
+ const when=at=>{const d=(Date.now()-Number(at))/1000;return !Number.isFinite(d)?'':d<90?'just now':d<5400?`${Math.round(d/60)} min ago`:d<129600?`${Math.round(d/3600)} h ago`:`${Math.round(d/86400)} d ago`;};
+ const myName=viewer?.resident?.name;
+ function render(){toggle.textContent=`📖 Guestbook · ${list.length}`;
+  ul.replaceChildren(...(list.length?list.map(g=>el('li',{},el('strong',{textContent:g.name||'Visitor'}),el('span',{textContent:g.text}),el('small',{textContent:when(g.at)}),
+   mine||(myName&&g.name===myName)?el('button',{className:'room-gb-del',textContent:'✕',title:'Remove this note',onclick:()=>remove(g)}):null)):[el('li',{className:'room-gb-empty',textContent:mine?'No notes yet. Visitors can sign here.':`Be the first to sign ${owner.name}'s guestbook.`})]));}
+ async function remove(g){try{await api(`${base}/${encodeURIComponent(g.id)}`,{method:'DELETE'});list=list.filter(x=>x!==g);render();}catch(err){status.textContent=err.message||'Could not remove the note.';}}
+ const form=el('form',{className:'room-gb-form'}),input=el('input',{type:'text',maxLength:80,placeholder:`Say something nice to ${owner.name}`,required:true}),post=el('button',{className:'button button-orange',type:'submit',textContent:'Sign'});
+ input.setAttribute('aria-label','Your note');form.append(input,post);
+ form.onsubmit=async e=>{e.preventDefault();const text=input.value.trim();if(!text)return;post.disabled=true;
+  try{const r=await api(base,{method:'POST',body:{text}});if(r?.entry)list.unshift(r.entry);input.value='';status.textContent='Thanks! Your note is in.';say(`You signed ${owner.name}'s guestbook.`);render();}
+  catch(err){const b=err.body||{};status.textContent=err.status===429?`Easy there: you can sign again in ${b.retryAfterS>90?Math.ceil(b.retryAfterS/60)+' min':(b.retryAfterS||60)+' s'}.`:
+   err.status===401?'Sign in to sign the guestbook.':b.error==='no_resident'?'Create your resident first, then come back to sign.':b.error==='own_room'?'This is your own guestbook.':err.message||'Could not post the note.';}
+  finally{post.disabled=false;}};
+ panel.append(el('div',{className:'room-gb-head'},el('strong',{textContent:'Guestbook'}),el('small',{textContent:Number.isFinite(visits)?`${visits} visitor${visits===1?'':'s'} signed`:''})),ul,...(mine?[]:[form]),status);
+ toggle.onclick=()=>{panel.hidden=!panel.hidden;toggle.setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden&&!mine)input.focus({preventScroll:true});};
+ render();return el('div',{className:'room-gb'+(mine?' room-gb-mine':'')},toggle,panel);
 }

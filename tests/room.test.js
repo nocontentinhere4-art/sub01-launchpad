@@ -58,3 +58,30 @@ test('daylight: the slider passes through the four presets in order',()=>{
  const mid=daylightAt(1/6);assert.ok(mid.sun[1]>LIGHTING.morning.sun[1]&&mid.sun[1]<LIGHTING.midday.sun[1]);
  assert.equal(nearestPreset(.1),'morning');assert.equal(nearestPreset(.9),'night');assert.equal(daylightAt(.2).lamps,false);assert.equal(daylightAt(.8).lamps,true);
 });
+
+import {SPECIAL,specialDims,lockedMessage,EMOTE_TIERS,FALLBACK_UNLOCKS} from '../src/room.js';
+import {SPECIAL_TIERS,HANGING} from '../src/special-items.js';
+const dimsAll=item=>specialDims(item)||dimsOf(item);
+test('special pieces: accepted by the client schema, text kept and trimmed, labels and actions',()=>{
+ assert.equal(SPECIAL.length,16);assert.ok(SPECIAL.every(i=>!ITEMS.includes(i)),'not Kenney GLBs');
+ const r=upgradeRoom({furniture:[{item:'discoBall',x:0,z:0,rot:0},{item:'neonTicker',x:0,z:-3.46,rot:0,text:'sub01 <b>'},{item:'posterCustom',x:1,z:-3.47,rot:0,text:'  My idea is very long  '},
+  {item:'goldToilet',x:2,z:2,rot:90,text:'no'},{item:'karaokeMic',x:1,z:1,rot:0,wall:'left'}]});
+ assert.equal(r.furniture.length,5);assert.equal(r.furniture[1].text,'SUB01 B','ticker text is upper case, no markup');assert.equal(r.furniture[2].text,'My idea is v');
+ assert.equal('text' in r.furniture[3],false,'only text items carry text');assert.equal('wall' in r.furniture[4],false,'special pieces never hang on a wall field');
+ assert.equal(actionFor('goldToilet'),'sit');assert.equal(actionFor('plushPile'),'sit');assert.equal(actionFor('discoBall'),'use');assert.equal(label('consoleTv'),'Console & TV');
+ for(const i of SPECIAL)assert.ok(specialDims(i)&&specialDims(i).oy===0,i);
+});
+test('edit flow: a hanging piece snaps flush to the wall its rotation picks, others clamp like furniture',()=>{
+ for(const item of HANGING){const d=dimsAll(item);
+  const back=clampEntry({item,x:9,z:0,rot:0},d);assert.equal(back.rot,0);assert.ok(Math.abs(back.z-(-HALF+d.d/2))<.011,item+' flush on the back wall');assert.ok(back.x+d.w/2<=HALF+.01);
+  const left=clampEntry({item,x:0,z:-9,rot:90},d);assert.ok(Math.abs(left.x-(-HALF+d.d/2))<.011,item+' flush on the left wall');assert.ok(left.z-d.w/2>=-HALF-.01);
+  assert.equal(clampEntry({item,x:0,z:0,rot:180},d).rot,0,'only the two walls');}
+ const ball=clampEntry({item:'discoBall',x:5,z:-5,rot:0},dimsAll('discoBall'));assert.ok(ball.x<=HALF-.25+.01&&ball.z>=-HALF+.25-.01);
+ // A disco ball overhead never blocks the spot to stand in front of something.
+ const room=[{item:'karaokeMic',x:0,z:0,rot:0},{item:'discoBall',x:0,z:.6,rot:0}];const s=standSpot(room,0,dimsAll);assert.ok(Math.abs(s.z-(.21+.4))<.02,'front spot kept');
+});
+test('a 403 locked save names the tier; emote tiers mirror the server',()=>{
+ assert.equal(lockedMessage({status:403,body:{error:'locked',locked:['discoBall','goldToilet']}}),'Not unlocked yet: Disco ball (Builder), Gold toilet (Launched).');
+ assert.equal(lockedMessage({status:400,body:{error:'bad_room'}}),null);
+ assert.equal(Object.keys(EMOTE_TIERS).length,12);assert.equal(FALLBACK_UNLOCKS.items,SPECIAL_TIERS);
+});
