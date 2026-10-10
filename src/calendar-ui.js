@@ -2,7 +2,9 @@
 // phones), the next event in the activity bar and the Calendar sheet. Pure helpers first (tests/calendar-ui.test.js);
 // the DOM is touched only when createCalendarUI() is called. The theme drives one thing: a tint on the eyebrow dot.
 export const THEME_DOT={hanami:'#F4A6BE',matsuri:'#FF7A4D',neon:'#FF5FA8',rain:'#8FB6FF',obon:'#FFD27A',moon:'#E8DFC0',snow:'#D6E4F2',newyear:'#E8B23A'};
-export const KINDS={launch_party:{icon:'🎆',label:'Launch party'},open_soon:{icon:'🏮',label:'Opening soon'},omikuji:{icon:'⛩',label:'Omikuji'},ranking:{icon:'🏆',label:'Room ranking'}};
+import {icon} from './icons.js';
+// icon: an id from the sprite in index.html (icons.js icon()).
+export const KINDS={launch_party:{icon:'party',label:'Launch party'},open_soon:{icon:'lantern',label:'Opening soon'},omikuji:{icon:'torii',label:'Omikuji'},ranking:{icon:'trophy',label:'Room ranking'}};
 const JST=9*3600e3,pad=n=>String(n).padStart(2,'0');
 // Tokyo wall time of a unix ms: {date:'YYYY-MM-DD', time:'HH:MM', md:'Oct 12'}.
 export function jst(ms){const d=new Date(Number(ms)+JST);return {date:d.toISOString().slice(0,10),time:`${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`,
@@ -69,15 +71,15 @@ export function createCalendarUI(ctx){
    el('span',{className:'jp',textContent:theme?.kanji||'暦',ariaHidden:'true'}),el('span',{className:'today-theme-t'},el('small',{textContent:'THIS WEEK'}),el('b',{textContent:theme?.title||'Calendar'})));
   themeBtn.setAttribute('aria-label',`This week: ${theme?.title||'calendar'}. Open the calendar`);
   strip.replaceChildren(themeBtn,el('div',{className:'today-chips'},...chips.map(c=>{const b=el('button',{type:'button',className:'today-chip is-'+c.state,onclick:()=>act(c)},
-   el('span',{className:'ic',textContent:c.icon,ariaHidden:'true'}),el('span',{className:'tx'},el('b',{textContent:c.label}),el('small',{textContent:c.sub})));return b;})));
+   el('span',{className:'ic',ariaHidden:'true'},icon(c.icon)),el('span',{className:'tx'},el('b',{textContent:c.label}),el('small',{textContent:c.sub})));return b;})));
   strip.hidden=false;
  }
  function open(){
   if(!cal){ctx.notify?.('The calendar is not reachable right now.');return;}
   const m=sheetModel(cal,now()),body=$('calendar-body');
   const row=r=>{const b=el(r.plotId||r.kind==='omikuji'?'button':'div',{className:'cal-row is-'+r.state+(r.placeholder?' is-placeholder':'')},
-   el('span',{className:'ic',textContent:r.icon,ariaHidden:'true'}),el('span',{className:'tx'},el('b',{textContent:r.title}),el('small',{textContent:r.when+(r.placeholder?' · placeholder, nothing runs yet':'')})),
-   r.plotId?el('span',{className:'go',textContent:'Show ↗'}):null);
+   el('span',{className:'ic',ariaHidden:'true'},icon(r.icon)),el('span',{className:'tx'},el('b',{textContent:r.title}),el('small',{textContent:r.when+(r.placeholder?' · placeholder, nothing runs yet':'')})),
+   r.plotId?el('span',{className:'go'},'Show',icon('arrow')):null);
    if(b.tagName==='BUTTON'){b.type='button';b.onclick=()=>{ctx.closeDialog();if(r.kind==='omikuji')ctx.onShrine?.();else ctx.onFocus?.(r.plotId);};}return b;};
   $('calendar-theme').replaceChildren(el('span',{className:'jp',textContent:m.theme?.kanji||'',ariaHidden:'true'}),el('span',{},el('b',{textContent:`${m.theme?.title||'This week'}${m.isoWeek?' · '+m.isoWeek:''}`}),el('small',{textContent:m.theme?.text||''})));
   body.replaceChildren(el('h3',{className:'sheet-h',textContent:`Today · ${m.date}`}),...(m.today.length?m.today.map(row):[el('p',{className:'fine',textContent:'Nothing scheduled today.'})]),

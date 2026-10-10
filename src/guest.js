@@ -46,7 +46,7 @@ export function clearGuest(s=store()){try{s?.removeItem(GUEST_KEY);}catch{}}
 export const upgradePayload=(g,plotId)=>({name:g.name,look:g.look,traits:normalizeTraits(g.traits),plotId});
 // The apartment a guest gets on sign-in: the hint when free, else the free building nearest the spawn (open lots last).
 export function pickPlot(plots,buildings,{hint=null,from=GUEST_SPAWN}={}){
- const taken=new Set((buildings||[]).map(b=>b.plotId)),free=(plots||[]).filter(p=>!taken.has(p.id));
+ const taken=new Set((buildings||[]).map(b=>b.plotId)),free=(plots||[]).filter(p=>!p.reserved&&!taken.has(p.id));
  if(hint&&free.some(p=>p.id===hint))return hint;
  return free.sort((a,b)=>(!!a.vacant-!!b.vacant)||((a.x-from.x)**2+(a.z-from.z)**2)-((b.x-from.x)**2+(b.z-from.z)**2))[0]?.id||null;
 }

@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import {api} from './api.js';
 import {districts,cityPlots} from './city-state.js';
 import {frontOf} from './world-sync.js';
+import {icon,brandMark} from './icons.js';
 
 // ---- Pure helpers (tests/chat.test.js) ----
 export const CHAT={max:50,bubbleMs:7000,stack:3,presenceMs:20e3,presenceBeat:45e3,sendGap:3e3,sub01Gap:20e3,farZoom:.5,maxLen:140,
@@ -146,8 +147,8 @@ export function createChat(ctx){
   if(!s.length){if(l){l.element.remove();const i=ctx.labels.indexOf(l);if(i>=0)ctx.labels.splice(i,1);stackLabels.delete(key);}return;}
   if(!l){l={element:el('div',{className:'world-label chat-stack'}),position:new THREE.Vector3(),roam:true,chat:key};l.element.dataset.speaker=key==='sub01'?'sub01':key==='me'?'me':'other';
    if(!anchor(key,l.position))return;stackLabels.set(key,l);$('labels').append(l.element);ctx.labels.push(l);}
-  l.element.replaceChildren(el('span',{className:'chat-far',textContent:'💬'}),...s.map(b=>{
-   const who=el('b',{className:'who'},...(key==='sub01'?[el('span',{className:'chat-av s',textContent:'01'})]:[]),b.name);
+  l.element.replaceChildren(el('span',{className:'chat-far'},icon('chat')),...s.map(b=>{
+   const who=el('b',{className:'who'},...(key==='sub01'?[el('span',{className:'chat-av s'},brandMark())]:[]),b.name);
    if(key!=='sub01'&&onlineHere(b.name))who.prepend(el('i',{className:'on'}));
    return el('div',{className:'chat-bubble'},who,el('span',{className:'tx',textContent:b.text}));}));
  }
@@ -161,14 +162,14 @@ export function createChat(ctx){
   if(sys){li.append(el('p',{className:'chat-text',textContent:m.text}));return li;}
   const meta=el('div',{className:'chat-meta'},el('b',{textContent:m.name}));
   if(!sub&&onlineHere(m.name))meta.firstChild.prepend(el('i',{className:'on',title:'Online here'}));
-  if(m.to==='sub01')meta.append(el('span',{className:'chat-chip to',textContent:'→ SUB-01'}));
+  if(m.to==='sub01')meta.append(el('span',{className:'chat-chip to'},icon('arrow'),'SUB-01'));
   if(m.district)meta.append(el('span',{className:'chat-chip',textContent:districtLabel(m.district)}));
   meta.append(el('time',{textContent:m.failed?'not sent':m.pending?'sending…':time(m.at)}));
   const body=el('div',{className:'chat-body'},meta,el('p',{className:'chat-text',textContent:m.text}));
   const r=m.replyingTo,q=r?.id&&log.find(r.id),rn=r?.name||q?.name,rt=r?.text||q?.text;
-  if(rt)body.append(el('p',{className:'chat-reply',textContent:`↪ ${rn||'a visitor of his room'}: “${rt.slice(0,80)}”`}));
+  if(rt)body.append(el('p',{className:'chat-reply'},icon('reply'),`${rn||'a visitor of his room'}: “${rt.slice(0,80)}”`));
   if(m.failed)body.append(el('p',{className:'chat-reply err',textContent:m.failed}));
-  li.append(el('span',{className:'chat-av'+(sub?' s':''),textContent:sub?'01':initials(m.name),ariaHidden:'true'}),body);
+  li.append(sub?el('span',{className:'chat-av s',ariaHidden:'true'},brandMark()):el('span',{className:'chat-av',textContent:initials(m.name),ariaHidden:'true'}),body);
   if(!mine&&!m.local)li.append(el('button',{type:'button',className:'chat-report',textContent:'Report',title:'Report this message',onclick:()=>report(m,li)}));
   return li;
  }

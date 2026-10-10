@@ -26,7 +26,7 @@ import {createCity} from './city.js';
 import {createCityEvents,freshEvents} from './city-events.js';
 import {createExplorer,cityPois} from './explore.js';
 import {kanjiOf,codeOf,addressCode} from './districts-kanji.js';
-import {icon,cta} from './icons.js';
+import {icon,cta,tile} from './icons.js';
 import {createGuest} from './guest.js'; // guest:
 import {createCalendarUI} from './calendar-ui.js';
 import {createRituals,createShrinePicks,shrineSpots} from './rituals.js';
@@ -219,18 +219,18 @@ function crowdEnd(now){
 function renderList() {
   $('project-list').replaceChildren();
   const district=$('district-select').value;
-  const available=cityPlots.filter(p=>!district||p.district===district).map(placeFor);
-  const mine=new Set(me?.plots?.map(p=>p.plotId)||[]),ideas=(me?.ideas||[]).filter(i=>i.status!=='cancelled').slice(0,5).map(i=>({id:'idea-'+i.id,name:i.title,symbol:'✉',color:i.status==='declined'?'#9a9d92':'#fb752b',kind:'YOUR IDEA',status:IDEA_STATUS[i.status]||i.status,description:i.status_note||'',slug:i.slug,ideaId:i.id})),landmarks=[...ideas,tower,...places];
+  const available=cityPlots.filter(p=>!p.reserved&&(!district||p.district===district)).map(placeFor);   // reserved tower-park plots are not addresses
+  const mine=new Set(me?.plots?.map(p=>p.plotId)||[]),ideas=(me?.ideas||[]).filter(i=>i.status!=='cancelled').slice(0,5).map(i=>({id:'idea-'+i.id,name:i.title,color:i.status==='declined'?'#9a9d92':'#fb752b',kind:'YOUR IDEA',status:IDEA_STATUS[i.status]||i.status,description:i.status_note||'',slug:i.slug,ideaId:i.id})),landmarks=[...ideas,tower,...places];
   const yours=available.filter(p=>p.claimed&&mine.has(p.id)),others=available.filter(p=>p.claimed&&!mine.has(p.id));
   for (const p of district?[...yours,...others,...landmarks,...available.filter(p=>!p.claimed)]:[...yours,...landmarks,...others]) {
     const button=document.createElement('button');button.className='project-row';button.setAttribute('aria-label',`Open ${p.name}`);
-    const symbol=document.createElement('span');symbol.className='project-symbol';symbol.textContent=p.symbol;symbol.style.setProperty('--c',p.color);
+    const symbol=tile(tileSpec(p));
     const meta=document.createElement('span');meta.className='project-meta';
     const title=document.createElement('span');title.className='project-title';title.textContent=p.name;
     // The status dot: green launched, orange a real idea or project, grey everything else (homes, lots, example places).
     const status=document.createElement('span');status.className='project-status';const dot=document.createElement('i');
     dot.className='dot'+(p.building?.phase==='open'||p.status==='Launched'?' ok':p.building?.type==='project'||(p.ideaId&&p.color!=='#9a9d92')?'':' idle');status.append(dot,p.status||'');
-    meta.append(title,status);const arrow=document.createElement('span');arrow.className='project-arrow';arrow.append(addressCode(p.id),icon('ne'));
+    meta.append(title,status);const arrow=document.createElement('span');arrow.className='project-arrow';arrow.append(addressCode(p.id),icon('cr'));
     button.append(symbol,meta,arrow);button.onclick=()=>showPlace(p);$('project-list').append(button);
   }
   stationBoard(district,available);
@@ -259,6 +259,16 @@ function placeFor(plot){
   if(b.type==='apartment')return{...plot,name:b.name+"'s apartment",kind:`RESIDENT / ${plot.districtName}`,status:mine?'Your home':'Home of '+b.name,description:mine?'Your apartment. Enter to arrange your room.':`${b.name} lives here.`,color:'#69a694',claimed:true,building:b,mine};
   return{...plot,name:b.name,kind:`PROJECT / ${plot.districtName}`,status:b.stageLabel+(b.ticker?' · $'+b.ticker:''),description:{thinking:'SUB-01 is deciding whether to build it.',scaffold:'SUB-01 is building it right now.',stopped:'Work stopped; it needs attention.',review:'Built. Waiting for its author to review.',launch:'Getting ready to launch.',open:'Launched. Its building is open.'}[b.phase],color:'#fb752b',claimed:true,building:b,mine};
 }
+// The leading tile of a place (icons.js tile()): the real thing, never a glyph. A project shows its coin logo (private →
+// a lock), a resident their initials on their colour, SUB-01 the brand mark, landmarks an SVG glyph, a free lot its kanji.
+function tileSpec(p){const b=p.building;
+  if(p.id==='home')return {kind:'sub01'};
+  if(p.id==='tower')return {kind:'landmark',icon:'tower',color:p.color};
+  if(p.ideaId)return {kind:'idea',color:p.color};
+  if(b?.type==='project')return {kind:'project',logo:b.logoUrl,private:b.private,color:b.color||p.color,kanji:kanjiOf(p.district)};
+  if(b?.type==='apartment')return {kind:'resident',name:b.name,color:b.color||p.color};
+  if(p.icon)return {kind:'landmark',icon:p.icon,color:p.color};
+  return {kind:'lot',kanji:kanjiOf(p.district),color:p.color};}
 function showPlace(p) {
   if(p.id&&cityPlots.some(c=>c.id===p.id))p=placeFor(cityPlots.find(c=>c.id===p.id));
   selectedPlace=p;const b=p.building,project=b?.type==='project';
@@ -278,7 +288,7 @@ function showPlace(p) {
   $('detail-diary').hidden=p.id!=='home';const card=serverCardUrl(b,p.id);$('detail-share').hidden=!card;if(card)$('detail-share').href=card;
   if(project&&b.slug)loadRoles(b);$('detail-name').textContent=p.name;$('detail-category').textContent=p.kind;
   $('detail-description').textContent=p.description;$('detail-state').textContent=p.status;
-  $('detail-icon').textContent=p.symbol;$('detail-icon').style.setProperty('--c',p.color);
+  const vacant=!b&&!p.ideaId&&cityPlots.some(l=>l.id===p.id),noLogo=project&&p.mine&&!b.private&&!b.logoUrl;$('detail-icon').replaceChildren(tile(vacant?{empty:true,label:'Your logo here'}:tileSpec(p),'lg'));$('detail-tile-cap').hidden=!(vacant||noLogo);$('detail-tile-cap').textContent=noLogo?'Your coin logo goes here':'Your logo here';
   visitWalk(p);cta($('visit-button'),p.ideaId?'Open the idea ↗':b?.type==='apartment'?(p.mine?'Enter your room →':'Visit '+b.name+'\'s room →'):project?(b.slug?(p.mine?'Open your office ↗':'Open project page ↗'):'Watch the site →'):cityPlots.some(l=>l.id===p.id)?'Drop an idea here →':'Visit this place →');
   openDialog('detail-backdrop');
 }
@@ -335,7 +345,7 @@ async function openBuildForm(plot){
  if(!me?.user){guest.requireWallet('idea',()=>openBuildForm(plot));return;} // guest: sign-in with the reason line
  if(!me?.user){openSignIn(()=>openBuildForm(plot));return;}
  if(!resident()){openCreator(()=>openBuildForm(plot));return;}
- const free=cityPlots.filter(p=>!cityBuildings.some(b=>b.plotId===p.id));
+ const free=cityPlots.filter(p=>!p.reserved&&!cityBuildings.some(b=>b.plotId===p.id));
  if(!free.length){notify('Every address is taken right now.');return;}
  $('plot-address').replaceChildren(...free.map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name+(p.vacant?' / open lot':'');return o;}));
  $('plot-address').value=(plot&&free.some(p=>p.id===plot.id)?plot:free.find(p=>p.vacant)||free[0]).id;
@@ -364,7 +374,7 @@ function openCreator(next){
  // Before the first save the wallet has no tier yet; null opens the resident tier, which the server grants on creation.
  renderLookFields($('look-fields'),lookOptions,look,me?.unlocks?.tier?me.unlocks:null,r?.traits||{});
  const taken=new Set(cityBuildings.map(b=>b.plotId));if(r?.plotId)taken.delete(r.plotId);
- $('resident-plot').replaceChildren(...cityPlots.filter(p=>!taken.has(p.id)).map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));
+ $('resident-plot').replaceChildren(...cityPlots.filter(p=>!p.reserved&&!taken.has(p.id)).map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;return o;}));
  if(r?.plotId)$('resident-plot').value=r.plotId;
  $('resident-form').onsubmit=async e=>{e.preventDefault();const {look,traits}=readLook($('look-fields'));
   try{await api('/api/residents',{method:'POST',body:{name:$('resident-name').value,look,traits,plotId:$('resident-plot').value}});await refreshMe();await pollWorld();closeDialog();notify(`Welcome to Tokyo, ${resident()?.name}.`);next?.();}catch(err){$('resident-error').textContent=err.message;}};
@@ -660,7 +670,7 @@ window.__city={quality,get scene(){return scene;},get green(){return cityGreen?.
   memory(){const m=renderer.info.memory;return {heapMB:performance.memory?+(performance.memory.usedJSHeapSize/1048576).toFixed(1):null,geometries:m.geometries,textures:m.textures,programs:renderer.info.programs?.length??null,objects:sceneCount(scene),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles};},
   get camera(){const t=controls.target;return {x:+t.x.toFixed(2),y:+t.y.toFixed(2),z:+t.z.toFixed(2),zoom:+camera.zoom.toFixed(3)};},
   view({x=0,y=2,z=0,zoom=1}={}){cityTour=null;follow=false;cameraTween=null;aimCamera(new THREE.Vector3(x,y,z));camera.zoom=zoom;camera.updateProjectionMatrix();controls.update();},
-  audit:{room(plotId=aptPlots()[0]){return openRoom({plotId,mine:false,me});},get inRoom(){return !!roomView;},
+  audit:{room(plotId=aptPlots()[0],mine=false){return openRoom({plotId,mine,me});},get inRoom(){return !!roomView;},
    roam(){const at=frontOf(aptPlots()[0]);return !!cityEvents.explore({at,pet:{kind:'cat'},load:()=>loadCharacter({outfit:'jacket'},{template})});},
    visit(){const [from,to]=aptPlots();return !!cityEvents.visit({from,to,skate:true,pet:{kind:'dog'},load:()=>loadCharacter({outfit:'tee'},{template})});},
    endRoam(){cityEvents.endRoam();},get roaming(){return cityEvents.roaming;},
@@ -686,7 +696,7 @@ function updateCheers(){const e=rituals?.ema||[];if(!e.length){cityEvents.setChe
 function updateShrines(){if(!shrinePicks)return;const spots=shrineSpots(cityLayout(cityBuildings));shrinePicks.set(spots);
   for(const l of shrineLabels){l.element.remove();const i=labels.indexOf(l);if(i>=0)labels.splice(i,1);}shrineLabels.length=0;
   for(const s of shrinePicks.spots){const a=shrinePicks.labelAt(s),element=Object.assign(document.createElement('button'),{className:'world-label shrine-label',type:'button'});
-   element.append(Object.assign(document.createElement('i'),{}),document.createTextNode('SHRINE'),Object.assign(document.createElement('em'),{textContent:'⛩'}));element.onclick=()=>rituals.openShrine('omikuji',s);
+   element.append(Object.assign(document.createElement('i'),{}),document.createTextNode('SHRINE'),(()=>{const em=document.createElement('em');em.append(icon('torii'));return em;})());element.onclick=()=>rituals.openShrine('omikuji',s);
    $('labels').append(element);const l={element,position:new THREE.Vector3(a.x,a.y,a.z)};labels.push(l);shrineLabels.push(l);}}
 shrinePicks=createShrinePicks(scene,interactive);updateShrines();
 rituals=createRituals({getJSON,api,me:()=>me,guest,openDialog,closeDialog,notify,ensureResident,reducedMotion,today:todayJST,telemetryLine:()=>telemetry?.line()||'',

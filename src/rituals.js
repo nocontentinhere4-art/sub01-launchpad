@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {REASONS} from './guest.js';
+import {icon} from './icons.js';
 // Shrine rituals (docs/CITY-API.md "Rituals"): the omikuji (one slip per Tokyo day), the ema board (ideas pinned
 // before the vote, with cheers for their author), build-or-pass predictions on the detail card, the leaderboard, the
 // vote ledger with its chain check and the About sheet. Nothing here has value: fortunes are cosmetic until midnight
@@ -163,7 +164,7 @@ export function createRituals(ctx){
  function emaPanel(){
   const list=el('ol',{className:'ema-list'});
   for(const e of ema){const mine=ctx.me()?.ideas?.some(i=>i.id===e.ideaId),done=cheered.has(e.ideaId);
-   const btn=el('button',{type:'button',className:'ema-cheer',disabled:mine||done,title:mine?'Your own ema':done?'You cheered this one':'Cheer for the author'},`♥ ${done?'Cheered':'Cheer'}`,el('span',{className:'count',textContent:String(e.cheers)}));
+   const btn=el('button',{type:'button',className:'ema-cheer',disabled:mine||done,title:mine?'Your own ema':done?'You cheered this one':'Cheer for the author'},icon('heart'),done?'Cheered':'Cheer',el('span',{className:'count',textContent:String(e.cheers)}));
    btn.onclick=()=>gated('cheer',async()=>{btn.disabled=true;try{const r=await ctx.api(`/api/ema/${encodeURIComponent(e.ideaId)}/cheer`,{method:'POST'});e.cheers=Number(r?.cheers)||e.cheers+1;cheered.add(e.ideaId);ctx.onEma?.(ema);}
     catch(err){if(err?.body?.error==='already_cheered')cheered.add(e.ideaId);else{btn.disabled=false;ctx.notify(err?.body?.error==='own_idea'?'That is your own ema.':errText(err));}}renderShrine();});
    list.append(el('li',{className:'ema'},el('span',{className:'ema-cord',ariaHidden:'true'}),el('b',{textContent:e.title}),
@@ -180,12 +181,12 @@ export function createRituals(ctx){
     el('p',{className:'fine',textContent:str(b?.note)||NO_VALUE}));}).catch(()=>box.replaceChildren(el('p',{className:'fine',textContent:'The leaderboard is not reachable right now.'})));
   return box;
  }
- const TABS=[['omikuji','⛩ Omikuji'],['ema','絵馬 Ema'],['board','🏆 Leaderboard']];
+ const TABS=[['omikuji','Omikuji','torii'],['ema','Ema','lantern'],['board','Leaderboard','trophy']];
  async function renderShrine(){
   const tabs=$('shrine-tabs'),body=$('shrine-body');if(!tabs||!body)return;
-  tabs.replaceChildren(...TABS.map(([id,name])=>{const b=el('button',{type:'button',className:'sheet-tab',textContent:name,onclick:()=>{tab=id;renderShrine();}});b.setAttribute('aria-pressed',String(tab===id));return b;}));
+  tabs.replaceChildren(...TABS.map(([id,name,ic])=>{const b=el('button',{type:'button',className:'sheet-tab',onclick:()=>{tab=id;renderShrine();}},icon(ic),name);b.setAttribute('aria-pressed',String(tab===id));return b;}));
   const panel=tab==='omikuji'?omikujiPanel():tab==='ema'?emaPanel():await boardPanel();
-  const ledger=el('button',{type:'button',className:'link-button',textContent:'See the vote ledger →',onclick:openLedger});
+  const ledger=el('button',{type:'button',className:'link-button',onclick:openLedger},'See the vote ledger',icon('arrow'));
   body.replaceChildren(panel,el('div',{className:'sheet-foot'},ledger));
  }
  async function openShrine(which='omikuji',spot=null){
@@ -219,7 +220,7 @@ export function createRituals(ctx){
   const rows=disclosureRows(d);
   body.replaceChildren(rows.length?el('dl',{className:'about-list'},...rows.flatMap(r=>[el('dt',{textContent:r.label}),el('dd',{textContent:r.value})])):el('p',{className:'fine',textContent:'The disclosure is not reachable right now. SUB-01 is an AI dev driven by a model of real human brain activity; every publication and transaction is approved by a human.'}),
    el('div',{className:'about-privacy'},el('b',{textContent:'Privacy'}),el('p',{textContent:ctx.telemetryLine?.()||''})),
-   el('button',{type:'button',className:'link-button',textContent:'See the vote ledger →',onclick:openLedger}));
+   el('button',{type:'button',className:'link-button',onclick:openLedger},'See the vote ledger',icon('arrow')));
  }
 
  // ---- Predictions on the detail card. box: the card's #detail-predict; ideaId from the world/ema; own: your idea.

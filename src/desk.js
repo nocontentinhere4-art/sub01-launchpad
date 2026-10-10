@@ -12,7 +12,7 @@ export const SCREEN_ITEMS=new Set(['computerScreen','laptop','televisionModern']
 // allow-popups allow-popups-to-escape-sandbox; the owner's preview is framed with sandbox="" like the review page;
 // /projects pages are the launchpad's own app, which needs scripts and its cookie.
 export const SANDBOX={site:'allow-popups allow-popups-to-escape-sandbox',preview:'',page:'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox'};
-export const TAB_LABELS={site:'🌐 Site',x:'𝕏',launch:'🚀 Launch',ideas:'✉ Ideas'};
+export const TAB_LABELS={site:'Site',x:'X',launch:'Launch',ideas:'Ideas'},TAB_ICONS={site:'globe',x:'xlogo',launch:'rocket',ideas:'mail'};
 const str=v=>typeof v==='string'?v.trim():'';
 // Only http(s) URLs and same-origin paths ever reach an href or an iframe (no javascript:, data:, protocol-relative).
 export function safeHref(u){u=str(u);if(!u)return null;if(/^\/(?!\/)/.test(u))return u;try{const p=new URL(u);return p.protocol==='https:'||p.protocol==='http:'?p.href:null;}catch{return null;}}
@@ -96,7 +96,8 @@ export function screenGeometry(geo){
 
 // ---------------------------------------------------------------- the Computer overlay
 const el=(tag,props={},...kids)=>{const n=Object.assign(document.createElement(tag),props);n.append(...kids.filter(k=>k!=null&&k!==false));return n;};
-const ext=(href,text,cls='pc-link')=>el('a',{className:cls,href,target:'_blank',rel:'noopener noreferrer',textContent:text});
+// External links carry the diagonal arrow (they leave the city page); 'Label ↗' strings are typed the old way.
+const ext=(href,text,cls='pc-link')=>el('a',{className:cls,href,target:'_blank',rel:'noopener noreferrer'},text.replace(/\s*↗\s*$/,''),icon('ne'));
 const frame=(src,sandbox,title)=>{const f=el('iframe',{className:'pc-frame',src,title,loading:'lazy',referrerPolicy:'no-referrer'});f.setAttribute('sandbox',sandbox);return f;};
 // openComputer({model,project,ownerName,onIdea,onClose}) → {close()}. onIdea: null when main.js has not wired host.openIdea.
 export function openComputer({model,project=null,ownerName='',onIdea=null,onClose}){
@@ -118,16 +119,16 @@ export function openComputer({model,project=null,ownerName='',onIdea=null,onClos
  function clearBody(){for(const f of body.querySelectorAll('iframe')){f.src='about:blank';f.remove();}body.replaceChildren();}   // frames live only while their tab is shown
  function show(id){
   const list=tabsFor(model,cur);if(!list.includes(id))id=list[0];tab=id;renderTitle();
-  tabs.replaceChildren(...list.map(t=>{const b=el('button',{className:'pc-tab',type:'button',textContent:TAB_LABELS[t],onclick:()=>show(t)});b.setAttribute('role','tab');b.setAttribute('aria-selected',String(t===id));b.tabIndex=t===id?0:-1;b.dataset.tab=t;return b;}));
+  tabs.replaceChildren(...list.map(t=>{const b=el('button',{className:'pc-tab',type:'button',onclick:()=>show(t)},icon(TAB_ICONS[t]),TAB_LABELS[t]);b.setAttribute('role','tab');b.setAttribute('aria-selected',String(t===id));b.tabIndex=t===id?0:-1;b.dataset.tab=t;return b;}));
   tabs.hidden=list.length<2;clearBody();body.dataset.tab=id||'';
   body.append(...(id==='site'?siteTab():id==='x'?xTab():id==='launch'?launchTab():id==='ideas'?ideasTab():[el('p',{className:'pc-empty',textContent:'Nothing on this computer yet.'})]));
  }
  const bar=(...kids)=>el('div',{className:'pc-toolbar'},...kids);
  function siteTab(){const s=siteFor(cur,model.mine);
-  if(!s.src)return [el('div',{className:'pc-empty'},el('strong',{textContent:'🛠 '+s.empty}),el('p',{textContent:model.mine?'The site appears here as soon as SUB-01 builds the first version.':'Come back later: the site goes up when it is built.'}))];
+  if(!s.src)return [el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),s.empty),el('p',{textContent:model.mine?'The site appears here as soon as SUB-01 builds the first version.':'Come back later: the site goes up when it is built.'}))];
   return [bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),ext(s.open,'Open in a new tab ↗')),frame(s.src,s.sandbox,`${cur.name}: website`)];}
  function xTab(){const x=cur.x,out=[];
-  out.push(el('div',{className:'pc-x'},el('div',{className:'pc-x-avatar',textContent:'𝕏'}),el('div',{},el('strong',{textContent:x.handle?'@'+x.handle:'No X account yet'}),el('small',{className:'pc-x-status pc-x-'+(x.status||'none'),textContent:X_STATUS[x.status]})),
+  out.push(el('div',{className:'pc-x'},el('div',{className:'pc-x-avatar'},icon('xlogo')),el('div',{},el('strong',{textContent:x.handle?'@'+x.handle:'No X account yet'}),el('small',{className:'pc-x-status pc-x-'+(x.status||'none'),textContent:X_STATUS[x.status]})),
    x.url?ext(x.url,'Open on X ↗','button button-dark pc-x-open'):null));
   if(!model.mine){out.push(el('p',{className:'pc-note',textContent:x.status==='connected'?`The project's posts live on X.`:x.status==='planned'?'The account is planned: it opens when the project goes public.':'This project has no X account.'}));return out;}
   out.push(el('h4',{textContent:'Latest drafts'}));
@@ -141,7 +142,7 @@ export function openComputer({model,project=null,ownerName='',onIdea=null,onClos
   return [head,frame(p.pagePath,SANDBOX.page,`${p.name}: launch page`)];}
  function ideasTab(){
   const list=model.ideas.length?el('ol',{className:'pc-ideas'},...model.ideas.map(i=>el('li',{className:i===focusIdea?'is-focus':''},el('strong',{textContent:i.title}),el('small',{textContent:i.stageLabel||'in the mailbox'})))):el('p',{className:'pc-note',textContent:'No ideas in flight.'});
-  const drop=el('button',{className:'button button-orange pc-cta',type:'button',textContent:'✉ Drop a new idea'}),note=el('p',{className:'pc-note'});
+  const drop=el('button',{className:'button button-orange pc-cta',type:'button'},icon('mail','i lead'),'Drop a new idea'),note=el('p',{className:'pc-note'});
   drop.onclick=()=>{if(onIdea){close({quiet:true});onIdea();}else note.textContent='The mailbox is in the city: go back and use “Drop an idea”.';};
   return [list,drop,note];}
  const onKey=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();return;}

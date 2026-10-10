@@ -1,6 +1,7 @@
 // "While you were away" (GET /api/away): a quiet glass card when you enter your own room, listing what happened since
 // your last visit (visits, guestbook notes, your ideas moving). Nothing when empty; never a push, a badge or a streak.
 // Items already shown once in this browser are not shown again (the newest time seen is kept in localStorage).
+import {icon} from './icons.js';
 export const AWAY_SEEN_KEY='sub01.away.seen';
 export const STAGE_TEXT={submitted:'in his mailbox',evaluating:'being read',selected:'chosen to build',declined:'passed',generating:'being built',preview_ready:'ready for your review',
  approved:'approved',launch_prepared:'launch ready',awaiting_signature:'waiting for your signature',confirming:'confirming on-chain',launched:'launched',failed:'stopped',cancelled:'cancelled'};
@@ -28,7 +29,7 @@ export async function awayCard(getJSON){
  const m=awayModel(r,seenAt());if(!m)return null;markSeen(m.newest);
  const el=(tag,props={},...kids)=>{const n=Object.assign(document.createElement(tag),props);n.append(...kids.filter(k=>k!=null&&k!==false));return n;};
  const card=el('aside',{className:'away-card'});card.setAttribute('aria-label','While you were away');
- const close=el('button',{type:'button',className:'close-button',ariaLabel:'Close',textContent:'×',onclick:()=>card.remove()});
+ const close=el('button',{type:'button',className:'close-button',ariaLabel:'Close',onclick:()=>card.remove()},icon('x'));
  card.append(...[close,el('span',{className:'eyebrow',textContent:'WHILE YOU WERE AWAY · 留守中'}),...m.lines.map(t=>el('p',{className:'away-line',textContent:t})),
   m.guestbook.length?el('ul',{className:'away-notes'},...m.guestbook.map(g=>el('li',{},el('b',{textContent:g.name}),' ',g.text))):null,
   m.project.length?el('ul',{className:'away-moves'},...m.project.map(p=>el('li',{textContent:p.text}))):null,

@@ -15,7 +15,7 @@ test('navigation: no next day past today, no prev before the first day; out-of-r
 });
 test('entries: kind icons, Tokyo time, score bar from the ledger value; unknown kinds dropped',()=>{
  const e=diaryEntries({entries:[{kind:'built',at:Date.UTC(2026,9,10,12,4),text:'I built Ramen Radar.',score:.8,slug:'ramen-radar',ticker:'RAMEN'},{kind:'passed',at:0,text:'I passed.',score:null},{kind:'weird',at:0,text:'x'},{kind:'built',text:5}]});
- assert.equal(e.length,2);assert.equal(e[0].icon,'🏗');assert.equal(e[0].time,'21:04');assert.equal(e[0].pct,80);assert.equal(e[1].pct,null);
+ assert.equal(e.length,2);assert.equal(e[0].icon,'hammer');assert.equal(e[0].time,'21:04');assert.equal(e[0].pct,80);assert.equal(e[1].pct,null);
  assert.deepEqual(diaryEntries(null),[]);
  assert.equal(countsLine({built:1,passed:2,launched:0,residents:1}),'1 built · 2 passed · 1 new residents');assert.equal(countsLine(null),'');
 });

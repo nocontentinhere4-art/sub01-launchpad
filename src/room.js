@@ -9,7 +9,7 @@ import {createPet,petFollow} from './accessories.js';
 import {EMOTES} from './characters.js';
 import {isUnlocked,tierOf,tierLabel} from './creator.js';
 import {deskModel,hasDesk,SCREEN_ITEMS,screenTexture,screenMesh,screenGeometry,welcomeText,openComputer} from './desk.js';
-import {icon,arw} from './icons.js';
+import {icon,arw,tile} from './icons.js';
 // A resident's room: a cutaway studio (floor + left and back walls) furnished with Kenney Furniture Kit pieces.
 // It shares the city's renderer (one WebGL context); while it is open the city pauses.
 // Budget: geometry is shared (glTF templates + a module cache of shell geometry), one 512 shadow map, three lights
@@ -40,7 +40,7 @@ const IN=new Set([...ITEMS,...SPECIAL_ITEMS]),IS_SPECIAL=new Set(SPECIAL_ITEMS);
 export const EMOTE_TIERS={wave:'resident',sit:'resident',think:'resident',sleep:'resident',dance:'resident',facepalm:'builder',cook:'builder',selfie:'builder',
  karaoke:'founder',skate:'founder',celebrate:'launched',moonwalk:'launched'};
 export const FALLBACK_UNLOCKS={tiers:['resident','builder','founder','launched'],items:SPECIAL_TIERS,emotes:EMOTE_TIERS};
-const EMOTE_ICON={wave:'👋',sit:'🪑',think:'🤔',sleep:'💤',dance:'💃',facepalm:'🤦',cook:'🍳',selfie:'🤳',karaoke:'🎤',skate:'🛹',celebrate:'🎉',moonwalk:'🕺'};
+const EMOTE_ICON={wave:'hand',sit:'chair',think:'think',sleep:'zzz',dance:'dance',facepalm:'face',cook:'pan',selfie:'selfie',karaoke:'mic',skate:'skate',celebrate:'party',moonwalk:'steps'};   // sprite ids (icons.js)
 const EMOTE_TEXT={wave:'Hi!',sit:'Taking a seat.',think:'Hmm…',sleep:'Zzz…',dance:'Dancing.',facepalm:'Oh no.',cook:'Cooking something.',selfie:'Selfie!',
  karaoke:'Singing.',skate:'Skating around.',celebrate:'Woo!',moonwalk:'Moonwalking.'};
 // The autonomy brain hears the special pieces too (added to needs.js ADS without replacing anything there).
@@ -60,10 +60,10 @@ export const MATERIALS={
 export const WINDOW_VIEWS={city_day:'City · day',city_night:'City · night',sakura:'Sakura',rain:'Rain'};
 // Presets in the spirit of a daylight slider: sky, hemisphere, sun, the patch of window light on the floor.
 export const LIGHTING={
- morning:{time:'07:30',icon:'◒',sky:'#e8e2d8',hemi:['#fff4e4','#8f8a7c',1.7],sun:['#ffe0b8',2.5,[-5,7,6]],glow:['#ffe2b8',.45],lamps:false},
- midday:{time:'12:45',icon:'☀',sky:'#e3e6e4',hemi:['#ffffff','#9a9a8e',2.1],sun:['#ffffff',2.9,[-3,9,5]],glow:['#fffbe8',.35],lamps:false},
- evening:{time:'18:30',icon:'◓',sky:'#d8c3b2',hemi:['#ffe0c2','#5c4a48',1.35],sun:['#ffb07a',1.7,[-7,5,3]],glow:['#ffa36b',.5],lamps:true},
- night:{time:'22:10',icon:'☾',sky:'#18202c',hemi:['#7d95c8','#1d2230',.8],sun:['#8fa6ff',.35,[-6,8,4]],glow:['#6f8fd8',.28],lamps:true},
+ morning:{time:'07:30',icon:'sunrise',sky:'#e8e2d8',hemi:['#fff4e4','#8f8a7c',1.7],sun:['#ffe0b8',2.5,[-5,7,6]],glow:['#ffe2b8',.45],lamps:false},
+ midday:{time:'12:45',icon:'sun',sky:'#e3e6e4',hemi:['#ffffff','#9a9a8e',2.1],sun:['#ffffff',2.9,[-3,9,5]],glow:['#fffbe8',.35],lamps:false},
+ evening:{time:'18:30',icon:'sunset',sky:'#d8c3b2',hemi:['#ffe0c2','#5c4a48',1.35],sun:['#ffb07a',1.7,[-7,5,3]],glow:['#ffa36b',.5],lamps:true},
+ night:{time:'22:10',icon:'moon',sky:'#18202c',hemi:['#7d95c8','#1d2230',.8],sun:['#8fa6ff',.35,[-6,8,4]],glow:['#6f8fd8',.28],lamps:true},
 };
 // The daylight slider runs 0..1 through the four presets in order; the room stores the nearest preset name and the value.
 const DAY_KEYS=Object.keys(LIGHTING);
@@ -627,7 +627,7 @@ function roomHud({owner,mine,room,edit,plotId,guestbook,visits,unlocks,tierInfo=
  for(const name of order){const open=isUnlocked('emotes',name,unlocks,tierInfo),tier=tierOf(tierInfo.emotes,name);
   if(!open&&!sep){sep=true;if(emotes.children.length)emotes.append(el('span',{className:'room-emote-sep',ariaHidden:'true'}));}
   const b=el('button',{className:'room-emote'+(open?'':' is-locked'),type:'button',title:open?name:`${name}: unlocks at ${tierLabel(tier)}`,onclick:()=>{if(open){ring(b);edit.emote(name);}else api2.say(`“${name}” unlocks at ${tierLabel(tier)||'a higher tier'}.`);}},
-   el('span',{className:'room-emote-icon',textContent:EMOTE_ICON[name]||'•'}),el('small',{textContent:open?name:tierLabel(tier)}));b.dataset.emote=name;if(!open)b.setAttribute('aria-disabled','true');emotes.append(b);}
+   el('span',{className:'room-emote-icon'},icon(EMOTE_ICON[name]||'star')),el('small',{textContent:open?name:tierLabel(tier)}));b.dataset.emote=name;if(!open)b.setAttribute('aria-disabled','true');emotes.append(b);}
  root.append(emotes);
 
  const editBtn=el('button',{className:'button button-orange room-edit',type:'button'},icon('brush','i lead'),'Edit room',arw());
@@ -649,14 +649,14 @@ function roomHud({owner,mine,room,edit,plotId,guestbook,visits,unlocks,tierInfo=
  const slider=el('input',{type:'range',min:0,max:100,step:1,className:'room-slider'});slider.setAttribute('aria-label','Time of day');
  const markLight=r=>{lightRow.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.id===r.lighting)));slider.value=Math.round((r.daylight??presetDaylight(r.lighting))*100);};
  const setLight=id=>markLight(edit.set('lighting',id));
- for(const id of keys){const L=LIGHTING[id];const b=el('button',{className:'room-daycard',onclick:()=>setLight(id)},el('span',{className:'room-dayicon',textContent:L.icon}),el('strong',{textContent:id[0].toUpperCase()+id.slice(1)}),el('small',{textContent:L.time}));b.dataset.id=id;b.style.setProperty('--sky',L.sky);lightRow.append(b);}
+ for(const id of keys){const L=LIGHTING[id];const b=el('button',{className:'room-daycard',onclick:()=>setLight(id)},el('span',{className:'room-dayicon'},icon(L.icon)),el('strong',{textContent:id[0].toUpperCase()+id.slice(1)}),el('small',{textContent:L.time}));b.dataset.id=id;b.style.setProperty('--sky',L.sky);lightRow.append(b);}
  slider.oninput=()=>markLight(edit.set('daylight',slider.value/100));light.append(lightRow,slider);
  // Catalog drawer
  const add=el('div',{className:'room-add'}),cats=el('div',{className:'room-chips room-cats'}),grid=el('div',{className:'room-catalog'}),counter=el('span',{className:'room-count'});
  const showCat=c=>{grid.replaceChildren(...(c==='special'?SPECIAL:CATALOG[c]).map(item=>{const open=!IS_SPECIAL.has(item)||isUnlocked('items',item,unlocks,tierInfo),tier=tierOf(tierInfo.items,item);
    return el('button',{className:'room-item'+(IS_SPECIAL.has(item)?' room-item-special':'')+(open?'':' is-locked'),title:open?label(item):`Unlocks at ${tierLabel(tier)}`,onclick:()=>edit.add(item)},el('span',{className:'room-item-dot'}),el('span',{textContent:label(item)}),open?null:el('small',{className:'room-tier',textContent:tierLabel(tier)}));}));
   cats.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.id===c)));};
- for(const c of [...Object.keys(CATALOG),'special']){const b=el('button',{className:'chip'+(c==='special'?' chip-special':''),textContent:c==='special'?'★ Special':CATEGORY_LABELS[c],onclick:()=>showCat(c)});b.dataset.id=c;cats.append(b);}
+ for(const c of [...Object.keys(CATALOG),'special']){const b=el('button',{className:'chip'+(c==='special'?' chip-special':''),onclick:()=>showCat(c)},...(c==='special'?[icon('star'),'Special']:[CATEGORY_LABELS[c]]));b.dataset.id=c;cats.append(b);}
  add.append(el('p',{className:'fine'},'Tap to add. Drag a piece to move it, or select it and tap the floor. ',counter),cats,grid);showCat('sleep');
  const first=tab('mood','Moodboard',mood);tab('light','Daylight',light);tab('add','Add furniture',add);
  const save=el('button',{className:'button button-orange button-sm',type:'button',textContent:'Save'}),cancel=el('button',{className:'button button-ghost button-sm',type:'button',textContent:'Cancel'});
@@ -695,7 +695,7 @@ function guestbookPanel({owner,mine,plotId,entries,visits,viewer,say}){
  // Each note is a card with a colour bar per author (a stable hue from the name).
  const hue=n=>['#FB752B','#8FB6FF','#4ADE9A','#FFD27A','#D9A5F0','#FF8FA3'][[...String(n||'')].reduce((h,c)=>(h*31+c.codePointAt(0))>>>0,7)%6];
  function render(){toggle.replaceChildren(icon('book','i lead'),'Guestbook',el('span',{className:'count',textContent:String(list.length)}));toggle.setAttribute('aria-label',`Guestbook, ${list.length} note${list.length===1?'':'s'}`);
-  ul.replaceChildren(...(list.length?list.map(g=>{const li=el('li',{},el('div',{className:'room-gb-who'},el('strong',{textContent:g.name||'Visitor'}),el('small',{textContent:when(g.at)})),el('span',{textContent:g.text}),
+  ul.replaceChildren(...(list.length?list.map(g=>{const li=el('li',{},el('div',{className:'room-gb-who'},tile({kind:'resident',name:g.name||'Visitor',color:hue(g.name)},'sm'),el('strong',{textContent:g.name||'Visitor'}),el('small',{textContent:when(g.at)})),el('span',{textContent:g.text}),
    mine||(myName&&g.name===myName)?el('button',{className:'room-gb-del',type:'button',title:'Remove this note',ariaLabel:'Remove this note',onclick:()=>remove(g)},icon('x')):null);li.style.setProperty('--c',hue(g.name));return li;}):[el('li',{className:'room-gb-empty',textContent:mine?'No notes yet. Visitors can sign here.':`Be the first to sign ${owner.name}'s guestbook.`})]));}
  async function remove(g){try{await api(`${base}/${encodeURIComponent(g.id)}`,{method:'DELETE'});list=list.filter(x=>x!==g);render();}catch(err){status.textContent=err.message||'Could not remove the note.';}}
  const form=el('form',{className:'room-gb-form'}),input=el('input',{type:'text',maxLength:80,placeholder:`Say something nice to ${owner.name}`,required:true}),post=el('button',{className:'icon-button room-gb-send',type:'submit',title:'Sign',ariaLabel:'Sign'},icon('send'));
