@@ -155,7 +155,7 @@ const GROUND_PLANE={near:'#8E8E88',margin:8,fadeRing:38,far_:600,y:-.02,farY:-1.
 function cityGround(){
   const E=CS.OUTER_EXTENT??CS.CITY_EXTENT,M=GROUND_PLANE.margin,x0=E.minX-M,x1=E.maxX+M,z0=E.minZ-M,z1=E.maxZ+M,F=GROUND_PLANE.far_,h=CS.CANAL_X==null?null:riverHole();
   const rects=[],R=(a,b,c,d,y,col)=>{if(b-a>.01&&d-c>.01)rects.push([a,b,c,d,y,col]);},Y=GROUND_PLANE.y,N=GROUND_PLANE.near;
-  if(h&&h.x0>x0&&h.x1<x1){const C=CS.CITY_EXTENT,cz0=Math.max(z0,C.minZ-3),cz1=Math.min(z1,C.maxZ+3);
+  if(h&&h.x0>x0&&h.x1<x1){const cz0=Math.max(z0,E.minZ-3),cz1=Math.min(z1,E.maxZ+3);   // the river runs the outer ring's full length
     R(x0,h.x0,z0,z1,Y,N);R(h.x1,x1,z0,z1,Y,N);R(h.x0,h.x1,z0,cz0,Y,N);R(h.x0,h.x1,cz1,z1,Y,N);}
   else R(x0,x1,z0,z1,Y,N);
   const pos=[],nor=[],col=[],fade=[],c=new THREE.Color();c.set(N);

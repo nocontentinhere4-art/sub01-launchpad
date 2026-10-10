@@ -15,7 +15,7 @@ import {canalLayout} from './city-life.js';
 // Everything is planned from lots.js / city-street.js / city-state.js and is deterministic (hashed, never i % n).
 const EXT=()=>CS.CITY_EXTENT??{minX:-72.5,maxX:72.5,minZ:-71.5,maxZ:75.5};
 const ROAD_Z=()=>CS.ROAD_Z??STREET_ROWS;
-const BOULEVARD_X=()=>CS.BOULEVARD_X??STREET_BOULEVARDS;
+const BOULEVARD_X=()=>[...(CS.BOULEVARD_X??STREET_BOULEVARDS),...(CS.OUTER_BOULEVARD_X??[])];
 const SCRAMBLE={x:29,z:2,r:7.5};
 const central=(x,z)=>Math.abs(x)<14.2&&z>-11&&z<15;   // the hero block (main.js) plants its own
 

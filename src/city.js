@@ -7,7 +7,8 @@ import {addCityTraffic} from './city-traffic.js';
 import {addTokyoStyle} from './tokyo-style.js';
 import {facadeCode as fc,facadeAttribute,facadeDetail,prismGeometry,arcGeometry,withFacade} from './facades.js';
 import {TOWER,towerPlan,towerRibbons,footTownTop} from './tokyo-tower.js';
-import {cityPlots,districts,tower,plotView,BOULEVARD_X,ROAD_Z,CITY_EXTENT,OUTER_DISTRICTS,OUTER_EXTENT} from './city-state.js';
+import {cityPlots,districts,tower,plotView,BOULEVARD_X,ROAD_Z,CITY_EXTENT,OUTER_DISTRICTS,OUTER_EXTENT,OUTER_BOULEVARD_X} from './city-state.js';
+const ALL_BOULEVARDS=[...BOULEVARD_X,...OUTER_BOULEVARD_X];
 import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial,isRing3,builtHeight} from './lots.js';
 const wallMaterial=params=>(T.wallMaterial||T.toon)(params);
 // Night multipliers are plain 0–1 factors (brief 3.9: walls ×#6F7D99, ground ×#55617A), not sRGB colours.
@@ -96,9 +97,9 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    for(const dir of [-1,1]){const x=cx-dir*6,z=d.z+dir*.75;add('marks',0,0,0,0,0,0,'#ECEAE2',{m:shaped(x,.197,z,[.62,.01,.62],[0,Math.PI/4,0],[2.4,1,1])});add('marks',0,0,0,0,0,0,'#7A7F7C',{m:shaped(x,.199,z,[.42,.01,.42],[0,Math.PI/4,0],[2.4,1,1]),fac:fc('asphalt')});}};
   for(const d of districts){const c=isCommercial(d.id);
    if([-29,29].includes(d.x)&&[-28,2,32].includes(d.z)&&!(d.x===tower.x&&d.z===tower.z))zebra(d.x,d,c);
-   for(const bx of BOULEVARD_X)if(Math.abs(bx-d.x)<15)zebra(bx+Math.sign(d.x-bx)*3.2,d,c);}
+   for(const bx of ALL_BOULEVARDS)if(Math.abs(bx-d.x)<15)zebra(bx+Math.sign(d.x-bx)*3.2,d,c);}
   // Boulevards run the whole built area (city-state.js CITY_EXTENT: z −101.5…105.5 for the 7×7 city); asphalt along z.
-  for(const x of BOULEVARD_X){add('roads',x,.17,(BLVD_Z0+BLVD_Z1)/2,2.6,.05,BLVD_Z1-BLVD_Z0,'#646B6C',{fac:fc('asphalt',{swap:true})});for(let z=BLVD_Z0+5.5;z<=BLVD_Z1-5.5;z+=6)if(!ROWS.some(r=>Math.abs(z-r)<3.6))add('marks',x,.198,z,.08,.01,.8,'#E6E4DC',{fac:F_PAINT});
+  for(const x of ALL_BOULEVARDS){add('roads',x,.17,(BLVD_Z0+BLVD_Z1)/2,2.6,.05,BLVD_Z1-BLVD_Z0,'#646B6C',{fac:fc('asphalt',{swap:true})});for(let z=BLVD_Z0+5.5;z<=BLVD_Z1-5.5;z+=6)if(!ROWS.some(r=>Math.abs(z-r)<3.6))add('marks',x,.198,z,.08,.01,.8,'#E6E4DC',{fac:F_PAINT});
    for(let z=BLVD_Z0+7.5;z<=BLVD_Z1-5.5;z+=12){add('marks',x+.6,.199,z,.6,.01,.6,'#646B6C',{fac:F_MANHOLE});}}
   // The tower plaza: pavers over the Shiba street band under FootTown.
   add('marks',tower.x,.1985,tower.z,TOWER_PLAZA.x1-TOWER_PLAZA.x0,.006,TOWER_PLAZA.z1-TOWER_PLAZA.z0,'#B9B4A8',{fac:fc('pavers')});

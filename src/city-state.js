@@ -36,6 +36,9 @@ export const OUTER_DISTRICTS=[];
 for(let row=-4;row<=4;row++)for(let col=-4;col<=4;col++)if(Math.abs(row)===4||Math.abs(col)===4)
  OUTER_DISTRICTS.push({id:`outer-${row+4}-${col+4}`,name:'',x:col*29+(col===4?29:0),z:row*30+2+(row===4?6:0),ring:4,ghost:true,color:'#8a9a8c'});
 export const outerPlots=OUTER_DISTRICTS.flatMap((d,di)=>Array.from({length:6},(_,i)=>({id:`${d.id}-${i+1}`,district:d.id,x:d.x+[-8,0,8][i%3],z:d.z+(i<3?-6:6),height:3+((di*3+i*7)%8),vacant:false,ghost:true})));
+// The one extra boulevard the outer ring needs: between the west column of the 7x7 and the ghost column (the east side
+// is the river). Not in BOULEVARD_X on purpose: NPCs, vehicles, routes and the street graph stay inside the 7x7.
+export const OUTER_BOULEVARD_X=[-101.5];
 export const OUTER_EXTENT={minX:-4*29-14.5,maxX:5*29+14.5,minZ:-4*30+2-15,maxZ:4*30+8+15};
 export const CANAL_X=CITY_EXTENT.maxX+6.5;          // 108   [79]   canal centre; banks at ±6.25, bridges at z −38, 2, 42
 export const METRO_Z=CITY_EXTENT.maxZ+2.5;          // 108   [78]   elevated metro track (express 2.25 north of it)

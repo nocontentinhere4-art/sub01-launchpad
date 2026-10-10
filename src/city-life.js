@@ -43,8 +43,10 @@ export function expressPosition(seconds){
 // trees (city-green.js) on the outer edge of each walk lean over the water; a riverside park on the far (east) bank.
 // Wave 5C: 20 wide instead of 11. The west wall stays put (CANAL_X − 5.5, the city edge), so x is the WATER centre
 // (CANAL_X + 4.5), not CANAL_X; the bridge decks start at CANAL_X − 7 as before (explore.js walks the z = 2 one).
-export function canalLayout(){const e=cityExtent(),R=riverEdges(),half=RIVER.half;
- return {x:R.x,x0:R.x0,x1:R.x1,z0:e.minZ-3,z1:e.maxZ+3,half,walk:1.5,treeOffset:half+1.15,waterY:-1.05,top:.425,bridges:BRIDGES.map(b=>b.z),deckY:.93,deckHalf:half+1.5,ramp:.8,lawn:12};}
+// The river runs the whole length of the outer ring (owner 2026-10-10: it stopped at the 7x7 edge, leaving bare ground
+// beyond); the east lawn ends where the ghost column's lots begin (x ≈ 132).
+export function canalLayout(){const e=CS.OUTER_EXTENT??cityExtent(),R=riverEdges(),half=RIVER.half;
+ return {x:R.x,x0:R.x0,x1:R.x1,z0:e.minZ-3,z1:e.maxZ+3,half,walk:1.5,treeOffset:half+1.15,waterY:-1.05,top:.425,bridges:BRIDGES.map(b=>b.z),deckY:.93,deckHalf:half+1.5,ramp:.8,lawn:8};}
 // Three bridges, three silhouettes and colours: a Kiyosu-style self-anchored suspension bridge (blue), a red Warren
 // through-truss under the expressway, an Eitai-style tied arch (sea green). Lit along their steel at night.
 export const BRIDGES=[{z:-38,style:'suspension',color:'#5B8FD6',light:'#8FC4FF'},{z:2,style:'truss',color:'#C8382E',light:'#FFB08A'},{z:42,style:'arch',color:'#3E9A8C',light:'#CFEFFF'}];
@@ -232,12 +234,14 @@ export function addCityLife(parent){
     item(windows,x,canal.deckY+2.47,z+sz*1.92,.28,.34,.28,'#FFE6B8');canalLamps.push([x,z+sz*1.2,'deck']);}}}
  // Elevated metro follows the southern edge of the city; the express runs on a third track on the far (north) side.
  // The route is laid out in 5×5 units (trainPosition, EXPRESS) and stretched by K to the city's width (wave 4A).
- const ext=cityExtent(),K=metroScale(),MX=(ext.minX+ext.maxX)/2,TL=145*K,SX=MX-26*K;
+ // Rails, beams and piers run the full outer extent (owner 2026-10-10: the track looked cut); the station and the
+ // trains' route keep the 7x7 scale (K, MX), so the trains still turn around inside the city.
+ const ext=cityExtent(),K=metroScale(),MX=(ext.minX+ext.maxX)/2,SX=MX-26*K,O=CS.OUTER_EXTENT??ext,OX=(O.minX+O.maxX)/2,TL=O.maxX-O.minX;
  const trackZ=CS.METRO_Z??78,expressZ=trackZ-2.25;
- for(const z of [trackZ-1,trackZ+1]){item(solid,MX,4,z,TL,.15,.1,'#a7bdc3');item(solid,MX,3.65,z,TL,.5,.7,'#415c6b');}
- for(let x=MX-TL/2+3.5;x<=MX+TL/2-3.4;x+=8){item(solid,x,1.8,trackZ,.7,3.6,1,'#627f87');item(solid,x,3.55,expressZ+.9,.45,.4,2.3,'#627f87');}
- item(solid,MX,4.1,trackZ,TL,.12,2.7,'#89a0a4');
- item(solid,MX,4.1,expressZ,TL,.12,1.5,'#89a0a4');item(solid,MX,3.8,expressZ-.7,TL,.45,.12,'#415c6b');for(const dz of [-.42,.42])item(solid,MX,4.2,expressZ+dz,TL,.06,.06,'#a7bdc3');
+ for(const z of [trackZ-1,trackZ+1]){item(solid,OX,4,z,TL,.15,.1,'#a7bdc3');item(solid,OX,3.65,z,TL,.5,.7,'#415c6b');}
+ const RV=riverEdges();for(let x=OX-TL/2+3.5;x<=OX+TL/2-3.4;x+=8){const wet=x>RV.x0&&x<RV.x1,y0=wet?-1.25:0;item(solid,x,(y0+3.6)/2,trackZ,.7,3.6-y0,1,'#627f87');item(solid,x,3.55,expressZ+.9,.45,.4,2.3,'#627f87');}   // piers in the river reach the bed
+ item(solid,OX,4.1,trackZ,TL,.12,2.7,'#89a0a4');
+ item(solid,OX,4.1,expressZ,TL,.12,1.5,'#89a0a4');item(solid,OX,3.8,expressZ-.7,TL,.45,.12,'#415c6b');for(const dz of [-.42,.42])item(solid,OX,4.2,expressZ+dz,TL,.06,.06,'#a7bdc3');
  item(solid,SX,4.55,trackZ+3,14,.5,3.3,'#acb5a6');item(solid,SX,7,trackZ+3,15,.15,4,'#2b7886');
  for(const x of [-5,5])item(solid,SX+x,5.6,trackZ+3,.12,2.8,.12,'#dcceb5');
  // Station sign on the roof edge: navy panel by day; at night a lit cool-white face with a green line colour chip.
