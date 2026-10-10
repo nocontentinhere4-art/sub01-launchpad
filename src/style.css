@@ -176,6 +176,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 .topbar>*{pointer-events:auto}
 .brand{display:flex;align-items:center;gap:12px;margin-right:auto;padding:5px 18px 5px 5px;border-radius:var(--r-pill);color:var(--ink);text-decoration:none}
 .brand-mark{width:40px;height:40px}
+.topbar:has(.ca-chip:not([hidden])) .brand{margin-right:0}  /* the chip sits right next to the logo */
 .ca-chip{display:inline-flex;align-items:center;height:36px;margin-right:auto;border-radius:var(--r-pill);background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:inset 0 0 0 1px var(--stroke),var(--hl);overflow:hidden}
 .ca-chip button,.ca-chip a{display:inline-flex;align-items:center;gap:8px;height:100%;padding:0 12px;border:0;background:none;color:var(--ink);font:500 12px/1 var(--f-mono);letter-spacing:.06em;cursor:pointer;text-decoration:none}
 .ca-chip button b{color:var(--accent);font-weight:700}
