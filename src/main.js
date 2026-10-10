@@ -765,8 +765,15 @@ function animate(now){
   fuses.weather.run(weatherFrame,now,dt,seconds);controls.update();clampToCity();updateSunAndFog();if(!fuses.crowd.off)fuses.crowd.run(crowdEnd,now);setCityFocus(cityEvents.visitor?.position||character?.position||null);renderer.render(scene,camera);renderedAt=now;booted=true;
   document.body.classList.toggle('is-close',camera.zoom>.42);
   chat?.frame(camera.zoom); // chat: before the labels are projected
-  for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
+  // While the headline is up (first INTRO_MS), no district label may sit in its column, header included (owner
+  // 2026-10-10: Kiyosumi/Kinshicho over the title).
+  const introRect=introUp?introBox():null;
+  for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;const lx=(p.x*.5+.5)*innerWidth,ly=(-p.y*.5+.5)*innerHeight;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1||(introRect&&label.district&&lx<introRect.right+40&&ly<introRect.bottom+24);}
 }
+// The headline ("Your idea. A whole city.") shows for INTRO_MS after the city is up, then fades (CSS .intro-gone).
+const INTRO_MS=5000;let introUp=true,introBoxCache=null,introBoxAt=0;
+function introBox(){const now=performance.now();if(!introBoxCache||now-introBoxAt>250){introBoxCache=document.querySelector('.intro')?.getBoundingClientRect()||null;introBoxAt=now;}return introBoxCache;}
+setTimeout(()=>{introUp=false;document.body.classList.add('intro-gone');},INTRO_MS);
 requestAnimationFrame(animate);
 async function initialize(){try{
   await Promise.all([makeHome(),makeBuildings(),makeCharacter()]);

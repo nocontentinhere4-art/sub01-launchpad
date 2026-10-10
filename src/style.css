@@ -169,6 +169,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 /* ---------------------------------------------------------------- intro */
 .intro{position:absolute;top:116px;left:32px;z-index:2;pointer-events:none;transition:opacity .4s}
 .is-close .intro{opacity:0}
+.intro-gone .intro{opacity:0;transition:opacity 1.4s ease}
 .intro .eyebrow{height:30px;padding:0 13px;border-radius:var(--r-pill);gap:9px;letter-spacing:.13em;background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--stroke);box-shadow:var(--hl)}
 .intro .eyebrow::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(251,117,43,.22)}
 .intro .eyebrow::after{content:"→";color:var(--ink-3);margin-left:2px}
