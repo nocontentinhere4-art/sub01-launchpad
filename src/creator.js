@@ -5,6 +5,8 @@
 //     Replaces container's children with: skin, hair colour, hair, outfit, top, bottom (radio swatches/chips, the markup
 //     main.js used), accessories (checkbox chips, at most options.look.maxAccessories = 4, locked ones greyed with the
 //     tier), accessory colour, pet (kind chips incl. "No pet", colour, name) and Personality (5 sliders, step 0.25).
+//     Two columns (.creator-col): the body (skin, hair, personality) and the style (clothes, accessories, pet); style.css
+//     stacks them on phones. Each slider carries its fill in --v.
 //   readLook(container) -> {look, traits}: look as POST /api/residents expects it (accessories[], accessoryColor|null,
 //     pet {kind,color,name}|null), traits {neat,outgoing,active,playful,nice} numbers 0..1.
 // Helpers (also used by room.js): tierMap, tierOf, isUnlocked, tierLabel.
@@ -44,12 +46,12 @@ function choice(group,{type='radio',name,value,checked,text,color,locked,tier}){
 const fieldset=(legend,cls='swatches')=>{const f=el('fieldset',{className:cls});f.append(el('legend',{textContent:legend}));return f;};
 
 export function renderLookFields(container,options={},look={},unlocks=null,traits={}){
- const L=options?.look||{},U=options?.unlocks||{},parts=[];look=look||{};
+ const L=options?.look||{},U=options?.unlocks||{},body=[],parts=[];look=look||{};
  for(const [key,label] of LOOK_FIELDS){
   const values=Array.isArray(L[key])?L[key]:L.freeColors?.includes(key)?CLOTHES:[];if(!values.length)continue;
   const f=fieldset(label),cur=look[key]&&values.includes(look[key])?look[key]:values[0];
   for(const v of values)choice(f,{name:key,value:v,checked:v===cur,...(/^#[0-9a-f]{6}$/i.test(v)?{color:v}:{text:v})});
-  parts.push(f);
+  (['skin','hair','hairStyle'].includes(key)?body:parts).push(f);
  }
  // Accessories: chips, at most `max`; reaching it disables the rest until one is unticked.
  const accList=Array.isArray(L.accessories)?L.accessories:[],max=Number(L.maxAccessories)||4;
@@ -74,10 +76,11 @@ export function renderLookFields(container,options={},look={},unlocks=null,trait
  // Personality: the five Sims traits.
  const keys=Array.isArray(options?.traits?.keys)?options.traits.keys.filter(k=>TRAITS.includes(k)):TRAITS,tv=normalizeTraits(traits);
  const p=fieldset('Personality','creator-traits');
- for(const k of keys){const [lo,hi]=TRAIT_LABELS[k],input=el('input',{type:'range',name:'trait-'+k,min:0,max:1,step:.25,value:tv[k]});input.setAttribute('aria-label',`${lo} to ${hi}`);
+ for(const k of keys){const [lo,hi]=TRAIT_LABELS[k],input=el('input',{type:'range',name:'trait-'+k,min:0,max:1,step:.25,value:tv[k],style:`--v:${tv[k]*100}%`});input.setAttribute('aria-label',`${lo} to ${hi}`);
+  input.oninput=()=>input.style.setProperty('--v',`${input.value*100}%`);
   p.append(el('label',{className:'creator-trait'},el('span',{textContent:lo}),input,el('span',{textContent:hi})));}
- parts.push(p);
- container.replaceChildren(...parts);
+ body.push(p);
+ container.replaceChildren(el('div',{className:'creator-col'},...body),el('div',{className:'creator-col'},...parts));
  return container;
 }
 

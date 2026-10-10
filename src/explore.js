@@ -41,6 +41,11 @@ export const LANDMARKS=[
  {id:'gotanda',kind:'landmark',name:'Gotanda',text:'Gotanda — offices by day, izakaya by night.',x:-87,z:32,yaw:0,emotes:['karaoke','think']},
  {id:'yanaka',kind:'landmark',name:'Yanaka',text:'Yanaka — old wooden houses, temples and cats.',x:0,z:-88,yaw:0,emotes:['sit','selfie']},
 ];
+// Where a roaming model starts: the resident's apartment front, or for a guest (no plotId, guest.js) the kerb outside
+// Shibuya station, on the north kerb of the scramble (z=2 road), in view of the default camera. Home is the apartment; a guest has none.
+export const GUEST_SPAWN=Object.freeze({x:29.5,z:-0.35,name:'Shibuya station'});
+export const spawnFor=r=>r?.plotId?frontOf(r.plotId):r?GUEST_SPAWN:null;
+export const homeFor=r=>r?.plotId?frontOf(r.plotId):null;
 // Places to wander to: landmarks, launched buildings, other residents' apartments (standing left of the host's box figure).
 export function cityPois(buildings,minePlotId){
  const out=[...LANDMARKS];

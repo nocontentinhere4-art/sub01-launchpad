@@ -24,6 +24,9 @@ import {worldBuildings,sub01Goal,planRoute,frontOf} from './world-sync.js';
 import {createCity} from './city.js';
 import {createCityEvents,freshEvents} from './city-events.js';
 import {createExplorer,cityPois} from './explore.js';
+import {kanjiOf,codeOf,addressCode} from './districts-kanji.js';
+import {icon,cta} from './icons.js';
+import {createGuest} from './guest.js'; // guest:
 import {createGovernor,settingsFor,startLevel,gpuName,createFuse,packResume,unpackResume,safeStore,timeoutSignal,nextPollDelay,GOV,RESUME_KEY,RESUME_MAX_AGE} from './quality.js';
 // Never a white page: an uncaught error or rejection is one quiet console line. If the city never drew its first frame
 // (no WebGL, a module that failed), the loading screen says so instead of spinning forever.
@@ -126,8 +129,10 @@ function sign(text, x, y, z, color = '#fff8e8', scale = 3) {
 }
 function addLabel(place, height) {
   const element = document.createElement('button'); element.className = 'world-label';
-  const dot = document.createElement('i'); dot.style.background = place.color;
-  element.append(dot, document.createTextNode(place.id === 'home' ? 'SUB-01 / HOME' : place.name.toUpperCase()));
+  const dot = document.createElement('i'); dot.style.background = dot.style.color = place.color;
+  // A ticket: the stub dot, the name, the ticker in orange (tickets carry 'Name · $TICK').
+  const [name, ticker] = (place.id === 'home' ? 'SUB-01 / HOME' : place.name.toUpperCase()).split(' · $');
+  element.append(dot, document.createTextNode(name), ...(ticker ? [Object.assign(document.createElement('em'), { textContent: '$' + ticker })] : []));
   element.onclick = () => showPlace(place); $('labels').append(element);
   labels.push({ element, position: new THREE.Vector3(place.x, height, place.z) });
 }
@@ -298,14 +303,25 @@ function renderList() {
   const yours=available.filter(p=>p.claimed&&mine.has(p.id)),others=available.filter(p=>p.claimed&&!mine.has(p.id));
   for (const p of district?[...yours,...others,...landmarks,...available.filter(p=>!p.claimed)]:[...yours,...landmarks,...others]) {
     const button=document.createElement('button');button.className='project-row';button.setAttribute('aria-label',`Open ${p.name}`);
-    const icon=document.createElement('span');icon.className='project-symbol';icon.textContent=p.symbol;icon.style.background=p.color+'25';icon.style.color=p.color;
+    const symbol=document.createElement('span');symbol.className='project-symbol';symbol.textContent=p.symbol;symbol.style.setProperty('--c',p.color);
     const meta=document.createElement('span');meta.className='project-meta';
     const title=document.createElement('span');title.className='project-title';title.textContent=p.name;
-    const status=document.createElement('span');status.className='project-status';status.textContent=p.status;
-    meta.append(title,status);const arrow=document.createElement('span');arrow.className='project-arrow';arrow.textContent='↗';
-    button.append(icon,meta,arrow);button.onclick=()=>showPlace(p);$('project-list').append(button);
+    // The status dot: green launched, orange a real idea or project, grey everything else (homes, lots, example places).
+    const status=document.createElement('span');status.className='project-status';const dot=document.createElement('i');
+    dot.className='dot'+(p.building?.phase==='open'||p.status==='Launched'?' ok':p.building?.type==='project'||(p.ideaId&&p.color!=='#9a9d92')?'':' idle');status.append(dot,p.status||'');
+    meta.append(title,status);const arrow=document.createElement('span');arrow.className='project-arrow';arrow.append(addressCode(p.id),icon('ne'));
+    button.append(symbol,meta,arrow);button.onclick=()=>showPlace(p);$('project-list').append(button);
   }
-  $('project-count').textContent=String(cityBuildings.filter(b=>b.type==='project').length).padStart(2,'0');
+  stationBoard(district,available);
+}
+// The station board (ekimeihyō): the current district big, its neighbours as buttons, an orange band with the counts.
+// The hidden <select id="district-select"> stays the source of truth; the board only reads and sets its value.
+const districtIds=()=>['',...districts.map(d=>d.id)],districtName=id=>id?(districts.find(d=>d.id===id)?.name||id).split(' / ')[0].toUpperCase():'TOKYO';
+function stationBoard(id,available){
+  const ids=districtIds(),k=Math.max(0,ids.indexOf(id)),prev=ids[(k-1+ids.length)%ids.length],next=ids[(k+1)%ids.length],name=districtName(id);
+  $('eki-kanji').textContent=kanjiOf(id);$('eki-name').textContent=name;$('eki-name').parentElement.classList.toggle('is-long',name.length>9);$('eki-code').textContent=codeOf(id);
+  for(const [side,to] of [['prev',prev],['next',next]]){const b=$('eki-'+side);b.dataset.id=to;$(`eki-${side}-name`).textContent=districtName(to);b.setAttribute('aria-label',`${side==='prev'?'Previous':'Next'} district: ${to?districtName(to):'the whole city'}`);}
+  $('project-count').textContent=String(available.length);$('eki-live').textContent=String(available.filter(p=>p.claimed).length);
 }
 function openDialog(id) {
   previousFocus=document.activeElement;currentDialog=$(id);currentDialog.hidden=false;
@@ -325,14 +341,20 @@ function placeFor(plot){
 function showPlace(p) {
   if(p.id&&cityPlots.some(c=>c.id===p.id))p=placeFor(cityPlots.find(c=>c.id===p.id));
   selectedPlace=p;const b=p.building,project=b?.type==='project';
-  $('detail-progress').hidden=!project;if(project)$('detail-progress').firstElementChild.style.width=Math.round(b.progress*100)+'%';
-  $('detail-fees-box').hidden=!project;$('detail-milestones').hidden=!!b;
+  $('detail-progress').hidden=$('detail-progress-head').hidden=!project;if(project){const pct=Math.round(b.progress*100)+'%';$('detail-progress').firstElementChild.style.width=pct;$('detail-pct').textContent=pct;}
+  $('detail-fees-box').hidden=!project;$('detail-milestones').hidden=b?.type==='apartment';
+  // The metro line (idea → build → launch) and the hanko seal show the same phase; the seal is decorative (aria-hidden).
+  const step=project?{thinking:0,open:3,launch:2}[b.phase]??1:p.ideaId?0:-1;
+  [...$('detail-milestones').children].forEach((s,i)=>{s.className=step>i||step===3?'done':step===i?'now':'';});
+  $('detail-milestones').style.setProperty('--line',step<0?'0%':`${Math.min(100,step*50)}%`);
+  const seal=step<0||p.color==='#9a9d92'?null:step===0?['構想','IDEA','']:step===3?['開業','LAUNCHED','ok']:b?.phase==='stopped'?['待機','ON HOLD','idle']:['建設中','BUILDING',''];
+  $('detail-hanko').hidden=!seal;if(seal){$('detail-hanko').className='hanko'+(seal[2]?' '+seal[2]:'');$('detail-hanko').firstElementChild.textContent=seal[0];$('detail-hanko').lastElementChild.textContent=seal[1];}
   $('detail-disclosure').textContent=project?'Creator fees are fixed at launch: 80% to the idea author, 20% to SUB-01. The token is created by the author\'s own wallet signature.':b?'':'Example place. Real projects appear when someone drops an idea in SUB-01\'s mailbox.';
   $('takeover-button').hidden=true;$('detail-roles').hidden=true;
   if(project&&b.slug)loadRoles(b);$('detail-name').textContent=p.name;$('detail-category').textContent=p.kind;
   $('detail-description').textContent=p.description;$('detail-state').textContent=p.status;
-  $('detail-icon').textContent=p.symbol;$('detail-icon').style.background=p.color+'25';$('detail-icon').style.color=p.color;
-  visitWalk(p);$('visit-button').textContent=p.ideaId?'Open the idea ↗':b?.type==='apartment'?(p.mine?'Enter your room →':'Visit '+b.name+'\'s room →'):project?(b.slug?(p.mine?'Open your office ↗':'Open project page ↗'):'Watch the site →'):cityPlots.some(l=>l.id===p.id)?'Drop an idea here →':'Visit this place →';
+  $('detail-icon').textContent=p.symbol;$('detail-icon').style.setProperty('--c',p.color);
+  visitWalk(p);cta($('visit-button'),p.ideaId?'Open the idea ↗':b?.type==='apartment'?(p.mine?'Enter your room →':'Visit '+b.name+'\'s room →'):project?(b.slug?(p.mine?'Open your office ↗':'Open project page ↗'):'Watch the site →'):cityPlots.some(l=>l.id===p.id)?'Drop an idea here →':'Visit this place →');
   openDialog('detail-backdrop');
 }
 function focusPlace(p) {
@@ -340,7 +362,7 @@ function focusPlace(p) {
   if(p.x===undefined){notify('Your brief is saved here. Building integration comes next.');return;}
   cameraTween={ start: controls.target.clone(), target: new THREE.Vector3(p.x,p.id==='tower'?14:2,p.z), zoom:camera.zoom, endZoom:p.id==='tower'?.7:1.65, elapsed:0 };
 }
-function notify(text){clearTimeout(toastTimer);$('toast').textContent=text;$('toast').hidden=false;toastTimer=setTimeout(()=>{$('toast').hidden=true;},4500);}
+function notify(text){clearTimeout(toastTimer);const ic=document.createElement('span');ic.className='ic';ic.append(icon('check'));$('toast').replaceChildren(ic,Object.assign(document.createElement('span'),{textContent:text}));$('toast').hidden=false;toastTimer=setTimeout(()=>{$('toast').hidden=true;},4500);}
 function meetDev(){cityTour=null;if(!character)return;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();notify(goal?.text||'Following SUB-01.');}
 function resize(){const w=innerWidth,h=innerHeight,aspect=w/h;const half=mobile?18:16.5;camera.left=-half*aspect;camera.right=half*aspect;camera.top=half;camera.bottom=-half;camera.updateProjectionMatrix();renderer.setSize(w,h);roomView?.resize(aspect);}
 // Camera (wave 2B): ortho at a fixed yaw of 36° (avoids two equal faces). CAMERA.pitch is the one tunable: wave 1 sat at
@@ -355,6 +377,7 @@ function resetView(){cityTour=null;follow=false;cameraTween=null;aimCamera(new T
 // The mailbox needs a signed-in resident. Each step opens the next one.
 async function openBuildForm(plot){
  if(!serverUp){notify('The city server is offline. Ideas cannot be dropped right now.');return;}
+ if(!me?.user){guest.requireWallet('idea',()=>openBuildForm(plot));return;} // guest: sign-in with the reason line
  if(!me?.user){openSignIn(()=>openBuildForm(plot));return;}
  if(!resident()){openCreator(()=>openBuildForm(plot));return;}
  const free=cityPlots.filter(p=>!cityBuildings.some(b=>b.plotId===p.id));
@@ -370,11 +393,16 @@ function openSignIn(next){
 }
 const IDEA_STATUS={submitted:'In his mailbox',evaluating:'SUB-01 is thinking',selected:'He will build it',declined:'He passed',generating:'Being built',preview_ready:'Ready for your review',approved:'Approved by you',launch_prepared:'Launch ready',awaiting_signature:'Waiting for your signature',confirming:'Confirming on-chain',launched:'Launched',failed:'Stopped: needs attention',cancelled:'Cancelled'};
 let knownStatus=null;
+// The account chip: signed out a wallet icon and "Sign in"; signed in an avatar with the initials, the name and a chevron.
+function accountChip(name){const b=$('account-button'),nm=Object.assign(document.createElement('span'),{className:'nm',textContent:name||'Sign in'});
+  if(!name){b.replaceChildren(icon('wallet'),nm);return;}
+  const initials=(name.match(/[\p{L}\p{N}]/gu)||['?']).slice(0,2).join('').toUpperCase();
+  b.replaceChildren(Object.assign(document.createElement('span'),{className:'avatar',textContent:initials,ariaHidden:'true'}),nm,icon('cd','i chev'));}
 // A timeout or a dead network keeps the account as it was (the server answered nothing); a real answer replaces it.
 async function refreshMe(){const before=knownStatus;try{me=await getJSON('/api/me');if(typeof me?.user!=='object')me=null;}catch(err){if(!(err instanceof ApiError)&&me)return;me=null;}
   // Tell the author when SUB-01 decides or a stage changes; private ideas never reach the public news.
   knownStatus=Object.fromEntries((me?.ideas||[]).map(i=>[i.id,i.status]));
-  if(before)for(const i of me?.ideas||[])if(before[i.id]&&before[i.id]!==i.status)notify(i.status==='declined'?`SUB-01 passed on “${i.title}”. ${i.status_note?.split(' [')[0]||''}`:`“${i.title}”: ${IDEA_STATUS[i.status]||i.status}.`);$('account-button').textContent=me?.user?(resident()?.name||short(me.user.wallet)):'Sign in';renderList();updateResident();if(!resident())stopExplore();}
+  if(before)for(const i of me?.ideas||[])if(before[i.id]&&before[i.id]!==i.status)notify(i.status==='declined'?`SUB-01 passed on “${i.title}”. ${i.status_note?.split(' [')[0]||''}`:`“${i.title}”: ${IDEA_STATUS[i.status]||i.status}.`);accountChip(me?.user?(resident()?.name||short(me.user.wallet)):null);renderList();updateResident();if(!resident())stopExplore();}
 function openCreator(next){
  if(!lookOptions){notify('The city server is offline.');return;}
  const r=resident(),look=r?.look||{};$('resident-name').value=r?.name||'';$('resident-error').textContent='';
@@ -387,6 +415,9 @@ function openCreator(next){
   try{await api('/api/residents',{method:'POST',body:{name:$('resident-name').value,look,traits,plotId:$('resident-plot').value}});await refreshMe();await pollWorld();closeDialog();notify(`Welcome to Tokyo, ${resident()?.name}.`);next?.();}catch(err){$('resident-error').textContent=err.message;}};
  openDialog('resident-backdrop');
 }
+// guest: play first, wallet later (src/guest.js). main.js lends it these internals and wraps three entry points.
+const guest=createGuest({get me(){return me;},get options(){return lookOptions;},get buildings(){return cityBuildings;},get goal(){return goal;},get serverUp(){return serverUp;},get explorer(){return explorer;},set explorer(v){explorer=v;},get cityEvents(){return cityEvents;},template,mobile,refreshMe,pollWorld,openDialog,closeDialog,notify,roamStart,roamEnd,greet,bubble,exploreUI,stopExplore,track(root){followObj=root;follow=true;}}); // guest:
+openSignIn=guest.wrapSignIn(openSignIn);openCreator=guest.wrapCreator(openCreator);toggleExplore=guest.wrapExplore(toggleExplore); // guest:
 async function loadRoles(b){
  try{const r=await api(`/api/projects/${encodeURIComponent(b.slug)}/roles`);if(selectedPlace?.building!==b)return;
   const box=$('detail-roles');box.replaceChildren(...(r.roles||[]).map(x=>{const row=document.createElement('span');row.textContent=`${x.role.replace('_',' ')} · ${x.wallet}`;return row;}));
@@ -409,6 +440,7 @@ const cityViews=[{x:-29,z:-28,y:12,zoom:.63,text:'Tokyo Tower / Shiba'},{x:29,z:
 function nextCityView(){const v=cityViews[cityTour.index];follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(v.x,v.y,v.z),zoom:camera.zoom,endZoom:mobile?v.zoom*.55:v.zoom,elapsed:0};$('activity-text').textContent=v.text;}
 
 $('district-select').onchange=()=>{cityTour=null;renderList();const d=districts.find(d=>d.id===$('district-select').value);if(d){follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(d.x,2,d.z),zoom:camera.zoom,endZoom:mobile?.36:.72,elapsed:0};}else resetView();};
+for(const side of ['prev','next'])$('eki-'+side).onclick=()=>{$('district-select').value=$('eki-'+side).dataset.id||'';$('district-select').onchange();};
 $('home-view').onclick=()=>focusPlace(places[0]);
 $('tower-view').onclick=()=>focusPlace(tower);
 $('idea-close').onclick=$('detail-close').onclick=closeDialog;
@@ -448,7 +480,7 @@ function visitWalk(p){
 // The roaming model (a visit or explore mode) is followed by the camera like meetDev; its figure at home (box or GPU) is hidden.
 // A name tag rides above it: in the isometric view the street is often behind a building.
 const roamTag={element:Object.assign(document.createElement('div'),{className:'world-label roam-tag',hidden:true}),position:new THREE.Vector3(),roam:true};
-function roamStart(r,root){visitKey=boxKey(r.plotId);residents.hide(new Set(visitKey?[visitKey]:[]));roamTag.element.textContent=r.name;if(!labels.includes(roamTag)){$('labels').append(roamTag.element);labels.push(roamTag);}cityTour=null;cameraTween=null;followObj=root;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();}
+function roamStart(r,root){visitKey=boxKey(r.plotId);residents.hide(new Set(visitKey?[visitKey]:[]));roamTag.element.replaceChildren(icon('walk'),r.name);if(!labels.includes(roamTag)){$('labels').append(roamTag.element);labels.push(roamTag);}cityTour=null;cameraTween=null;followObj=root;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();}
 function roamEnd(){const i=labels.indexOf(roamTag);if(i>=0)labels.splice(i,1);roamTag.element.remove();visitKey=null;residents.hide(new Set());if(followObj){followObj=null;follow=false;}}
 // The host's greeting when a visitor (or an exploring resident) stops at their door.
 function greet(plotId,name){const f=frontOf(plotId);if(f)bubble(`💬 Hi ${name}!`,new THREE.Vector3(f.x+1.2,2.4,f.z),4000);const k=boxKey(plotId);if(k)residents.wave(k,performance.now()*.001);}
@@ -483,8 +515,11 @@ function toggleExplore(){
  exploreUI();
 }
 function stopExplore(){if(explorer)cityEvents.endRoam();}
-function exploreUI(){const s=explorer?.state,b=$('explore-button');b.textContent=!explorer?'🚶 Explore':s==='home'?'🏠 Home now':'🏠 Go home';b.setAttribute('aria-pressed',String(!!explorer));
- document.body.classList.toggle('is-exploring',!!explorer);$('world-hint').textContent=explorer?'TAP A STREET TO WALK · DOUBLE-TAP TO RUN':'DRAG TO EXPLORE · SELECT A BUILDING';}
+function exploreUI(){const s=explorer?.state,b=$('explore-button');b.replaceChildren(icon(explorer?'home':'walk','i lead'),!explorer?'Explore':s==='home'?'Home now':'Go home');b.setAttribute('aria-pressed',String(!!explorer));
+ document.body.classList.toggle('is-exploring',!!explorer);
+ // The hint pill: key caps for the gesture, mono words for the rest.
+ const kbd=t=>Object.assign(document.createElement('span'),{className:'kbd',textContent:t}),dim=Object.assign(document.createElement('span'),{className:'dim',textContent:'·'});
+ $('world-hint').replaceChildren(...(explorer?[kbd('TAP'),' A STREET TO WALK ',dim,' ',kbd('DOUBLE-TAP'),' TO RUN']:[kbd('DRAG'),' TO EXPLORE ',dim,' ',kbd('CLICK'),' A BUILDING']));}
 $('explore-button').onclick=toggleExplore;
 function party(plotId,e){
  const b=cityBuildings.find(x=>x.plotId===plotId),plot=cityPlots.find(c=>c.id===plotId),p=cityEvents.celebrate(plotId,{people:residents.people});if(!p||!plot)return;
@@ -508,7 +543,12 @@ renderer.domElement.addEventListener('pointerup',e=>{
 });
 $('district-select').replaceChildren();const all=document.createElement('option');all.value='';all.textContent='Entire city';$('district-select').append(all);for(const d of districts){const option=document.createElement('option');option.value=d.id;option.textContent=d.name;$('district-select').append(option);}
 addEventListener('resize',()=>{resize();governor?.grace(GOV.grace.resize,performance.now());});resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings,{mobile,gpu:crowdGPU});cityGreen=addCityGreen(scene,{buildings:cityBuildings,mobile,extra:HERO_TREES});addLabel(tower,32);
-for(const d of districts){const element=document.createElement('button');element.className='world-label district-label';element.textContent=d.name.toUpperCase();element.onclick=()=>{$('district-select').value=d.id;$('district-select').onchange();};$('labels').append(element);labels.push({element,district:true,position:new THREE.Vector3(d.x,.4,d.z+11.4)});}
+for(const d of districts){const element=document.createElement('button');element.className='world-label district-label';element.textContent=d.name.toUpperCase();element.dataset.kanji=kanjiOf(d.id);element.onclick=()=>{$('district-select').value=d.id;$('district-select').onchange();};$('labels').append(element);labels.push({element,district:true,position:new THREE.Vector3(d.x,.4,d.z+11.4)});}
+// Phone layout (style.css ≤ 600px): SUB-01's activity bar joins the project panel as one bottom dock; the world-control
+// rail sits above the dock, whose height is kept in --dock-h.
+{const phoneMQ=matchMedia('(max-width:600px)'),dock=()=>{const a=$('activity');if(phoneMQ.matches)$('project-panel').append(a);else $('project-panel').after(a);};
+ dock();phoneMQ.addEventListener?.('change',dock);
+ if(typeof ResizeObserver==='function')new ResizeObserver(()=>document.documentElement.style.setProperty('--dock-h',$('project-panel').offsetHeight+'px')).observe($('project-panel'));}
 
 // Shared world: the server is the source of truth; the city redraws only when something changed.
 const residents=addResidents(scene),worldLabels=[],cityEvents=createCityEvents(scene,{mobile,reducedMotion,gpu:crowdGPU});
@@ -557,21 +597,20 @@ const SUN_LOW=new THREE.Vector3(-.62,.22,.75).normalize(),GREY=new THREE.Color('
 const WX={mode:'auto',state:'clear',levels:{...LEVELS.clear},fast:0,flashAt:-1e9,nextFlash:0,dayMode:'day',clockOverride:null,n:0,isNight:false,sky:'',caption:'',amp:0,green:false,audioAt:0,statsAt:0};
 const wxView=createWeather(scene,{mobile}),ambience=createAmbience(),drift=new THREE.Vector3(),driftNext=new THREE.Vector3();let lastInput=performance.now();
 for(const type of ['pointerdown','wheel','keydown','touchstart'])addEventListener(type,()=>{lastInput=performance.now();},{passive:true,capture:true});
-// Two buttons made here (index.html is not touched): ☂ cycles the city weather, ♪ toggles the procedural sound (off).
-const control=(id,text,onclick)=>{const b=Object.assign(document.createElement('button'),{className:'icon-button',id,type:'button',textContent:text,onclick});$('day-night').before(b);return b;};
+// Buttons made here, in the rail's atmosphere group (before #sep-day): weather (cycles), sound (procedural, off), LITE.
+const control=(id,content,onclick)=>{const b=Object.assign(document.createElement('button'),{className:'icon-button',id,type:'button',onclick});b.append(content);$('sep-day').before(b);return b;};
 const label=(b,text)=>{b.title=text;b.setAttribute('aria-label',text);};
-const weatherButton=control('weather-mode','☂',()=>setWeather(nextMode(WX.mode),true));
-const soundButton=control('city-sound','♪',()=>{const on=ambience.toggle();soundButton.setAttribute('aria-pressed',String(on));label(soundButton,on?'City sounds: on':'City sounds: off');notify(on?'City sounds on (made in the browser, quiet).':'City sounds off.');});
+const weatherButton=control('weather-mode',icon('umbrella'),()=>setWeather(nextMode(WX.mode),true));
+const soundButton=control('city-sound',icon('note'),()=>{const on=ambience.toggle();soundButton.setAttribute('aria-pressed',String(on));label(soundButton,on?'City sounds: on':'City sounds: off');notify(on?'City sounds on (made in the browser, quiet).':'City sounds off.');});
 soundButton.setAttribute('aria-pressed','false');label(soundButton,'City sounds: off');
 const clockCaption=Object.assign(document.createElement('span'),{className:'tokyo-clock',hidden:true});$('activity-label').after(clockCaption);
 function setWeather(mode,announce=false){WX.mode=mode;WX.fast=announce?10:0;weatherButton.dataset.mode=mode;
   label(weatherButton,mode==='auto'?'City weather: auto (a shared schedule, not real Tokyo weather)':`City weather: ${mode}`);
   if(announce)notify(mode==='auto'?'City weather: auto. The same for everyone, changing every few minutes. Not real Tokyo weather.':`City weather: ${mode}.`);}
 const DAY_MODES=['auto','day','night'];
-// The button shows what the next tap does: day → night → Tokyo clock (auto) → day.
-function setDayMode(mode){WX.dayMode=mode;const b=$('day-night');b.textContent=mode==='day'?'☾':mode==='night'?'◐':'☀';
-  label(b,mode==='day'?'Switch to night':mode==='night'?'Follow the Tokyo clock':'Switch to day');clockCaption.hidden=mode!=='auto';}
-$('day-night').onclick=()=>setDayMode(DAY_MODES[(DAY_MODES.indexOf(WX.dayMode)+1)%3]);
+// A segmented control (#day-night): day, night, or the Tokyo clock (auto); the pressed one is the mode in force.
+function setDayMode(mode){if(!DAY_MODES.includes(mode))mode='day';WX.dayMode=mode;for(const b of $('day-night').querySelectorAll('button'))b.setAttribute('aria-pressed',String(b.dataset.mode===mode));clockCaption.hidden=mode!=='auto';}
+for(const b of $('day-night').querySelectorAll('button'))b.onclick=()=>setDayMode(b.dataset.mode);
 setWeather('auto');setDayMode('day');
 // Screenshot/debug hooks (rendering only): __cityWeather.set('rain'), .day('auto'), .clock(Date.parse(...)), .snap().
 window.__cityWeather={set:m=>setWeather(m),day:setDayMode,clock(ms){WX.clockOverride=ms??null;},snap(){Object.assign(WX.levels,LEVELS[WX.mode==='auto'?weatherAt(Date.now()).state:WX.mode]);},get state(){return {...WX,levels:{...WX.levels},clock:tokyoClock(WX.clockOverride??Date.now()),drawCalls:wxView.drawCalls};},view:wxView};
@@ -626,7 +665,7 @@ function applyQuality(){
   wxView.setQuality(q);crowdGPU.setLimits({cap:q.crowdCap,budget:q.crowdTris});cityEvents.setQuality(q);cityRenderer?.setQuality?.(q);setTrafficQuality(governor.level);
   if(q.shadow&&q.shadow!==SHADOW_MAP){SHADOW_MAP=q.shadow;sunlight.shadow.mapSize.set(SHADOW_MAP,SHADOW_MAP);sunlight.shadow.map?.dispose();sunlight.shadow.map=null;shadowHalf=0;}
   if(roomView)ratioDirty=true;else renderer.setPixelRatio(q.pixelRatio);
-  renderer.domElement.dataset.quality=`${q.level} ${governor.auto?'auto':'manual'} ${q.name}`;
+  renderer.domElement.dataset.quality=`${q.level} ${governor.auto?'auto':'manual'} ${q.name}`;document.documentElement.dataset.quality=String(q.level);   // ≤ 1: opaque glass, no blur (style.css)
   const lite=!governor.auto&&q.level===0;liteButton.setAttribute('aria-pressed',String(lite));label(liteButton,lite?'Lite mode: on (tap for automatic quality)':'Lite mode: off (tap for the lightest city)');
 }
 applyQuality();
@@ -704,6 +743,7 @@ async function initialize(){try{
   const first=Promise.all([refreshMe(),pollWorld()]).catch(err=>console.warn('[city] first poll',err?.message||err));
   await Promise.race([first,new Promise(r=>setTimeout(r,2500))]);
   first.then(()=>{pollLoop(pollWorld,()=>nextPollDelay(POLL.world,worldFails));pollLoop(()=>me?.user&&serverUp?refreshMe():null,()=>POLL.me);});
+  first.then(()=>{window.__city.guest=guest;return guest.boot();}).catch(err=>console.warn('[city] guest',err?.message||err)); // guest:
   $('loading').classList.add('is-ready');
   // Browser-visible diagnostics are limited to rendering; no wallet or account data.
   renderer.domElement.dataset.ready='true';

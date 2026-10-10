@@ -9,6 +9,7 @@ import {createPet,petFollow} from './accessories.js';
 import {EMOTES} from './characters.js';
 import {isUnlocked,tierOf,tierLabel} from './creator.js';
 import {deskModel,hasDesk,SCREEN_ITEMS,screenTexture,screenMesh,screenGeometry,welcomeText,openComputer} from './desk.js';
+import {icon,arw} from './icons.js';
 // A resident's room: a cutaway studio (floor + left and back walls) furnished with Kenney Furniture Kit pieces.
 // It shares the city's renderer (one WebGL context); while it is open the city pauses.
 // Budget: geometry is shared (glTF templates + a module cache of shell geometry), one 512 shadow map, three lights
@@ -590,7 +591,7 @@ async function enter(plotId,mine,viewer){
  const hud=roomHud({owner,mine,room,edit,plotId,guestbook:Array.isArray(data.guestbook)?data.guestbook:null,visits:data.visits,unlocks,tierInfo,viewer,onClose:close,onWave(){if(mv.busy)return;stand();faceCamera();me.play('Wave');hud.say(`${owner.name} waves back.`);}});
  function close(){if(closed)return;pc?.close({quiet:true});host.setView(null);hud.remove();view.dispose();}
  host.setView(view);
- if(hasDesk(desk)){const b=el('button',{className:'button button-dark room-pc-btn',type:'button',textContent:desk.projects.length?`💻 ${mine?'Your':owner.name+'\u2019s'} computer`:'💻 Computer',onclick:()=>toComputer(room.furniture.findIndex(f=>SCREEN_ITEMS.has(f.item)))});hud.root.append(b);}
+ if(hasDesk(desk)){const b=el('button',{className:'button button-dark button-sm room-pc-btn',type:'button',onclick:()=>toComputer(room.furniture.findIndex(f=>SCREEN_ITEMS.has(f.item)))},icon('pc','i lead'),desk.projects.length?`${mine?'Your':owner.name+'\u2019s'} computer`:'Computer');hud.root.append(b);}
  hud.say(welcomeText({mine,name:owner.name,model:desk}));
  if(lampsLit)applyLook();
 }
@@ -599,21 +600,30 @@ async function enter(plotId,mine,viewer){
 const el=(tag,props={},...kids)=>{const n=Object.assign(document.createElement(tag),props);n.append(...kids.filter(k=>k!=null));return n;};
 function roomHud({owner,mine,room,edit,plotId,guestbook,visits,unlocks,tierInfo=FALLBACK_UNLOCKS,viewer,onClose,onWave}){
  const root=el('section',{className:'room-hud'});root.setAttribute('aria-label',`${owner.name}'s room`);
- const title=el('div',{},el('span',{className:'eyebrow',textContent:mine?'YOUR ROOM':'VISITING'}),el('strong',{textContent:`${owner.name}'s room`}));
- const close=el('button',{className:'button button-dark',textContent:'Back to the city ←',onclick:()=>{if(edit.dirty()&&!confirm('Leave without saving your changes?'))return;onClose();}});
+ // The title plate: an eyebrow with the address, the owner's name in the display face and の部屋 in orange kana (decorative).
+ const kana=el('span',{className:'jp',textContent:mine?'の部屋':'さんの部屋'});kana.setAttribute('aria-hidden','true');
+ const title=el('div',{className:'room-plate'},el('span',{className:'eyebrow',textContent:`${mine?'YOUR ROOM':'VISITING'} · ${String(plotId||'').replace('-',' ').toUpperCase()}`}),
+  el('strong',{},el('span',{className:'nm',textContent:owner.name}),el('span',{className:'sr-only',textContent:"'s room"}),kana));
+ const close=el('button',{className:'button button-dark room-back',type:'button',title:'Back to the city',onclick:()=>{if(edit.dirty()&&!confirm('Leave without saving your changes?'))return;onClose();}},icon('back','i lead'),el('span',{className:'lbl',textContent:'Back to the city'}));
  const bubble=el('div',{className:'room-bubble'});bubble.setAttribute('role','status');
  root.append(el('div',{className:'room-top'},title,close),bubble);
  const api2={root,say(t){bubble.textContent=t;},select(){},count(){},sync(){},remove(){root.remove();}};
  if(guestbook)root.append(guestbookPanel({owner,mine,plotId,entries:guestbook,visits,viewer,say:api2.say}));
- if(!mine){root.append(el('button',{className:'button button-orange room-hi',textContent:`Say hi to ${owner.name}`,onclick:onWave}));document.body.append(root);return api2;}
+ if(!mine){root.append(el('button',{className:'button button-orange room-hi',type:'button',onclick:onWave},`Say hi to ${owner.name}`,arw()));document.body.append(root);return api2;}
  // Emote bar: every emote, the locked ones greyed with the tier that opens them.
  const emotes=el('div',{className:'room-emotes'});emotes.setAttribute('aria-label','Emotes');
- for(const name of EMOTES){const open=isUnlocked('emotes',name,unlocks,tierInfo),tier=tierOf(tierInfo.emotes,name);
-  const b=el('button',{className:'room-emote'+(open?'':' is-locked'),title:open?name:`${name}: unlocks at ${tierLabel(tier)}`,onclick:()=>open?edit.emote(name):api2.say(`“${name}” unlocks at ${tierLabel(tier)||'a higher tier'}.`)},
+ // The dock: open emotes first, a separator, then the locked ones (grey, with their tier). The tapped emote is ringed for
+ // about as long as it plays; tapping it again stops it (room.js doEmote), so the ring goes too.
+ let onTimer=0;const ring=b=>{clearTimeout(onTimer);const was=b.classList.contains('is-on');emotes.querySelectorAll('.is-on').forEach(x=>x.classList.remove('is-on'));
+  if(was)return;b.classList.add('is-on');const n=b.dataset.emote;onTimer=setTimeout(()=>b.classList.remove('is-on'),n==='wave'?2400:n==='sit'||n==='sleep'?12000:8000);};
+ const order=[...EMOTES].sort((a,b)=>isUnlocked('emotes',b,unlocks,tierInfo)-isUnlocked('emotes',a,unlocks,tierInfo));let sep=false;
+ for(const name of order){const open=isUnlocked('emotes',name,unlocks,tierInfo),tier=tierOf(tierInfo.emotes,name);
+  if(!open&&!sep){sep=true;if(emotes.children.length)emotes.append(el('span',{className:'room-emote-sep',ariaHidden:'true'}));}
+  const b=el('button',{className:'room-emote'+(open?'':' is-locked'),type:'button',title:open?name:`${name}: unlocks at ${tierLabel(tier)}`,onclick:()=>{if(open){ring(b);edit.emote(name);}else api2.say(`“${name}” unlocks at ${tierLabel(tier)||'a higher tier'}.`);}},
    el('span',{className:'room-emote-icon',textContent:EMOTE_ICON[name]||'•'}),el('small',{textContent:open?name:tierLabel(tier)}));b.dataset.emote=name;if(!open)b.setAttribute('aria-disabled','true');emotes.append(b);}
  root.append(emotes);
 
- const editBtn=el('button',{className:'button button-orange room-edit',textContent:'Edit room'});
+ const editBtn=el('button',{className:'button button-orange room-edit',type:'button'},icon('brush','i lead'),'Edit room',arw());
  const sheet=el('aside',{className:'room-editor',hidden:true});sheet.setAttribute('aria-label','Room editor');
  const tabs=el('div',{className:'room-tabs'}),bodies={};
  const pressed=(group,b)=>group.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
@@ -642,15 +652,15 @@ function roomHud({owner,mine,room,edit,plotId,guestbook,visits,unlocks,tierInfo=
  for(const c of [...Object.keys(CATALOG),'special']){const b=el('button',{className:'chip'+(c==='special'?' chip-special':''),textContent:c==='special'?'★ Special':CATEGORY_LABELS[c],onclick:()=>showCat(c)});b.dataset.id=c;cats.append(b);}
  add.append(el('p',{className:'fine'},'Tap to add. Drag a piece to move it, or select it and tap the floor. ',counter),cats,grid);showCat('sleep');
  const first=tab('mood','Moodboard',mood);tab('light','Daylight',light);tab('add','Add furniture',add);
- const save=el('button',{className:'button button-orange',textContent:'Save room'}),cancel=el('button',{className:'button button-dark',textContent:'Cancel'});
+ const save=el('button',{className:'button button-orange button-sm',type:'button',textContent:'Save'}),cancel=el('button',{className:'button button-ghost button-sm',type:'button',textContent:'Cancel'});
  sheet.append(el('div',{className:'room-editor-head'},el('div',{},el('span',{className:'eyebrow',textContent:'SET THE MOOD'}),el('strong',{textContent:'Your room'})),el('div',{className:'room-editor-actions'},cancel,save)),tabs,mood,light,add);
  // Selection toolbar
  const tools=el('div',{className:'room-tools',hidden:true}),toolName=el('strong');
- const raise=el('button',{className:'chip',textContent:'⤒ Raise',onclick:()=>{edit.raise();}});
- const rotate=el('button',{className:'chip',textContent:'⟳ Rotate',onclick:()=>edit.rotate()});
+ const tool=(id,label,onclick,cls='icon-button')=>el('button',{className:cls,type:'button',title:label,ariaLabel:label,onclick},icon(id));
+ const raise=tool('raise','Raise',()=>{edit.raise();}),rotate=tool('rotate','Rotate',()=>edit.rotate());
  const textIn=el('input',{type:'text',className:'room-text',maxLength:TEXT_MAX,placeholder:'Text',hidden:true});textIn.setAttribute('aria-label','Text on the piece');
  let textTimer=0;textIn.oninput=()=>{clearTimeout(textTimer);textTimer=setTimeout(()=>edit.text(textIn.value),350);};
- tools.append(toolName,textIn,rotate,raise,el('button',{className:'chip chip-danger',textContent:'✕ Delete',onclick:()=>edit.remove()}),el('button',{className:'chip',textContent:'Done',onclick:()=>edit.deselect()}));
+ tools.append(toolName,textIn,rotate,raise,tool('trash','Delete',()=>edit.remove(),'icon-button danger'),el('button',{className:'button button-orange button-sm',type:'button',textContent:'Done',onclick:()=>edit.deselect()}));
  const sync=r=>{for(const [k,row] of Object.entries(swatchRows))row.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.id===r.materials[k])));
   viewRow.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.id===r.window)));
   markLight(r);counter.textContent=`${r.furniture.length}/${LIMITS.max}`;};
@@ -662,7 +672,7 @@ function roomHud({owner,mine,room,edit,plotId,guestbook,visits,unlocks,tierInfo=
  root.append(editBtn,sheet,tools);document.body.append(root);
  return {...api2,
   select(entry){tools.hidden=!entry;if(!entry)return;toolName.textContent=label(entry.item);
-   const wall=WALL_ITEMS.has(entry.item)||HANGING.has(entry.item);rotate.disabled=raise.disabled=wall;raise.textContent=entry.y?'⤓ Lower':'⤒ Raise';
+   const wall=WALL_ITEMS.has(entry.item)||HANGING.has(entry.item);rotate.disabled=raise.disabled=wall;raise.replaceChildren(icon(entry.y?'lower':'raise'));raise.title=raise.ariaLabel=entry.y?'Lower':'Raise';
    textIn.hidden=!TEXT_ITEMS.has(entry.item);if(!textIn.hidden&&document.activeElement!==textIn)textIn.value=entry.text||'';},
   count(n){counter.textContent=`${n}/${LIMITS.max}`;},sync,
  };
@@ -671,15 +681,17 @@ function roomHud({owner,mine,room,edit,plotId,guestbook,visits,unlocks,tierInfo=
 // Guestbook: visitors leave a short note (1 per room per minute); the owner and each note's author may remove it.
 function guestbookPanel({owner,mine,plotId,entries,visits,viewer,say}){
  let list=entries.slice();const base=`/api/rooms/${encodeURIComponent(plotId)}/guestbook`;
- const toggle=el('button',{className:'button button-dark room-gb-toggle'}),panel=el('aside',{className:'room-guestbook',hidden:true});panel.setAttribute('aria-label','Guestbook');
+ const toggle=el('button',{className:'button button-dark button-sm room-gb-toggle',type:'button'}),panel=el('aside',{className:'room-guestbook',hidden:true});panel.setAttribute('aria-label','Guestbook');
  const ul=el('ol',{className:'room-gb-list'}),status=el('p',{className:'room-gb-status'});status.setAttribute('role','status');
  const when=at=>{const d=(Date.now()-Number(at))/1000;return !Number.isFinite(d)?'':d<90?'just now':d<5400?`${Math.round(d/60)} min ago`:d<129600?`${Math.round(d/3600)} h ago`:`${Math.round(d/86400)} d ago`;};
  const myName=viewer?.resident?.name;
- function render(){toggle.textContent=`📖 Guestbook · ${list.length}`;
-  ul.replaceChildren(...(list.length?list.map(g=>el('li',{},el('strong',{textContent:g.name||'Visitor'}),el('span',{textContent:g.text}),el('small',{textContent:when(g.at)}),
-   mine||(myName&&g.name===myName)?el('button',{className:'room-gb-del',textContent:'✕',title:'Remove this note',onclick:()=>remove(g)}):null)):[el('li',{className:'room-gb-empty',textContent:mine?'No notes yet. Visitors can sign here.':`Be the first to sign ${owner.name}'s guestbook.`})]));}
+ // Each note is a card with a colour bar per author (a stable hue from the name).
+ const hue=n=>['#FB752B','#8FB6FF','#4ADE9A','#FFD27A','#D9A5F0','#FF8FA3'][[...String(n||'')].reduce((h,c)=>(h*31+c.codePointAt(0))>>>0,7)%6];
+ function render(){toggle.replaceChildren(icon('book','i lead'),'Guestbook',el('span',{className:'count',textContent:String(list.length)}));toggle.setAttribute('aria-label',`Guestbook, ${list.length} note${list.length===1?'':'s'}`);
+  ul.replaceChildren(...(list.length?list.map(g=>{const li=el('li',{},el('div',{className:'room-gb-who'},el('strong',{textContent:g.name||'Visitor'}),el('small',{textContent:when(g.at)})),el('span',{textContent:g.text}),
+   mine||(myName&&g.name===myName)?el('button',{className:'room-gb-del',type:'button',title:'Remove this note',ariaLabel:'Remove this note',onclick:()=>remove(g)},icon('x')):null);li.style.setProperty('--c',hue(g.name));return li;}):[el('li',{className:'room-gb-empty',textContent:mine?'No notes yet. Visitors can sign here.':`Be the first to sign ${owner.name}'s guestbook.`})]));}
  async function remove(g){try{await api(`${base}/${encodeURIComponent(g.id)}`,{method:'DELETE'});list=list.filter(x=>x!==g);render();}catch(err){status.textContent=err.message||'Could not remove the note.';}}
- const form=el('form',{className:'room-gb-form'}),input=el('input',{type:'text',maxLength:80,placeholder:`Say something nice to ${owner.name}`,required:true}),post=el('button',{className:'button button-orange',type:'submit',textContent:'Sign'});
+ const form=el('form',{className:'room-gb-form'}),input=el('input',{type:'text',maxLength:80,placeholder:`Say something nice to ${owner.name}`,required:true}),post=el('button',{className:'icon-button room-gb-send',type:'submit',title:'Sign',ariaLabel:'Sign'},icon('send'));
  input.setAttribute('aria-label','Your note');form.append(input,post);
  form.onsubmit=async e=>{e.preventDefault();const text=input.value.trim();if(!text)return;post.disabled=true;
   try{const r=await api(base,{method:'POST',body:{text}});if(r?.entry)list.unshift(r.entry);input.value='';status.textContent='Thanks! Your note is in.';say(`You signed ${owner.name}'s guestbook.`);render();}

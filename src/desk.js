@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {icon} from './icons.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
 // the Computer overlay: the project's site, its X account, its launch page and (owner only) the ideas in flight.
 // Data: GET /api/rooms/:plotId → desk:{projects,ideas}. Fields may be missing; everything below is defensive.
@@ -102,7 +103,7 @@ export function openComputer({model,project=null,ownerName='',onIdea=null,onClos
  const items=switcherItems(model),prevFocus=document.activeElement;
  let cur=project||model.projects[0]||null,tab=null,closed=false,focusIdea=null;
  const back=el('div',{className:'pc-backdrop'}),win=el('section',{className:'pc-window',tabIndex:-1});win.setAttribute('role','dialog');win.setAttribute('aria-modal','true');
- const title=el('div',{className:'pc-title'}),closeB=el('button',{className:'pc-close',type:'button',textContent:'✕',title:'Close (Esc)',onclick:()=>close()});closeB.setAttribute('aria-label','Close the computer');
+ const title=el('div',{className:'pc-title'}),closeB=el('button',{className:'pc-close',type:'button',title:'Close (Esc)',onclick:()=>close()},icon('x'));closeB.setAttribute('aria-label','Close the computer');
  const tabs=el('div',{className:'pc-tabs'}),body=el('div',{className:'pc-body'});tabs.setAttribute('role','tablist');body.setAttribute('role','tabpanel');
  win.append(el('header',{className:'pc-bar'},el('span',{className:'pc-dots'},el('i'),el('i'),el('i')),title,closeB),tabs,body);back.append(win);
  back.addEventListener('pointerdown',e=>{if(e.target===back)close();});

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#eee9df" />
+  <meta name="theme-color" content="#141210" />
   <title>SUB-01 · The neighborhood</title>
   <meta name="description" content="A first look at SUB-01's neighborhood. Your ideas become places." />
   <meta property="og:title" content="SUBZERONE — Tokyo launchpad" />
@@ -17,60 +17,114 @@
   <link rel="alternate icon" href="/brand/favicon.ico">
   <link rel="apple-touch-icon" href="/brand/apple-touch-icon-180.png">
   <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=JetBrains+Mono:wght@500;700&display=swap">
   <link rel="stylesheet" href="/src/brand.css">
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-ne" viewBox="0 0 24 24"><path d="M7 17L17 7M9 7h8v8"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-cl" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+    <symbol id="i-cr" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-cd" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-6.5 8 6.5M6.5 9.5V19h11V9.5M10 19v-5h4v5"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-umbrella" viewBox="0 0 24 24"><path d="M3.5 12.5a8.5 8.5 0 0 1 17 0z"/><path d="M12 12.5V18a2 2 0 0 1-4 0M12 4V2.8"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 17.5V5.5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></symbol>
+    <symbol id="i-walk" viewBox="0 0 24 24"><circle cx="13.5" cy="4.5" r="1.9"/><path d="M9.5 21l2.6-5.6 2.9 2.6V21M12.1 15.4l.9-6.4-3.4 1.6L8 13.6M13 9l2.1 3.2 3 .9"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-7-6 16-3-6.5z"/><path d="M11 14.5l9-9.5"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12.5" rx="2.5"/><path d="M4.5 7.5l7.5 6 7.5-6"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></symbol>
+    <symbol id="i-raise" viewBox="0 0 24 24"><path d="M5 4.5h14M12 20V9M7 13l5-5 5 5"/></symbol>
+    <symbol id="i-lower" viewBox="0 0 24 24"><path d="M5 19.5h14M12 4v11M7 11l5 5 5-5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4.5h10.5a3 3 0 0 1 3 3V20H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10.5"/></symbol>
+    <symbol id="i-pc" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M9 20h6M12 16v4"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H17v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><circle cx="16" cy="13.5" r="1.2"/></symbol>
+    <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14.5 4.5l5 5-8 8-5-5zM6.5 12.5c-2 0-3 1.5-3 3.5 0 1.5-.5 2.5-1 3 3 .5 6.5-.5 6.5-3.5"/></symbol>
+  </defs></svg>
   <div id="app">
     <div id="world" aria-label="Interactive 3D neighborhood"></div>
+    <div class="hud-scrim" aria-hidden="true"></div>
     <header class="topbar">
-      <a class="brand" href="#" aria-label="SUB-01 neighborhood home"><img src="/brand/mark-small.svg" alt="" width="40" height="40" class="brand-mark"><span>SUBZERONE<small>TOKYO / YOUR CITY</small></span></a>
-      <div class="preview-badge" id="server-badge"><i></i> <span id="server-status">CONNECTING</span></div>
-      <button class="account-chip" id="account-button">Sign in</button>
-      <button class="button button-dark" id="idea-button">Drop an idea <span>↗</span></button>
+      <a class="brand" href="#" aria-label="SUB-01 neighborhood home"><img src="/brand/mark-small.svg" alt="" width="40" height="40" class="brand-mark"><span class="brand-name">SUBZERONE<small>TOKYO / YOUR CITY</small></span></a>
+      <div class="preview-badge" id="server-badge"><i></i><span id="server-status">CONNECTING</span></div>
+      <button class="account-chip" id="account-button" type="button"><svg class="i" aria-hidden="true"><use href="#i-wallet"/></svg><span class="nm">Sign in</span></button>
+      <button class="button button-orange" id="idea-button" type="button"><span class="lbl">Drop an idea</span><span class="arw ne"><svg class="i" aria-hidden="true"><use href="#i-ne"/></svg></span></button>
     </header>
     <section class="intro">
-      <span class="eyebrow">ONE BRAIN. A CITY YOU CAN LIVE IN.</span>
-      <h1>Your idea.<br><em>A whole city.</em></h1>
-      <p>288 addresses. One brain next door.<br>Make Tokyo yours.</p>
+      <span class="eyebrow">One brain · a city you can live in</span>
+      <h1><span class="h1-lines">Your idea.<em>A whole city.</em></span><span class="kana" aria-hidden="true">あなたの街</span></h1>
+      <p><b>288 addresses.</b> One brain next door. Make Tokyo yours.</p>
     </section>
     <div id="labels" aria-hidden="true"></div>
-    <aside class="project-panel" id="project-panel">
-      <div class="panel-heading"><span class="eyebrow">TOKYO / YOUR CITY</span><span class="count" id="project-count">04</span></div>
-      <label class="sr-only" for="district-select">Explore district</label><select id="district-select"><option value="">Entire city</option><option value="shiba">Shiba / Tokyo Tower</option><option value="shinjuku">Shinjuku</option><option value="akihabara">Akihabara</option><option value="shibuya">Shibuya</option><option value="harajuku">Harajuku</option><option value="nakameguro">Nakameguro</option><option value="ebisu">Ebisu</option><option value="roppongi">Roppongi</option></select><div class="city-shortcuts"><button id="home-view">SUB-01’s home</button><button id="tower-view">Tokyo Tower ↗</button></div><div id="project-list"></div>
-      <button id="tour-button" class="button button-orange">Meet your dev <span>→</span></button>
-      <p class="panel-footnote">Projects in orange are real ideas dropped in SUB-01's mailbox. The Workshop, Arcade and Studio are example places.</p>
+    <aside class="project-panel" id="project-panel" aria-label="Addresses">
+      <div class="eki" id="eki">
+        <div class="eki-row">
+          <button class="eki-side prev" id="eki-prev" type="button"><svg class="i" aria-hidden="true"><use href="#i-cl"/></svg><span id="eki-prev-name">MEJIRO</span></button>
+          <div class="eki-main"><span class="jp" id="eki-kanji" aria-hidden="true">東京</span><strong id="eki-name">TOKYO</strong>
+            <label class="sr-only" for="district-select">Explore district</label><select id="district-select"><option value="">Entire city</option></select></div>
+          <button class="eki-side next" id="eki-next" type="button"><span id="eki-next-name">SHIBA</span><svg class="i" aria-hidden="true"><use href="#i-cr"/></svg></button>
+        </div>
+        <div class="eki-band"><b id="eki-code">TYO</b><span><span id="project-count">288</span> ADDRESSES · <span id="eki-live">0</span> LIVE</span></div>
+      </div>
+      <div class="city-shortcuts"><button class="button button-ghost button-sm" id="home-view" type="button"><svg class="i lead" aria-hidden="true"><use href="#i-home"/></svg>SUB-01’s home</button><button class="button button-ghost button-sm" id="tower-view" type="button">Tokyo Tower<svg class="i lead" aria-hidden="true"><use href="#i-ne"/></svg></button></div>
+      <div id="project-list"></div>
+      <button id="tour-button" class="button button-orange" type="button">Meet your dev<span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button>
+      <p class="panel-footnote">Orange dots are real ideas dropped in SUB-01's mailbox. The Workshop, Arcade and Studio are example places.</p>
     </aside>
-    <section class="activity" aria-live="polite">
+    <section class="activity" id="activity" aria-live="polite">
       <div class="activity-avatar">01</div>
-      <div><span class="eyebrow"><i class="live-dot"></i> <span id="activity-label">SUB-01 · OFFLINE</span></span><strong id="activity-text">Getting the neighborhood ready.</strong></div>
-      <button class="explore-button" id="explore-button" type="button" aria-pressed="false" title="Walk your resident around the city">🚶 Explore</button>
-      <button class="icon-button" id="follow-button" aria-label="Follow SUB-01" title="Follow SUB-01">◎</button>
+      <div class="activity-text"><span class="eyebrow"><i class="live-dot"></i><span id="activity-label">SUB-01 · OFFLINE</span></span><strong id="activity-text">Getting the neighborhood ready.</strong></div>
+      <button class="button button-orange button-sm explore-button" id="explore-button" type="button" aria-pressed="false" title="Walk your resident around the city"><svg class="i lead" aria-hidden="true"><use href="#i-walk"/></svg>Explore</button>
+      <button class="icon-button" id="follow-button" type="button" aria-label="Follow SUB-01" title="Follow SUB-01"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg></button>
     </section>
     <nav class="world-controls" aria-label="World controls">
-      <button class="icon-button" id="city-tour" aria-label="Tour the city" title="Tour the city">▷</button><button class="icon-button" id="zoom-out" aria-label="Zoom out">−</button>
-      <button class="icon-button" id="zoom-in" aria-label="Zoom in">+</button>
-      <button class="icon-button" id="reset-view" aria-label="Reset camera">⌂</button>
-      <button class="icon-button" id="day-night" aria-label="Switch to night">☾</button>
+      <button class="icon-button" id="city-tour" type="button" aria-label="Tour the city" title="Tour the city"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button><span class="sep" aria-hidden="true"></span>
+      <button class="icon-button zoom" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out"><svg class="i" aria-hidden="true"><use href="#i-minus"/></svg></button>
+      <button class="icon-button zoom" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      <button class="icon-button" id="reset-view" type="button" aria-label="Reset camera" title="Reset camera"><svg class="i" aria-hidden="true"><use href="#i-home"/></svg></button><span class="sep" aria-hidden="true"></span>
+      <span class="sep" id="sep-day" aria-hidden="true"></span>
+      <div class="daynight" id="day-night" role="group" aria-label="Day and night">
+        <button class="icon-button" type="button" data-mode="day" aria-pressed="true" aria-label="Day" title="Day"><svg class="i" aria-hidden="true"><use href="#i-sun"/></svg></button>
+        <button class="icon-button" type="button" data-mode="night" aria-pressed="false" aria-label="Night" title="Night"><svg class="i" aria-hidden="true"><use href="#i-moon"/></svg></button>
+        <button class="icon-button" type="button" data-mode="auto" aria-pressed="false" aria-label="Follow the Tokyo clock" title="Follow the Tokyo clock"><svg class="i" aria-hidden="true"><use href="#i-clock"/></svg></button>
+      </div>
     </nav>
-    <div class="world-hint" id="world-hint">DRAG TO EXPLORE <span>·</span> SELECT A BUILDING</div>
-    <div id="loading" class="loading"><img src="/brand/mark-mid.svg" alt="" width="65" height="65" class="loading-mark"><strong>Opening Tokyo</strong><span id="loading-text">Making room for your ideas…</span></div>
+    <div class="world-hint" id="world-hint"><span class="kbd">DRAG</span> TO EXPLORE <span class="dim">·</span> <span class="kbd">CLICK</span> A BUILDING</div>
+    <div id="loading" class="loading"><span class="loading-ring"><img src="/brand/mark-mid.svg" alt="" width="64" height="64" class="loading-mark"></span><strong>Opening Tokyo</strong><span id="loading-text">Making room for your ideas…</span></div>
     <div class="dialog-backdrop" id="detail-backdrop" hidden>
       <section class="detail-card" role="dialog" aria-modal="true" aria-labelledby="detail-name">
-        <button class="close-button" id="detail-close" aria-label="Close project">×</button>
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" id="detail-close" type="button" aria-label="Close project"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
         <span class="eyebrow" id="detail-category"></span>
-        <div class="detail-icon" id="detail-icon"></div>
+        <div class="detail-head"><div class="detail-icon" id="detail-icon"></div><div class="hanko" id="detail-hanko" aria-hidden="true" hidden><span class="jp"></span><small></small></div></div>
         <h2 id="detail-name"></h2><p id="detail-description"></p>
-        <div class="detail-stats"><div><small>STATE</small><strong id="detail-state"></strong></div><div><small>DEVELOPER</small><strong>SUB-01</strong></div><div id="detail-fees-box"><small>CREATOR FEES</small><strong id="detail-fees">80% author · 20% SUB-01</strong></div></div>
+        <div class="detail-stats"><div><small>STATE</small><strong id="detail-state"></strong></div><div><small>DEVELOPER</small><strong>SUB-01</strong></div><div id="detail-fees-box"><small>CREATOR FEES</small><strong id="detail-fees">80% author · 20% SUB&#8209;01</strong></div></div>
+        <div class="progress-head" id="detail-progress-head" hidden><span class="eyebrow">Build progress</span><span class="eyebrow" id="detail-pct"></span></div>
         <div class="progress" id="detail-progress" hidden><i></i></div><div id="detail-roles" class="roles" hidden></div>
-        <div class="milestones" id="detail-milestones"><span>01 · Idea</span><span>02 · Build</span><span>03 · Launch</span></div>
-        <button class="button button-orange" id="visit-button">Visit this place <span>→</span></button><button class="button button-ghost" id="takeover-button" hidden>Propose a community takeover</button>
+        <div class="milestones" id="detail-milestones"><span>01 Idea</span><span>02 Build</span><span>03 Launch</span></div>
+        <button class="button button-orange" id="visit-button" type="button">Visit this place<span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button><button class="button button-ghost" id="takeover-button" type="button" hidden>Propose a community takeover</button>
         <p class="disclosure" id="detail-disclosure"></p>
       </section>
     </div>
     <div class="dialog-backdrop" id="idea-backdrop" hidden>
       <section class="idea-card" role="dialog" aria-modal="true" aria-labelledby="idea-title">
-        <button class="close-button" id="idea-close" aria-label="Close idea form">×</button>
-        <span class="eyebrow">SUB-01'S MAILBOX</span><h2 id="idea-title">Give your idea an address.</h2>
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" id="idea-close" type="button" aria-label="Close idea form"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow">SUB-01'S MAILBOX · 投函</span><h2 id="idea-title">Give your idea <em>an address.</em></h2>
         <p>Drop it in his mailbox. SUB-01 decides if he builds it. If he does, the building rises here while he works.</p>
         <form id="idea-form">
           <label for="plot-address">Address for the project</label><select id="plot-address" required></select>
@@ -82,14 +136,15 @@
           <p class="fine">The split is fixed and written into the token at launch; it cannot be changed later, not even by a community takeover. You sign the launch transaction with your own wallet.</p>
           <label class="check"><input type="checkbox" id="idea-rights" required /> The idea is mine to give, and I accept that what SUB-01 builds becomes public once I publish it.</label>
           <p class="form-error" id="form-error" role="alert"></p>
-          <button class="button button-orange" type="submit">Drop it in the mailbox <span>↗</span></button>
+          <button class="button button-orange" type="submit">Drop it in the mailbox<span class="arw ne"><svg class="i" aria-hidden="true"><use href="#i-ne"/></svg></span></button>
         </form>
       </section>
     </div>
     <div class="dialog-backdrop" id="signin-backdrop" hidden>
       <section class="idea-card" role="dialog" aria-modal="true" aria-labelledby="signin-title">
-        <button class="close-button" id="signin-close" aria-label="Close sign-in">×</button>
-        <span class="eyebrow">ENTER THE CITY</span><h2 id="signin-title">Sign in with your wallet.</h2>
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" id="signin-close" type="button" aria-label="Close sign-in"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow">ENTER THE CITY</span><h2 id="signin-title">Sign in with <em>your wallet.</em></h2>
         <p>You sign a text message, not a transaction. It moves no funds and costs nothing.</p>
         <div id="wallet-list" class="wallet-list"></div>
         <p class="form-error" id="signin-error" role="alert"></p>
@@ -97,16 +152,19 @@
     </div>
     <div class="dialog-backdrop" id="resident-backdrop" hidden>
       <section class="idea-card creator-card" role="dialog" aria-modal="true" aria-labelledby="resident-title">
-        <button class="close-button" id="resident-close" aria-label="Close character creator">×</button>
-        <span class="eyebrow">NEW RESIDENT</span><h2 id="resident-title">Make yourself at home.</h2>
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" id="resident-close" type="button" aria-label="Close character creator"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow">NEW RESIDENT · 新しい住人</span><h2 id="resident-title">Make yourself <em>at home.</em></h2>
         <form id="resident-form">
-          <label for="resident-name">Your name in the city</label><input id="resident-name" minlength="2" maxlength="24" required placeholder="What should the neighbors call you?" />
+          <div class="creator-name"><label for="resident-name">Your name in the city</label><input id="resident-name" minlength="2" maxlength="24" required placeholder="What should the neighbors call you?" /></div>
           <div id="look-fields"></div>
-          <label for="resident-plot">Your apartment</label><select id="resident-plot" required></select>
-          <p class="form-error" id="resident-error" role="alert"></p>
-          <button class="button button-orange" type="submit">Move in <span>→</span></button>
+          <div class="creator-foot">
+            <div class="creator-plot"><label for="resident-plot">Your apartment</label><select id="resident-plot" required></select></div>
+            <button class="button button-orange" type="submit">Move in<span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button>
+            <p class="form-error" id="resident-error" role="alert"></p>
+            <p class="disclosure">Your name and look are public. Your wallet address is never shown in the city.</p>
+          </div>
         </form>
-        <p class="disclosure">Your name and look are public. Your wallet address is never shown in the city.</p>
       </section>
     </div>
     <div class="toast" id="toast" role="status" hidden></div>
