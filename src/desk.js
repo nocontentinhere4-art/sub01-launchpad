@@ -1,7 +1,14 @@
 import * as THREE from 'three';
-import {icon} from './icons.js';
+import {icon,tile} from './icons.js';
+import {api,short,b58encode} from './api.js';
+import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
+import {verdictModel,renderVerdict} from './verdict.js';
+import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS} from './desk-flows.js';
+export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows} from './desk-flows.js';
+import {solText,splitRows} from './desk-flows.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
-// the Computer overlay: the project's site, its X account, its launch page and (owner only) the ideas in flight.
+// the Computer overlay: the project's site, its X account, the launch stepper and (owner only) the ideas in flight.
+// The Launch and X tabs read GET /api/projects/:slug themselves (owner view when signed in); desk-flows.js has the models.
 // Data: GET /api/rooms/:plotId → desk:{projects,ideas}. Fields may be missing; everything below is defensive.
 // Owner-only fields (previewLink, officePath, x.posts, ideas) are dropped client-side for visitors even if the payload leaks them.
 // Host hook: host.openIdea() opens the mailbox (main.js wires it to openBuildForm); without it the Ideas tab shows a note.
@@ -99,15 +106,27 @@ const el=(tag,props={},...kids)=>{const n=Object.assign(document.createElement(t
 // External links carry the diagonal arrow (they leave the city page); 'Label ↗' strings are typed the old way.
 const ext=(href,text,cls='pc-link')=>el('a',{className:cls,href,target:'_blank',rel:'noopener noreferrer'},text.replace(/\s*↗\s*$/,''),icon('ne'));
 const frame=(src,sandbox,title)=>{const f=el('iframe',{className:'pc-frame',src,title,loading:'lazy',referrerPolicy:'no-referrer'});f.setAttribute('sandbox',sandbox);return f;};
-// openComputer({model,project,ownerName,onIdea,onClose}) → {close()}. onIdea: null when main.js has not wired host.openIdea.
-export function openComputer({model,project=null,ownerName='',onIdea=null,onClose}){
- const items=switcherItems(model),prevFocus=document.activeElement;
- let cur=project||model.projects[0]||null,tab=null,closed=false,focusIdea=null;
+// (the label is a plain span: the city's .lbl is the dock's long label, hidden on phones)
+const btn=(cls,text,onclick,lead=null)=>{const b=el('button',{className:'button '+cls,type:'button',onclick},lead?icon(lead,'i lead'):null,el('span',{className:'pc-lbl',textContent:text}));return b;};
+const busy=(b,on)=>{b.disabled=on;b.classList.toggle('is-busy',on);};
+const copyBtn=text=>{const b=el('button',{className:'pc-copy',type:'button',title:'Copy',onclick:async()=>{try{await navigator.clipboard.writeText(text);b.classList.add('is-ok');setTimeout(()=>b.classList.remove('is-ok'),1200);}catch{}}},icon('check'));b.setAttribute('aria-label','Copy '+short(text,6));return b;};
+// openComputer({model,project,ownerName,me,onIdea,onClose}) → {close()}. me: the /api/me answer (role, wallet) or null.
+// onIdea: null when main.js has not wired host.openIdea.
+export function openComputer({model,project=null,ownerName='',me=null,onIdea=null,onClose}){
+ const items=switcherItems(model),prevFocus=document.activeElement,timers=new Set(),views=new Map();
+ let cur=project||model.projects[0]||null,tab=null,closed=false,focusIdea=null,epoch=0;
  const back=el('div',{className:'pc-backdrop'}),win=el('section',{className:'pc-window',tabIndex:-1});win.setAttribute('role','dialog');win.setAttribute('aria-modal','true');
  const title=el('div',{className:'pc-title'}),closeB=el('button',{className:'pc-close',type:'button',title:'Close (Esc)',onclick:()=>close()},icon('x'));closeB.setAttribute('aria-label','Close the computer');
  const tabs=el('div',{className:'pc-tabs'}),body=el('div',{className:'pc-body'});tabs.setAttribute('role','tablist');body.setAttribute('role','tabpanel');
  win.append(el('header',{className:'pc-bar'},el('span',{className:'pc-dots'},el('i'),el('i'),el('i')),title,closeB),tabs,body);back.append(win);
  back.addEventListener('pointerdown',e=>{if(e.target===back)close();});
+ // timers die with the tab that set them (clearBody) and with the window (close)
+ const later=(ms,fn)=>{const t=setTimeout(()=>{timers.delete(t);if(!closed)fn();},ms);timers.add(t);return t;};
+ const stopTimers=()=>{for(const t of timers)clearTimeout(t);timers.clear();epoch++;};
+ const alive=e=>!closed&&e===epoch;
+ // The project view (owner fields when the viewer owns it): cached per slug for the tab's life, refetched on demand.
+ async function load(slug,fresh=false){if(!slug)return null;if(!fresh&&views.has(slug))return views.get(slug);
+  let v=null;try{v=await api(`/api/projects/${encodeURIComponent(slug)}`);}catch{v=null;}if(v&&typeof v==='object')views.set(slug,v);return v;}
  function renderTitle(){
   if(items.length>1){const s=el('select',{className:'pc-switch'});s.setAttribute('aria-label','Switch project');
    for(const it of items){const o=el('option',{value:it.key,textContent:it.label});o.selected=cur?it.project===cur:it.idea===focusIdea;s.append(o);}
@@ -116,7 +135,7 @@ export function openComputer({model,project=null,ownerName='',onIdea=null,onClos
   else title.replaceChildren(el('strong',{textContent:cur?`${cur.name}${cur.ticker?' · $'+cur.ticker:''}`:`${ownerName}'s computer`}));
   win.setAttribute('aria-label',cur?`${ownerName}'s computer: ${cur.name}`:`${ownerName}'s computer`);
  }
- function clearBody(){for(const f of body.querySelectorAll('iframe')){f.src='about:blank';f.remove();}body.replaceChildren();}   // frames live only while their tab is shown
+ function clearBody(){stopTimers();for(const f of body.querySelectorAll('iframe')){f.src='about:blank';f.remove();}body.replaceChildren();}   // frames live only while their tab is shown
  function show(id){
   const list=tabsFor(model,cur);if(!list.includes(id))id=list[0];tab=id;renderTitle();
   tabs.replaceChildren(...list.map(t=>{const b=el('button',{className:'pc-tab',type:'button',onclick:()=>show(t)},icon(TAB_ICONS[t]),TAB_LABELS[t]);b.setAttribute('role','tab');b.setAttribute('aria-selected',String(t===id));b.tabIndex=t===id?0:-1;b.dataset.tab=t;return b;}));
@@ -124,22 +143,194 @@ export function openComputer({model,project=null,ownerName='',onIdea=null,onClos
   body.append(...(id==='site'?siteTab():id==='x'?xTab():id==='launch'?launchTab():id==='ideas'?ideasTab():[el('p',{className:'pc-empty',textContent:'Nothing on this computer yet.'})]));
  }
  const bar=(...kids)=>el('div',{className:'pc-toolbar'},...kids);
+ // The project head on the Site and Launch tabs: logo tile, name, stage pill, the X chip (planned → connected).
+ function headRow(p,extra=null){
+  const x=xChip(xModel({x:p.x.status?{status:p.x.status,planned_handle:p.x.handle,x_handle:p.x.handle}:null,xConfigured:true},false));
+  const row=el('div',{className:'pc-head'},tile({kind:'project',logo:p.logoUrl,kanji:'発'}),el('div',{className:'pc-head-main'},el('strong',{textContent:p.name+(p.ticker?' · $'+p.ticker:'')}),
+   el('span',{className:'pc-chips'},el('span',{className:'pc-chip'+(p.launched?' is-live':''),textContent:p.launched?'Live':p.stageLabel}),x?el('span',{className:'pc-chip pc-chip-x '+x.cls,textContent:x.text}):null)),extra);
+  row.dataset.head='';return row;
+ }
  function siteTab(){const s=siteFor(cur,model.mine);
-  if(!s.src)return [el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),s.empty),el('p',{textContent:model.mine?'The site appears here as soon as SUB-01 builds the first version.':'Come back later: the site goes up when it is built.'}))];
-  return [bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),ext(s.open,'Open in a new tab ↗')),frame(s.src,s.sandbox,`${cur.name}: website`)];}
- function xTab(){const x=cur.x,out=[];
-  out.push(el('div',{className:'pc-x'},el('div',{className:'pc-x-avatar'},icon('xlogo')),el('div',{},el('strong',{textContent:x.handle?'@'+x.handle:'No X account yet'}),el('small',{className:'pc-x-status pc-x-'+(x.status||'none'),textContent:X_STATUS[x.status]})),
-   x.url?ext(x.url,'Open on X ↗','button button-dark pc-x-open'):null));
-  if(!model.mine){out.push(el('p',{className:'pc-note',textContent:x.status==='connected'?`The project's posts live on X.`:x.status==='planned'?'The account is planned: it opens when the project goes public.':'This project has no X account.'}));return out;}
-  out.push(el('h4',{textContent:'Latest drafts'}));
-  out.push(x.posts.length?el('ol',{className:'pc-posts'},...x.posts.map(q=>el('li',{},el('span',{textContent:q.text}),el('small',{className:'pc-post-'+q.status,textContent:q.status})))):el('p',{className:'pc-note',textContent:'No drafts yet.'}));
-  out.push(el('p',{className:'pc-note',textContent:'Posting goes through the office: you approve each post there. Nothing is posted from this computer.'}));
-  if(cur.officePath)out.push(ext(cur.officePath+'#x','Review in the office ↗','button button-orange pc-cta'));
-  return out;}
- function launchTab(){const p=cur;
-  const head=bar(el('span',{className:'pc-stage'},el('b',{textContent:p.launched?'Launched':p.stageLabel}),el('i',{className:'pc-progress'},Object.assign(el('i'),{style:`width:${Math.round(p.progress*100)}%`}))),
-   p.explorerTx?ext(p.explorerTx,'Explorer ↗'):null,model.mine&&p.officePath?ext(p.officePath,'Open the office ↗','button button-orange pc-cta'):null,ext(p.pagePath,'New tab ↗'));
-  return [head,frame(p.pagePath,SANDBOX.page,`${p.name}: launch page`)];}
+  if(!s.src)return [headRow(cur),el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),s.empty),el('p',{textContent:model.mine?'The site appears here as soon as SUB-01 builds the first version.':'Come back later: the site goes up when it is built.'}))];
+  return [headRow(cur,bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),ext(s.open,'Open in a new tab ↗'))),frame(s.src,s.sandbox,`${cur.name}: website`)];}
+
+ // ---------------- X: planned → connect (OAuth in X's own window) → drafts you approve
+ function xTab(){
+  const p=cur,root=el('div',{className:'pc-x-root'},el('p',{className:'pc-note',textContent:'Loading…'}));
+  const e=epoch;load(p.slug).then(view=>{if(!alive(e)||tab!=='x')return;drawX(root,view);});
+  return [root];
+ }
+ function drawX(root,view,waiting=null){
+  const p=cur,m=xModel(view||{x:p.x.status?{status:p.x.status,planned_handle:p.x.handle,x_handle:p.x.handle}:null},model.mine),chip=xChip(m),out=[];
+  if(m.state==='connected'&&p.x.status!=='connected'){p.x.status='connected';p.x.handle=m.handle;p.x.url=m.url;}   // the desk's chip follows
+  out.push(el('div',{className:'pc-x'},el('div',{className:'pc-x-avatar'},icon('xlogo')),el('div',{className:'pc-x-main'},el('strong',{textContent:m.handle?'@'+m.handle:'No X account yet'}),
+   chip?el('small',{className:'pc-chip pc-chip-x '+chip.cls,textContent:m.state==='connected'?'Connected':m.state==='planned'?'Planned by SUB-01':'Disconnected'}):null),m.url?ext(m.url,'Open on X ↗','button button-dark button-sm pc-x-open'):null));
+  if(m.bio&&m.state!=='connected')out.push(el('blockquote',{className:'pc-quote'},el('span',{className:'eyebrow',textContent:'Bio'}),el('p',{textContent:m.bio})));
+  if(!model.mine){out.push(el('p',{className:'pc-note',textContent:m.note}));root.replaceChildren(...out);return;}
+  if(m.howto.length){out.push(el('ol',{className:'pc-howto'},...m.howto.map(t=>el('li',{textContent:t}))));
+   const err=el('p',{className:'pc-err'});
+   if(waiting){const cancel=btn('button-ghost button-sm','Cancel',()=>{waiting.stop();drawX(root,view);});
+    out.push(el('div',{className:'pc-wait'},el('i',{className:'pulse'}),el('span',{textContent:'Waiting for X… allow SUB-01 in the X window, then this updates by itself.'}),cancel));}
+   else{const b=btn('button-orange pc-cta','Connect X account',()=>startConnect(root,view,err),'xlogo');b.disabled=!m.canConnect;out.push(b);}
+   if(m.note)out.push(el('p',{className:'pc-note',textContent:m.note}));out.push(err);
+  }
+  if(m.state==='connected'){
+   out.push(el('h4',{textContent:'Posts'}));
+   out.push(m.posts.length?el('ol',{className:'pc-posts'},...m.posts.map(q=>postRow(root,view,q))):el('p',{className:'pc-note',textContent:'No drafts yet: SUB-01 writes them with the site.'}));
+   out.push(el('p',{className:'pc-note',textContent:m.note}));
+  }
+  root.replaceChildren(...out);
+ }
+ function postRow(root,view,q){
+  const li=el('li',{className:'pc-post is-'+q.status}),text=el('span',{className:'pc-post-text',textContent:q.text}),status=el('small',{className:'pc-post-'+q.status,textContent:q.status==='published'?'posted':q.status});
+  const err=el('p',{className:'pc-err',textContent:q.error?`Last try failed: ${q.error}`:''}),acts=el('div',{className:'pc-post-acts'});
+  const refresh=async()=>{const v=await load(cur.slug,true);if(tab==='x'&&!closed)drawX(root,v);};
+  if(q.canApprove){const a=btn('button-orange button-sm','Approve & post',async()=>{busy(a,true);err.textContent='';try{await api(`/api/x-posts/${encodeURIComponent(q.id)}/approve`,{method:'POST',body:{}});await refresh();}catch(x){err.textContent=explainError(x);busy(a,false);}},'check');acts.append(a);}
+  if(q.canEdit){const ed=btn('button-ghost button-sm','Edit',()=>{const ta=el('textarea',{className:'pc-post-edit',maxLength:280,value:q.text,rows:3});
+    const save=btn('button-dark button-sm','Save',async()=>{busy(save,true);err.textContent='';try{await api(`/api/x-posts/${encodeURIComponent(q.id)}`,{method:'PUT',body:{text:ta.value}});await refresh();}catch(x){err.textContent=explainError(x);busy(save,false);}});
+    const back=btn('button-ghost button-sm','Keep',()=>{li.replaceChildren(text,status,acts,err);});text.replaceWith(ta);acts.replaceChildren(save,back);ta.focus();});acts.append(ed);}
+  if(!q.canApprove&&!q.canEdit&&q.status==='approved')acts.append(el('small',{className:'pc-note',textContent:'Approved: SUB-01 posts it next.'}));
+  li.append(text,status,acts,err);return li;
+ }
+ // OAuth happens in X's own window (window.open on the server's connect route, which redirects to x.com and lands back on
+ // the launchpad); this tab polls the project until X reports the handle, for at most X_WAIT_MS.
+ function startConnect(root,view,err){
+  let w=null;try{w=window.open(`/api/projects/${encodeURIComponent(cur.slug)}/x/connect`,'_blank','noopener');}catch{}
+  if(!w){err.textContent='The browser blocked the X window. Allow pop-ups for this site and try again.';return;}
+  const e=epoch,started=Date.now(),waiting={stop(){stopped=true;}};let stopped=false;
+  const tick=async()=>{if(stopped||!alive(e)||tab!=='x')return;const v=await load(cur.slug,true);if(stopped||!alive(e)||tab!=='x')return;
+   if(v?.x?.status==='connected'){drawX(root,v);return;}
+   if(Date.now()-started>X_WAIT_MS){drawX(root,v);root.querySelector('.pc-err').textContent='X did not answer in time. Press Connect again when you are ready.';return;}
+   later(X_POLL_MS,tick);};
+  drawX(root,view,waiting);later(X_POLL_MS,tick);
+ }
+
+ // ---------------- Launch: the five-step stepper (desk-flows.js launchSteps), review before sign, confirming, live
+ function launchTab(){
+  const p=cur,root=el('div',{className:'pc-launch'},el('p',{className:'pc-note',textContent:'Loading…'}));
+  const e=epoch;load(p.slug).then(view=>{if(!alive(e)||tab!=='launch')return;drawLaunch(root,view);});
+  return [launchHead(p),root];
+ }
+ const launchHead=p=>headRow(p,el('span',{className:'pc-head-links'},ext(p.pagePath,'Launch page ↗'),model.mine&&p.officePath?ext(p.officePath,'Open office ↗'):null));
+ // The desk loaded the stage once with the room; the stepper's fresh view keeps the head chip (and the screen card) current.
+ function syncStage(m){if(!m.status||m.status===cur.stage)return;cur.stage=m.status;cur.stageLabel=STAGE_LABELS[m.status]||m.status.replace(/_/g,' ');cur.launched=m.status==='launched';if(m.live?.mint)cur.mint=m.live.mint;
+  const old=body.querySelector('[data-head]');if(old&&tab==='launch')old.replaceWith(launchHead(cur));}
+ let flight=null;   // the transaction being reviewed/signed on this tab: {tx, review} or a phase override
+ function drawLaunch(root,view,extra={}){
+  const m=launchSteps(view,me),out=[],e=epoch;syncStage(m);
+  if(m.loading){root.replaceChildren(el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),'The launch page is not reachable.'),el('p',{textContent:'The project could not be loaded. Close the computer and try again.'})));return;}
+  const err=el('p',{className:'pc-err',textContent:extra.error||''});
+  const list=el('ol',{className:'pc-steps'});list.style.setProperty('--step',String(stepIndex(m.current==='stopped'?'site':m.current)));
+  const refresh=async(error='')=>{const v=await load(cur.slug,true);if(alive(e)&&tab==='launch')drawLaunch(root,v,{error});};
+  for(const s of m.steps){
+   const li=el('li',{className:'pc-step is-'+s.state},el('i',{className:'pc-step-dot'},s.state==='done'?icon('check'):s.state==='blocked'?icon('x'):el('b',{textContent:String(stepIndex(s.id)+1)})));
+   const main=el('div',{className:'pc-step-main'},el('b',{className:'pc-step-title',textContent:s.title}),el('span',{className:'pc-step-line',textContent:s.line}));
+   li.dataset.step=s.id;li.append(main);list.append(li);
+   const open=s.state==='current'||s.state==='blocked'||(s.id==='live'&&m.live);
+   if(!open){if(s.id==='site'&&s.action)main.append(el('div',{className:'pc-step-acts'},el('button',{className:'pc-link',type:'button',textContent:s.action.label,onclick:()=>show('site')})));continue;}
+   if(s.id==='approve'&&m.split.rows.length)main.append(splitBox(m.split,m.approve?.statement));
+   if(s.id==='launch'&&flight?.tx)main.append(reviewCard(root,view,m,flight,refresh));
+   else if(s.id==='launch'&&(m.phase==='preparing'||m.phase==='confirming')){main.append(el('div',{className:'pc-wait'},el('i',{className:'pulse'}),el('span',{textContent:m.phase==='confirming'?`Signed · ${short(view.intent?.tx_signature||'',6)||'broadcast'} · waiting for the network…`:'The configuration is prepared by a job; this updates by itself.'})));
+    later(3000,()=>{if(tab==='launch')refresh();});}
+   if(s.id==='live'&&m.live)main.append(liveBox(m.live,view));
+   if(s.note)main.append(el('p',{className:'pc-step-note',textContent:s.note}));
+   if(s.action&&!(s.id==='launch'&&flight?.tx)){
+    const b=btn(s.action.id==='preview'?'button-dark button-sm':'button-orange button-sm',s.action.label,()=>act(s.action.id,root,view,m,b,err,refresh),s.action.id==='preview'?'globe':s.action.id==='clear'?'check':s.action.id==='approve'?'check':'rocket');
+    b.disabled=!s.action.enabled;const acts=el('div',{className:'pc-step-acts'},b);
+    if(s.id==='launch'&&m.phase==='resume')acts.append(el('button',{className:'pc-link pc-abandon',type:'button',textContent:'Cancel this transaction',onclick:()=>abandon(root,b,err,refresh,'cancelled')}));
+    main.append(acts);}
+   if(s.state==='current'||s.state==='blocked')main.append(err);
+  }
+  out.push(list);
+  if(!model.mine&&!m.owner)out.push(el('p',{className:'pc-note',textContent:'Only the author launches from this computer; you see where it stands.'}));
+  out.push(brainLine(view));
+  root.replaceChildren(...out);
+ }
+ function splitBox(split,statement){
+  const box=el('div',{className:'pc-split'},...split.rows.map(r=>el('div',{className:'pc-split-row'},tile(r.role==='sub01'?{kind:'sub01'}:{kind:'resident',name:r.label},'sm'),
+   el('span',{className:'pc-split-who'},el('b',{textContent:r.role==='sub01'?'SUB-01':r.role==='submitter'?'You (author)':r.label}),el('small',{textContent:short(r.wallet,6)})),el('b',{className:'pc-split-pct',textContent:r.pct}))));
+  box.append(el('p',{className:'pc-split-lock'},icon('lock'),split.locked?'Locked at launch: it cannot be changed afterwards, by you or by SUBZERONE.':'Creator fees go straight to the author wallet; no split on-chain.'));
+  if(statement){const d=el('details',{className:'pc-more'},el('summary',{},'What you approve',icon('cd')),el('pre',{className:'pc-statement',textContent:statement}));box.append(d);}
+  return box;
+ }
+ function liveBox(live,view){
+  const rows=el('div',{className:'pc-live'});
+  if(live.mint)rows.append(el('div',{className:'pc-live-row'},el('span',{className:'pc-live-k',textContent:'Mint'}),el('code',{textContent:short(live.mint,8)}),copyBtn(live.mint)));
+  const links=el('div',{className:'pc-live-links'});
+  if(live.explorerTx)links.append(ext(live.explorerTx,'Explorer ↗','button button-dark button-sm'));
+  if(live.pumpfun)links.append(ext(live.pumpfun,'pump.fun ↗','button button-dark button-sm'));
+  if(live.site)links.append(ext(live.site,'Site ↗','button button-dark button-sm'));
+  if(links.childElementCount)rows.append(links);
+  if(live.ledger)rows.append(el('p',{className:'pc-note',textContent:live.ledger}));
+  return rows;
+ }
+ // SUB-01's vote in one line; "See why" unfolds his feedback (verdict.js, the same card the author saw at the drop).
+ function brainLine(view){
+  const box=el('div',{className:'pc-brain'}),line=el('button',{className:'pc-brain-line',type:'button'}),body=el('div',{className:'verdict pc-brain-body',hidden:true});
+  line.append(el('span',{className:'pc-brain-k',textContent:'SUB-01'}),el('span',{className:'pc-brain-t',textContent:view?.ideaId?'He voted build.':'His vote'}),el('span',{className:'pc-brain-more'},'See why',icon('cd')));
+  box.append(line,body);if(!view?.ideaId){line.disabled=true;return box;}
+  let loaded=false;line.onclick=async()=>{const open=body.hidden;if(open&&!loaded){loaded=true;let idea=null;try{idea=await api(`/api/ideas/${encodeURIComponent(view.ideaId)}`);}catch{}
+    const m=verdictModel(idea);renderVerdict(body,{...m,canRevise:false},{icon});body.classList.add('pc-brain-body');line.querySelector('.pc-brain-t').textContent=m.headline;}
+   body.hidden=!open;line.classList.toggle('is-open',open);if(open)body.scrollIntoView({block:'nearest',behavior:'smooth'});};
+  return box;
+ }
+ // Actions: one call each, then the view is refetched and the stepper redrawn. Errors stay on the step, in plain words.
+ async function act(id,root,view,m,b,err,refresh){
+  err.textContent='';
+  if(id==='preview'){show('site');return;}
+  busy(b,true);
+  try{
+   if(id==='approve'){if(!m.publicIdea&&m.approve?.ideaId)await api(`/api/ideas/${encodeURIComponent(m.approve.ideaId)}/publish`,{method:'POST',body:{public:true}});
+    await api(`/api/projects/${encodeURIComponent(cur.slug)}/approve`,{method:'POST',body:{allocationId:m.approve.allocationId,statement:m.approve.statement,siteVersion:m.approve.siteVersion}});}
+   else if(id==='clear')await api(`/api/admin/projects/${encodeURIComponent(cur.slug)}/clear`,{method:'POST',body:{}});
+   else if(id==='prepare'||id==='resume'){const tx=await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/transaction`,{method:'POST',body:{}});
+    const v=await load(cur.slug,true);flight={tx,review:reviewModel(tx,v,me?.user?.wallet)};if(!closed&&tab==='launch')drawLaunch(root,v);return;}
+   await refresh();
+  }catch(x){err.textContent=explainError(x);busy(b,false);if(x?.status===409&&/changed/.test(x.body?.error||''))refresh(explainError(x));}
+ }
+ async function abandon(root,b,err,refresh,reason){
+  if(b)busy(b,true);err.textContent='';flight=null;
+  try{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/abandon`,{method:'POST',body:{reason}});}catch(x){err.textContent=explainError(x);}
+  await refresh();
+ }
+ // The review card: exactly what the server read from the built transaction, before the wallet opens. Sign stays
+ // disabled unless the fee payer is this wallet and only launch programs are called (reviewModel.canSign).
+ function reviewCard(root,view,m,fl,refresh){
+  const r=fl.review,card=el('div',{className:'pc-review'+(r.flagged||!r.you?' is-flagged':'')}),wallet=lastWallet()||'wallet';
+  const kv=(k,...v)=>el('div',{className:'pc-kv'},el('span',{className:'pc-kv-k',textContent:k}),el('span',{className:'pc-kv-v'},...v));
+  card.append(el('div',{className:'pc-review-head'},el('span',{className:'eyebrow'},r.mock?'MOCK TRANSACTION · NOTHING ON-CHAIN':'REVIEW BEFORE YOU SIGN'),r.resumed?el('small',{className:'pc-note',textContent:'The same transaction you built earlier.'}):null));
+  for(const w of r.warnings)card.append(el('p',{className:'pc-warn'},icon('x'),w));
+  card.append(kv('Network',el('b',{textContent:r.network})),
+   kv('Fee payer',el('code',{textContent:short(r.feePayer,6)}),el('small',{className:r.you?'is-ok':'is-bad',textContent:r.you?'you':'not your wallet'})),
+   kv('New mint',el('code',{textContent:short(r.mint,6)||'—'})),
+   kv('Programs',el('span',{className:'pc-programs'},...r.programs.map(p=>el('span',{className:'pc-program'+(p.flag?' is-bad':'')},p.flag?icon('x'):icon('check'),p.name,p.direct?'':el('small',{textContent:' (inside the one above)'}))))),
+   kv('Can write',el('b',{textContent:String(r.writable)}),el('small',{textContent:` accounts · ${r.signers} signature${r.signers>1?'s (yours + the new mint, already signed)':' (yours)'}`})),
+   kv('Cost',el('b',{textContent:r.cost.total}),el('small',{textContent:r.cost.fee!=null?` · fee ${r.cost.fee} + rent ${r.cost.rent}${r.cost.buy?' + buy '+r.cost.buy:''}${r.cost.simulated?' (from a simulation)':''}`:r.mock?' · mock':' · the wallet shows the exact amount'}),r.cost.balance?el('small',{textContent:` · your balance ${r.cost.balance}`}):null));
+  card.append(el('span',{className:'eyebrow',textContent:'Creator-fee split'+(r.split.locked?' · locked at launch':'')}),splitBox(r.split,null));
+  card.append(el('span',{className:'eyebrow',textContent:'What this does NOT do'}),el('ul',{className:'pc-doesnot'},...r.doesNot.map(t=>el('li',{textContent:t}))));
+  card.append(el('p',{className:'pc-note',textContent:r.mock?'The wallet asks you to sign a labelled text message; no transaction exists.':'Your wallet shows the transaction again before you sign. Check it shows the same network, fee payer and amount.'}));
+  const err=el('p',{className:'pc-err'}),sign=btn('button-orange button-sm',`Sign with ${wallet}`,()=>signNow(root,fl,sign,err,refresh),'wallet');sign.disabled=!r.canSign;
+  const cancel=el('button',{className:'pc-link pc-abandon',type:'button',textContent:'Cancel this transaction',onclick:()=>abandon(root,sign,err,refresh,'cancelled')});
+  card.append(el('div',{className:'pc-step-acts'},sign,cancel),err);
+  return card;
+ }
+ async function signNow(root,fl,b,err,refresh){
+  const name=lastWallet();err.textContent='';if(!name){err.textContent='Sign in with your wallet again, then sign.';return;}
+  busy(b,true);
+  try{
+   let signed;
+   if(fl.tx.mock){const v=await load(cur.slug,true),text=v?.mockSigningText;if(!text)throw new Error('The mock signing text is missing; prepare again.');
+    signed=b58encode((await signMessage(name,new TextEncoder().encode(text))).signature);}
+   else signed=(await signTransaction(name,fl.tx.txBase64,{chain:chainFor(fl.tx.network)})).signed;
+   await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/signed`,{method:'POST',body:{signed}});
+   flight=null;await refresh();
+  }catch(x){
+   if(x?.rejected){await abandon(root,b,err,refresh,'rejected');err.textContent='Cancelled in the wallet. Nothing was signed or sent.';return;}
+   err.textContent=x?.status?explainError(x):describeError(x);busy(b,false);
+   if(x?.status===400||x?.status===409){flight=null;later(1500,()=>refresh(explainError(x)));}
+  }
+ }
+
  function ideasTab(){
   const list=model.ideas.length?el('ol',{className:'pc-ideas'},...model.ideas.map(i=>el('li',{className:i===focusIdea?'is-focus':''},el('strong',{textContent:i.title}),el('small',{textContent:i.stageLabel||'in the mailbox'})))):el('p',{className:'pc-note',textContent:'No ideas in flight.'});
   const drop=el('button',{className:'button button-orange pc-cta',type:'button'},icon('mail','i lead'),'Drop a new idea'),note=el('p',{className:'pc-note'});

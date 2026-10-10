@@ -543,7 +543,7 @@ async function enter(plotId,mine,viewer){
  let pc=null,pcPending=null;   // pcPending: the walk to the computer in progress (a token; any other tap cancels it)
  function getUp(){if(me.posed&&lastSpot){stand();me.root.position.set(lastSpot.x,0,lastSpot.z);mv.set(lastSpot.x,lastSpot.z,me.root.rotation.y);}stand();me.stopEmote?.();me.play('Idle');free=true;}
  function openPc(project){pcPending=null;if(closed||pc)return;
-  pc=openComputer({model:desk,project,ownerName:owner.name,onIdea:host.openIdea?()=>{close();host.openIdea();}:null,onClose({quiet}={}){pc=null;if(!quiet&&!closed){getUp();hud.say(mine?'Back to the room.':`${owner.name} gets up from the computer.`);}}});}
+  pc=openComputer({model:desk,project,ownerName:owner.name,me:viewer||null,onIdea:host.openIdea?()=>{close();host.openIdea();}:null,onClose({quiet}={}){pc=null;if(!quiet&&!closed){getUp();hud.say(mine?'Back to the room.':`${owner.name} gets up from the computer.`);}}});}
  function toComputer(i){
   if(pc||pcPending)return;const e=i>=0?room.furniture[i]:null;
   if(!e||!dimsOf(e.item)){const s=room.furniture.findIndex(f=>SCREEN_ITEMS.has(f.item));if(s>=0&&s!==i){toComputer(s);return;}openPc(null);return;}   // no computer in the room: open straight away

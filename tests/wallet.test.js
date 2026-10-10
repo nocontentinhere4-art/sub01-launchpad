@@ -134,3 +134,40 @@ test('signIn end to end: legacy-only provider, a late Wallet Standard wallet tha
   await assert.rejects(signIn('Ghost'),/Wallet not found/);
  }finally{delete globalThis.fetch;}
 });
+
+// ---------------------------------------------------------------- launch signatures (the computer's Launch tab)
+import {signTransaction,signMessage,fromBase64,toBase64,NO_RAW_SIGN,NO_SIGN_FEATURE,SIGN_MS} from '../src/wallet.js';
+test('signTransaction: Wallet Standard signs the bytes on the asked chain; legacy and feature-less wallets refuse clearly; rejection maps',async()=>{
+ const kp=await webcrypto.subtle.generateKey({name:'Ed25519'},true,['sign','verify']);const raw=new Uint8Array(await webcrypto.subtle.exportKey('raw',kp.publicKey));
+ const acct={address:b58encode(raw),publicKey:raw,chains:['solana:mainnet','solana:devnet'],features:['solana:signMessage','solana:signTransaction']};
+ const seen=[];
+ // a "transaction": 1 signature slot (64 zero bytes) + a message; the fake wallet signs the message part and fills the slot
+ const message=new TextEncoder().encode('launch message bytes'),tx=new Uint8Array(1+64+message.length);tx[0]=1;tx.set(message,65);
+ registerStandard({name:'Std',chains:['solana:mainnet','solana:devnet'],features:{'standard:connect':{connect:async(o)=>{seen.push(['connect',o]);return {accounts:[acct]};}},
+  'solana:signMessage':{signMessage:async({message})=>[{signedMessage:message,signature:new Uint8Array(await webcrypto.subtle.sign('Ed25519',kp.privateKey,message))}]},
+  'solana:signTransaction':{signTransaction:async(...ins)=>{const out=[];for(const i of ins){seen.push(['sign',i.chain,i.account.address,i.transaction.length]);const t=new Uint8Array(i.transaction);const sig=new Uint8Array(await webcrypto.subtle.sign('Ed25519',kp.privateKey,t.subarray(65)));t.set(sig,1);out.push({signedTransaction:t});}return out;}}}});
+ const r=await signTransaction('Std',toBase64(tx),{chain:'solana:devnet'});
+ assert.equal(r.address,acct.address);const signed=fromBase64(r.signed);assert.equal(signed.length,tx.length);assert.ok(signed.subarray(1,65).some(b=>b!==0),'the signature slot is filled');
+ assert.equal(await webcrypto.subtle.verify('Ed25519',kp.publicKey,signed.subarray(1,65),message),true);
+ assert.deepEqual(seen[0],['connect',{silent:true}]);assert.deepEqual(seen[1],['sign','solana:devnet',acct.address,tx.length]);
+ assert.equal((await signTransaction('Std',toBase64(tx))).signed.length,r.signed.length,'default chain is mainnet');assert.equal(seen.at(-1)[1],'solana:mainnet');
+ // signMessage through the same wallet: 64-byte signature, verified against the account's key
+ const m=await signMessage('Std',message);assert.equal(m.signature.length,64);assert.equal(m.address,acct.address);assert.equal(await webcrypto.subtle.verify('Ed25519',kp.publicKey,m.signature,message),true);
+ // legacy provider: cannot sign raw bytes
+ const solflare=await keyed({shape:'object'});scanWallets({solflare,dispatchEvent(){}});assert.ok(listWallets().some(w=>w.name==='Solflare'&&w.legacy));
+ await assert.rejects(signTransaction('Solflare',toBase64(tx)),err=>err.unsupported&&err.message===NO_RAW_SIGN);
+ assert.equal(describeError(Object.assign(new Error(NO_RAW_SIGN),{unsupported:true})),NO_RAW_SIGN);
+ // a Wallet Standard wallet without the feature, a wallet that rejects, one that returns nothing, an empty transaction
+ registerStandard({name:'NoFeat',chains:['solana:mainnet'],features:{'standard:connect':{connect:async()=>({accounts:[acct]})},'solana:signMessage':{signMessage:async()=>[]}}});
+ await assert.rejects(signTransaction('NoFeat',toBase64(tx)),err=>err.unsupported&&err.message===NO_SIGN_FEATURE);
+ registerStandard({name:'Rej',chains:['solana:mainnet'],features:{'standard:connect':{connect:async()=>({accounts:[acct]})},'solana:signMessage':{signMessage:async()=>[]},'solana:signTransaction':{signTransaction:async()=>{throw {code:4001,message:'User rejected the request.'};}}}});
+ await assert.rejects(signTransaction('Rej',toBase64(tx)),err=>err.rejected&&err.message===REJECTED);
+ registerStandard({name:'Mute',chains:['solana:mainnet'],features:{'standard:connect':{connect:async()=>({accounts:[acct]})},'solana:signMessage':{signMessage:async()=>[]},'solana:signTransaction':{signTransaction:async()=>[{}]}}});
+ await assert.rejects(signTransaction('Mute',toBase64(tx)),/without a signed transaction/);
+ await assert.rejects(signTransaction('Std',''),/no transaction to sign/);await assert.rejects(signTransaction('Ghost',toBase64(tx)),/Wallet not found/);
+ // a quiet connect that fails falls back to the normal one
+ let n=0;registerStandard({name:'Loud',chains:['solana:mainnet'],features:{'standard:connect':{connect:async(o)=>{n++;if(o.silent)throw new Error('not trusted');return {accounts:[acct]};}},'solana:signMessage':{signMessage:async()=>[]},
+  'solana:signTransaction':{signTransaction:async({transaction})=>[{signedTransaction:transaction}]}}});
+ assert.equal(fromBase64((await signTransaction('Loud',toBase64(tx))).signed).length,tx.length);assert.equal(n,2);
+ assert.equal(SIGN_MS,10000);assert.deepEqual([...fromBase64(toBase64(new Uint8Array([0,1,255,128])))],[0,1,255,128]);
+});

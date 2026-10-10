@@ -1,5 +1,6 @@
-// Wallet sign-in (Phantom, Solflare, Backpack, Glow, Coinbase, Trust, OKX…). The city only signs the server's sign-in
-// message: no transaction, no funds. Launch signatures happen in the project's office page, which shows the transaction first.
+// Wallet sign-in (Phantom, Solflare, Backpack, Glow, Coinbase, Trust, OKX…). Sign-in signs the server's message: no
+// transaction, no funds. The one transaction the city ever asks for is the launch (signTransaction below), after the
+// computer's Launch tab has shown the server's review of it (desk.js).
 // Two detection paths, Wallet Standard first (`wallet-standard:app-ready` / `register-wallet`), then the LEGACY injected
 // providers (window.phantom.solana, window.solflare, window.solana…) for wallets that never register, or register late,
 // each wrapped in an adapter of the same shape (adaptLegacy). A Wallet Standard entry wins over a legacy one of the same name.
@@ -132,6 +133,48 @@ async function run(name){
  remember(name);return account.address;
 }
 export const signOut=()=>api('/api/auth/logout',{method:'POST',body:{}});
+
+// ---- Launch signatures (desk.js's Launch tab) ----
+// The server builds and broadcasts the transaction; the page only asks the wallet for a signature over bytes it never
+// decodes (no @solana/web3.js here: CSP, bundle size). Wallet Standard `solana:signTransaction` takes raw bytes; a legacy
+// injected provider (window.phantom.solana…) wants a web3.js Transaction object, so it cannot sign bytes: a clear line
+// says to reconnect through the wallet's Wallet Standard entry (Phantom 23+, Solflare, Backpack register one).
+export const SIGN_MS=10000;
+export const NO_RAW_SIGN='This wallet is connected the old way and cannot sign a raw transaction here. Reload the page and pick the same wallet again (Phantom 23+, Solflare and Backpack register the standard connection), or use another wallet.';
+export const NO_SIGN_FEATURE='This wallet does not offer transaction signing to web pages. Use another wallet.';
+export const fromBase64=s=>{const bin=atob(String(s||''));const out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out;};
+export const toBase64=b=>{let s='';for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s);};
+// Reconnect quietly (the wallet already signed in on this page); a wallet that ignores `silent` opens its popup, which is fine.
+async function connected(name){
+ const w=getWallet(name);if(!w)throw new Error('Wallet not found. Reload the page and sign in again.');
+ let res=await ask(()=>withTimeout(Promise.resolve().then(()=>w.features['standard:connect'].connect({silent:true})))).catch(()=>null);
+ let account=res?.accounts?.[0]||w.accounts?.[0];
+ if(!account?.address){res=await ask(()=>withTimeout(Promise.resolve().then(()=>w.features['standard:connect'].connect({silent:false}))));account=res?.accounts?.[0]||w.accounts?.[0];}
+ if(!account?.address)throw new Error('The wallet shared no account. Unlock it, pick an account and try again.');
+ return {w,account};
+}
+/** Sign plain bytes (the MOCK launch text) -> {signature:Uint8Array(64), address}. Same checks as sign-in. */
+export async function signMessage(name,message){
+ const {w,account}=await connected(name);
+ const out=await ask(()=>withTimeout(Promise.resolve().then(()=>w.features['solana:signMessage'].signMessage({account,message})),SIGN_MS));
+ const signed=Array.isArray(out)?out[0]:out,signature=toU8(signed?.signature);
+ if(!signature||signature.length!==64)throw new Error('The wallet answered without a valid signature. Try again.');
+ if(signed?.publicKey&&addr(signed.publicKey)!==account.address)throw new Error(MISMATCH);
+ if(!await signedByKey(toU8(account.publicKey),message,signature))throw new Error(MISMATCH);
+ return {signature,address:account.address};
+}
+/** Sign a serialized transaction (base64 in, base64 out) through Wallet Standard `solana:signTransaction` on `chain`. */
+export async function signTransaction(name,txBase64,{chain=LEGACY_CHAIN}={}){
+ const {w,account}=await connected(name);
+ if(w.legacy)throw Object.assign(new Error(NO_RAW_SIGN),{unsupported:true});
+ const f=w.features?.['solana:signTransaction'];
+ if(typeof f?.signTransaction!=='function')throw Object.assign(new Error(NO_SIGN_FEATURE),{unsupported:true});
+ const transaction=fromBase64(txBase64);if(!transaction.length)throw new Error('There is no transaction to sign.');
+ const out=await ask(()=>withTimeout(Promise.resolve().then(()=>f.signTransaction({transaction,account,chain})),SIGN_MS));
+ const signed=Array.isArray(out)?out[0]:out,bytes=toU8(signed?.signedTransaction);
+ if(!bytes?.length)throw new Error('The wallet answered without a signed transaction. Try again.');
+ return {signed:toBase64(bytes),address:account.address};
+}
 
 // ---- No wallet found ----
 // Desktop: official download pages. Phone (no extensions: iOS Safari, Android Chrome): each wallet app's universal link
