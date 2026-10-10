@@ -144,3 +144,17 @@ export function explainError(err){
  if(status>=500)return 'The server could not answer. Try again in a moment.';
  return detail||str(err.message)||'Something went wrong. Try again.';
 }
+
+/** profileKit(project, xm) -> what the owner sets by hand on X (no API for the profile picture, header or bio):
+ *  files to download and texts to copy. null when the project has no logo yet. */
+export function profileKit(p,xm){
+ const logo=p?.logoUrl,banner=p?.bannerUrl,slug=str(p?.slug)||'coin';
+ if(!logo)return null;
+ const files=[{kind:'logo',label:'Profile picture',hint:'PNG 512×512',url:logo,name:`${slug}-logo.png`}];
+ if(banner)files.push({kind:'header',label:'Header',hint:'PNG 1500×500',url:banner,name:`${slug}-header.png`,render:{w:1500,h:500}});
+ const texts=[];
+ if(xm?.bio)texts.push({label:'Bio',text:xm.bio});
+ if(p?.siteUrl)texts.push({label:'Website',text:p.siteUrl});
+ return {files,texts,note:'X has no API for the picture, header or bio: download these and set them in the X app.'};
+}
+

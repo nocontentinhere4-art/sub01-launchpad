@@ -3,7 +3,7 @@ import {icon,tile} from './icons.js';
 import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
 import {verdictModel,renderVerdict} from './verdict.js';
-import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS} from './desk-flows.js';
+import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit} from './desk-flows.js';
 export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
@@ -109,6 +109,24 @@ const frame=(src,sandbox,title)=>{const f=el('iframe',{className:'pc-frame',src,
 // (the label is a plain span: the city's .lbl is the dock's long label, hidden on phones)
 const btn=(cls,text,onclick,lead=null)=>{const b=el('button',{className:'button '+cls,type:'button',onclick},lead?icon(lead,'i lead'):null,el('span',{className:'pc-lbl',textContent:text}));return b;};
 const busy=(b,on)=>{b.disabled=on;b.classList.toggle('is-busy',on);};
+// The banner is an SVG; X wants PNG/JPG for the header: draw it on a canvas at 1500×500 (same-origin, so the canvas stays clean).
+async function savePng(url,name,{w,h}){
+ const svg=await (await fetch(url,{credentials:'same-origin'})).text();
+ const img=new Image();await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('could not read the banner'));img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);});
+ const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);
+ const blob=await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('could not render the PNG')),'image/png'));
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+}
+function kitBlock(kit,p){
+ const err=el('p',{className:'pc-err'});
+ const files=kit.files.map(f=>{
+  const b=el('a',{className:'button button-dark button-sm pc-kit-file',href:f.url,download:f.name},icon('lower','i lead'),el('span',{className:'pc-lbl',textContent:`${f.label} · ${f.hint}`}));
+  if(f.render)b.onclick=ev=>{ev.preventDefault();b.classList.add('is-busy');savePng(f.url,f.name,f.render).catch(e=>{err.textContent=e.message;}).finally(()=>b.classList.remove('is-busy'));};
+  return b;});
+ const texts=kit.texts.map(t=>el('div',{className:'pc-kit-text'},el('span',{className:'eyebrow',textContent:t.label}),el('span',{className:'pc-kit-val',textContent:t.text}),copyBtn(t.text)));
+ return el('section',{className:'pc-kit'},el('div',{className:'pc-kit-head'},el('img',{src:p.logoUrl,alt:'',width:56,height:56,decoding:'async'}),el('div',null,el('h4',{textContent:'Profile kit for X'}),el('p',{className:'pc-note',textContent:kit.note}))),
+  el('div',{className:'pc-kit-files'},...files),texts.length?el('div',{className:'pc-kit-texts'},...texts):null,err);
+}
 const copyBtn=text=>{const b=el('button',{className:'pc-copy',type:'button',title:'Copy',onclick:async()=>{try{await navigator.clipboard.writeText(text);b.classList.add('is-ok');setTimeout(()=>b.classList.remove('is-ok'),1200);}catch{}}},icon('check'));b.setAttribute('aria-label','Copy '+short(text,6));return b;};
 // openComputer({model,project,ownerName,me,onIdea,onClose}) → {close()}. me: the /api/me answer (role, wallet) or null.
 // onIdea: null when main.js has not wired host.openIdea.
@@ -166,6 +184,7 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   out.push(el('div',{className:'pc-x'},el('div',{className:'pc-x-avatar'},icon('xlogo')),el('div',{className:'pc-x-main'},el('strong',{textContent:m.handle?'@'+m.handle:'No X account yet'}),
    chip?el('small',{className:'pc-chip pc-chip-x '+chip.cls,textContent:m.state==='connected'?'Connected':m.state==='planned'?'Planned by SUB-01':'Disconnected'}):null),m.url?ext(m.url,'Open on X ↗','button button-dark button-sm pc-x-open'):null));
   if(m.bio&&m.state!=='connected')out.push(el('blockquote',{className:'pc-quote'},el('span',{className:'eyebrow',textContent:'Bio'}),el('p',{textContent:m.bio})));
+  if(model.mine){const kit=profileKit(p,m);if(kit)out.push(kitBlock(kit,p));}   // 2026-10-10 the owner: logo + header to download for X
   if(!model.mine){out.push(el('p',{className:'pc-note',textContent:m.note}));root.replaceChildren(...out);return;}
   if(m.howto.length){out.push(el('ol',{className:'pc-howto'},...m.howto.map(t=>el('li',{textContent:t}))));
    const err=el('p',{className:'pc-err'});
