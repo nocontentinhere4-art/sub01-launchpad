@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import {toon,toonify,night as nightAmount,weather as wxUniforms} from './toon.js';
 import {createWeather,createAmbience,weatherAt,LEVELS,nextMode,approach,atmosphere,wind,tokyoClock,skyGradient,phaseMix} from './weather.js';
 import {crossingState} from './city-crowd.js';
-import {trainPosition,setCityWorld,setCityFocus} from './city-life.js';
+import {trainPosition,setCityWorld,setCityFocus,canalLayout} from './city-life.js';
+import {riverHole} from './landmarks.js';
 import {setTrafficQuality} from './city-traffic.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -109,6 +110,7 @@ scene.fog = new THREE.Fog(LOOK.day.fog, 100, 300);
 // not crawl while panning) and its box grows with the visible area, from ±18 up close to ±62 in the overview.
 let shadowHalf = 0;
 function updateSunAndFog() {
+  if(horizon&&scene.fog)horizon.material.color.copy(scene.fog.color);
   const d = camera.position.distanceTo(controls.target); scene.fog.near = d + FOG.near * fogMul.near; scene.fog.far = d + FOG.far * fogMul.far;
   if (!sunlight.castShadow) return;
   const half = THREE.MathUtils.clamp(Math.max(camera.right, camera.top) / camera.zoom * 1.1, 18, 100);
@@ -143,17 +145,18 @@ const HERO_TREES=[[9.8,-.5],[-12.6,3.75],[-4.4,3.75],[2.4,3.75],[12.6,3.75]].map
   .concat([{species:'grove',x:-13.25,z:-5.7,y:HERO.top,s:.72},{species:'grove',x:-11.95,z:-6.2,y:HERO.top,s:.55}]);
 let heroHome=null;
 // One ground under the whole city (owner bug: sky-coloured strips between districts at close zoom): a concrete plane
-// over CITY_EXTENT + 40 at y = −0.02 with a hole for the canal (water at −1.05), and a darker far plane to ±600 at −1.6
-// that the fog swallows. One geometry, vertex colours, one draw call; the city's ground night tint (#55617A) in-shader.
-const GROUND_PLANE={near:'#8E8E88',far:'#77776F',margin:40,far_:600,y:-.02,farY:-1.6};
+// over CITY_EXTENT + 40 at y = −0.02 with a hole for the river (landmarks.js riverHole, water at −1.05), and a darker far
+// plane to ±600 at −1.6. One geometry, vertex colours, one draw call; the city's ground night tint (#55617A) in-shader.
+// renderOrder −10: the ground is drawn first, so Fuji (tokyo-style.js, a backdrop whose anchor sits far below this plane)
+// can paint over it at −5 before the city draws on top.
+let horizon=null;
+const GROUND_PLANE={near:'#8E8E88',far:'#77776F',margin:40,far_:600,y:-.02,farY:-1.6,renderOrder:-10};
 function cityGround(){
-  const E=CS.CITY_EXTENT,M=GROUND_PLANE.margin,x0=E.minX-M,x1=E.maxX+M,z0=E.minZ-M,z1=E.maxZ+M,cx=CS.CANAL_X??null,F=GROUND_PLANE.far_;
-  const rects=[],R=(a,b,c,d,y,col)=>{if(b-a>.01&&d-c>.01)rects.push([a,b,c,d,y,col]);};
-  if(cx!==null&&cx-6>x0&&cx+6<x1){const cz0=Math.max(z0,E.minZ-3),cz1=Math.min(z1,E.maxZ+3);
-    R(x0,cx-6,z0,z1,GROUND_PLANE.y,GROUND_PLANE.near);R(cx+6,x1,z0,z1,GROUND_PLANE.y,GROUND_PLANE.near);
-    R(cx-6,cx+6,z0,cz0,GROUND_PLANE.y,GROUND_PLANE.near);R(cx-6,cx+6,cz1,z1,GROUND_PLANE.y,GROUND_PLANE.near);}
-  else R(x0,x1,z0,z1,GROUND_PLANE.y,GROUND_PLANE.near);
-  R(-F,F,-F,F,GROUND_PLANE.farY,GROUND_PLANE.far);
+  const E=CS.CITY_EXTENT,M=GROUND_PLANE.margin,x0=E.minX-M,x1=E.maxX+M,z0=E.minZ-M,z1=E.maxZ+M,F=GROUND_PLANE.far_,h=CS.CANAL_X==null?null:riverHole();
+  const rects=[],R=(a,b,c,d,y,col)=>{if(b-a>.01&&d-c>.01)rects.push([a,b,c,d,y,col]);},Y=GROUND_PLANE.y,N=GROUND_PLANE.near;
+  if(h&&h.x0>x0&&h.x1<x1){const cz0=Math.max(z0,E.minZ-3),cz1=Math.min(z1,E.maxZ+3);
+    R(x0,h.x0,z0,z1,Y,N);R(h.x1,x1,z0,z1,Y,N);R(h.x0,h.x1,z0,cz0,Y,N);R(h.x0,h.x1,cz1,z1,Y,N);}
+  else R(x0,x1,z0,z1,Y,N);
   const pos=[],nor=[],col=[],c=new THREE.Color();
   for(const [a,b,zA,zB,y,hex] of rects){c.set(hex);for(const [x,z] of [[a,zA],[a,zB],[b,zA],[b,zA],[a,zB],[b,zB]]){pos.push(x,y,z);nor.push(0,1,0);col.push(c.r,c.g,c.b);}}
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
@@ -161,7 +164,9 @@ function cityGround(){
   m.onBeforeCompile=(s,r)=>{prev.call(m,s,r);s.uniforms.uGpNight=nightAmount;s.uniforms.uGpTint={value:new THREE.Color().setHex(0x55617A,THREE.LinearSRGBColorSpace)};
     s.fragmentShader='uniform float uGpNight;uniform vec3 uGpTint;\n'+s.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=mix(vec3(1.),uGpTint,uGpNight);');};
   m.customProgramCacheKey=()=>'ground-plane';
-  const mesh=new THREE.Mesh(g,m);mesh.name='city ground';mesh.receiveShadow=true;mesh.raycast=()=>{};mesh.frustumCulled=false;scene.add(mesh);return mesh;
+  const mesh=new THREE.Mesh(g,m);mesh.name='city ground';mesh.renderOrder=GROUND_PLANE.renderOrder;mesh.receiveShadow=true;mesh.raycast=()=>{};mesh.frustumCulled=false;scene.add(mesh);
+  // Horizon: a far plane in the fog colour (unlit, unfogged) so the city still dissolves into haze at the edges.
+  horizon=new THREE.Mesh(new THREE.PlaneGeometry(F*2,F*2).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:scene.fog?.color||'#E6DFD2',fog:false}));horizon.position.y=GROUND_PLANE.farY;horizon.renderOrder=GROUND_PLANE.renderOrder-1;horizon.raycast=()=>{};horizon.frustumCulled=false;scene.add(horizon);return mesh;
 }
 function groundwork() {
   cityGround();
@@ -344,8 +349,8 @@ $('signin-close').onclick=$('resident-close').onclick=closeDialog;
 $('idea-button').onclick=()=>openBuildForm();
 $('city-tour').onclick=()=>{cityTour={index:0,elapsed:0};nextCityView();};
 // Canal and metro from city-state.js (wave 4A); the station sits 26 route units west of centre, stretched to the city.
-const CANAL_X=CS.CANAL_X??79,METRO_Z=CS.METRO_Z??78,CE=CS.CITY_EXTENT,STATION_X=CE?(CE.minX+CE.maxX)/2-26*(CE.maxX-CE.minX)/145:-26;
-const cityViews=[{x:-29,z:-28,y:24,zoom:.5,text:'Tokyo Tower / Shiba'},{x:29,z:2,y:4,zoom:.72,text:'Shibuya / Neon crossing'},{x:55,z:-58,y:16,zoom:.48,text:'Broadcast tower / Skyline'},{x:CANAL_X,z:2,y:1,zoom:.56,text:'Waterfront / Bridges'},{x:STATION_X,z:METRO_Z,y:4,zoom:.56,text:'Metro / City in motion'}];
+const METRO_Z=CS.METRO_Z??78,CE=CS.CITY_EXTENT,STATION_X=CE?(CE.minX+CE.maxX)/2-26*(CE.maxX-CE.minX)/145:-26;
+const cityViews=[{x:-29,z:-28,y:24,zoom:.5,text:'Tokyo Tower / Shiba'},{x:29,z:2,y:4,zoom:.72,text:'Shibuya / Neon crossing'},{x:55,z:-58,y:16,zoom:.48,text:'Broadcast tower / Skyline'},{x:canalLayout().x,z:2,y:1,zoom:.56,text:'Waterfront / Bridges'},{x:STATION_X,z:METRO_Z,y:4,zoom:.56,text:'Metro / City in motion'}];
 function nextCityView(){const v=cityViews[cityTour.index];follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(v.x,v.y,v.z),zoom:camera.zoom,endZoom:mobile?v.zoom*.55:v.zoom,elapsed:0};$('activity-text').textContent=v.text;}
 
 $('district-select').onchange=()=>{cityTour=null;renderList();const d=districts.find(d=>d.id===$('district-select').value);if(d){follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(d.x,2,d.z),zoom:camera.zoom,endZoom:mobile?.36:.72,elapsed:0};}else resetView();};

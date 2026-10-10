@@ -4,10 +4,11 @@ import * as THREE from 'three';
 import {snapToStreet,exploreRoute,groundY,pickPoi,idleTimer,districtAt,cityPois,createExplorer,LANDMARKS,IDLE_S,PAUSE_S} from '../src/explore.js';
 import {frontOf} from '../src/world-sync.js';
 import {ROAD_Z,BOULEVARD_X,CITY_EXTENT as E,CANAL_X,METRO_Z} from '../src/city-state.js';
+import {riverEdges} from '../src/landmarks.js';
 import {createCityEvents} from '../src/city-events.js';
 
 // 7×7 city (wave 4A): rows at −88…92, boulevards at ±14.5/±43.5/±72.5, the canal bridge at CANAL_X 108.
-const onStreet=p=>ROAD_Z.some(z=>Math.abs(p.z-z)<=2.81&&Math.abs(p.x)<=E.maxX-.5)||BOULEVARD_X.some(x=>Math.abs(p.x-x)<=1.31&&p.z>=E.minZ&&p.z<=E.maxZ)||p.x>=E.maxX-.5&&p.x<=CANAL_X+7&&p.z>=.4&&p.z<=3.6;
+const onStreet=p=>ROAD_Z.some(z=>Math.abs(p.z-z)<=2.81&&Math.abs(p.x)<=E.maxX-.5)||BOULEVARD_X.some(x=>Math.abs(p.x-x)<=1.31&&p.z>=E.minZ&&p.z<=E.maxZ)||p.x>=E.maxX-.5&&p.x<=riverEdges().x1+1&&p.z>=.4&&p.z<=3.6;
 test('the 7×7 street grid: seven rows, six boulevards, everything inside the city extent',()=>{
  assert.deepEqual(ROAD_Z,[-88,-58,-28,2,32,62,92]);assert.deepEqual(BOULEVARD_X,[-72.5,-43.5,-14.5,14.5,43.5,72.5]);
  assert.deepEqual(E,{minX:-101.5,maxX:101.5,minZ:-101.5,maxZ:105.5});assert.equal(CANAL_X,108);assert.equal(METRO_Z,108);
@@ -31,6 +32,7 @@ test('routes start where the character stands and end at the snapped point, alon
  const side=exploreRoute(frontOf('shibuya-1'),LANDMARKS[1]);assert.ok(side.slice(1,-1).every(p=>Math.abs(Math.abs(p.z-2)-2.35)<1e-9),'rows on the sidewalk, off the traffic lanes');
  const bridge=exploreRoute(LANDMARKS[2],LANDMARKS[0]);assert.equal(bridge[1].z,2,'a row that starts the route keeps the centre');
  assert.equal(groundY(0,0),.26);assert.ok(Math.abs(groundY(CANAL_X,2)-.93)<1e-9,'on the bridge deck');assert.equal(groundY(CANAL_X,10),.26);assert.equal(groundY(79,2),.26,'the old canal is city now');
+ assert.ok(Math.abs(groundY(riverEdges().x1+1,2)-.93)<1e-9,'the deck reaches the east bank');assert.equal(groundY(126,2),.26);
 });
 test('POI picking never returns the current POI twice in a row',()=>{
  const pois=cityPois([{plotId:'shibuya-2',type:'project',phase:'open',name:'Arc',ticker:'ARC'},{plotId:'ueno-5',type:'apartment',name:'Nao'},{plotId:'nakano-6',type:'apartment',name:'Me'},{plotId:'ginza-1',type:'project',phase:'thinking',name:'X'}],'nakano-6');

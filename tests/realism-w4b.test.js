@@ -65,7 +65,8 @@ test('greenery: merged trees are low-poly, and the sway stays small and finite',
 });
 
 test('canal: boats loop continuously in separate lanes inside the walls; ducks stay clear of the lanes',()=>{
- const c=canalLayout();assert.equal(c.x,CS.CANAL_X);assert.deepEqual(c.bridges,[-38,2,42]);
+ // Wave 5C: the canal is a 20-wide river; its west wall stays at CANAL_X − 5.5, so c.x is the water centre east of CANAL_X.
+ const c=canalLayout();assert.equal(c.x-c.half,CS.CANAL_X-5.5);assert.equal(c.half,10);assert.deepEqual(c.bridges,[-38,2,42]);
  for(const b of BOATS){const {P}=boatLoop(b,c),T=P/b.speed,dt=.05;let prev=boatPosition(0,b,c);
   for(let t=dt;t<=T+dt;t+=dt){const p=boatPosition(t,b,c);const step=Math.hypot(p.x-prev.x,p.z-prev.z);assert.ok(step<=b.speed*dt*1.02+1e-9,`jump ${step} at ${t}`);
    let dy=Math.abs(p.yaw-prev.yaw);dy=Math.min(dy,2*Math.PI-dy);assert.ok(dy<.2,`yaw jump at ${t}`);

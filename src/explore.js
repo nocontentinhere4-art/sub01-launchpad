@@ -1,12 +1,16 @@
 import {planRoute,frontOf} from './world-sync.js';
 import {cityPlots,districts,ROAD_Z,BOULEVARD_X,CITY_EXTENT as E,CANAL_X,METRO_Z} from './city-state.js';
+import {RIVER,riverEdges} from './landmarks.js';
+// The z = 2 bridge over the river (wave 5C, city-life canalLayout): deck y 0.93 from x 101 to 124 (water centre ± half + 1.5),
+// 0.8 ramps at each end; the walk ends just past the east bank (x1 + 1).
+const RV=riverEdges(),DECK={x:RV.x,half:RIVER.half+1.5,ramp:.8,end:RV.x1+1};
 // Explore mode: the signed-in resident's own model walks the city (client-only, nothing is sent to the server).
 // Pure helpers plus a small brain; the model, its pet and the stepping live in city-events.js (the one roaming model).
 export const IDLE_S=8,PAUSE_S=[5,12],NEAR=3.5,WALK_SPEED=2.2,RUN_SPEED=4.6,EMOTE_P=.6;
 // Streets mirror world-sync.js: an east-west road per district row (sidewalk fronts at ±2.8), boulevards between columns,
 // and the bridge that continues the z=2 road over the eastern canal.
 // Bounds come from city-state.js (7×7 city: rows ±101, boulevards z −101.5…105.5, the bridge over the canal at CANAL_X).
-const BANDS=[...ROAD_Z.map(z=>({x0:E.minX+.5,x1:E.maxX-.5,z0:z-2.8,z1:z+2.8})),...BOULEVARD_X.map(x=>({x0:x-1.3,x1:x+1.3,z0:E.minZ,z1:E.maxZ})),{x0:E.maxX-.5,x1:CANAL_X+7,z0:.4,z1:3.6}];
+const BANDS=[...ROAD_Z.map(z=>({x0:E.minX+.5,x1:E.maxX-.5,z0:z-2.8,z1:z+2.8})),...BOULEVARD_X.map(x=>({x0:x-1.3,x1:x+1.3,z0:E.minZ,z1:E.maxZ})),{x0:E.maxX-.5,x1:DECK.end,z0:.4,z1:3.6}];
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 // Nearest point on a street or sidewalk.
 export function snapToStreet(p){
@@ -15,7 +19,7 @@ export function snapToStreet(p){
  return best;
 }
 // Floor height for the roaming model: ground, or the canal bridge deck (y 0.93) with a short ramp onto it.
-export function groundY(x,z){const dz=Math.abs(z-2),dx=Math.abs(x-CANAL_X);return dz>2?.26:.26+.67*clamp((7.8-dx)/.8,0,1);}
+export function groundY(x,z){const dz=Math.abs(z-2),dx=Math.abs(x-DECK.x);return dz>2?.26:.26+.67*clamp((DECK.half+DECK.ramp-dx)/DECK.ramp,0,1);}
 // Street route from -> to; a walk along one boulevard goes straight instead of detouring through a road row.
 // Road rows are walked on the sidewalk (±2.35, the side it comes from / goes to), clear of the traffic lanes (±0.75)
 // and the parked car; a row that starts or ends the route (the scramble, the bridge) keeps the road centre.

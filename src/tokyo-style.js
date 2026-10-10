@@ -331,7 +331,7 @@ const FUJI_AT=CS.FUJI_AT??{x:-60.5,z:-131},FUJI_K=CS.OVERVIEW_ZOOM?.desktop?.19/
 export const FUJI={x:FUJI_AT.x,z:FUJI_AT.z,height:34*FUJI_K,base:{sy:.4*16.5/.19*FUJI_K,target:[0,8,-7]},squash:.15,view:{yaw:36,pitch:40},
  overviewZoom:CS.OVERVIEW_ZOOM?.desktop??.19,segments:48,rings:18,slopeBase:10,slopeTop:31,crater:.04,snow:.3,
  day:'#8FA2B6',snowDay:'#F3F1EA',dusk:'#6C6F93',snowDusk:'#F2C9B5',night:'#1E2840',snowNight:'#36425F',
- ridge:{day:'#7A8C9C',dusk:'#4E5076',night:'#141C30',height:.3,width:1.55},maxTriangles:3000};
+ ridge:{day:'#7A8C9C',dusk:'#4E5076',night:'#141C30',height:.3,width:1.55},maxTriangles:3000,renderOrder:-5};
 // Slope (degrees) at height fraction f: rises from slopeBase at the foot to slopeTop at the rim (a concave profile).
 export const fujiSlope=f=>FUJI.slopeBase+(FUJI.slopeTop-FUJI.slopeBase)*Math.pow(Math.min(1,Math.max(0,f)),1.4);
 export function fujiProfile(H=FUJI.height){
@@ -461,10 +461,17 @@ export function addTokyoStyle(parent,buildings=[]){
  const C=h=>new THREE.Color(h),fu={uFN:nightShared,uFSnow:{value:1-FUJI.snow},uFDay:{value:C(FUJI.day)},uFDusk:{value:C(FUJI.dusk)},uFNight:{value:C(FUJI.night)},
   uFSDay:{value:C(FUJI.snowDay)},uFSDusk:{value:C(FUJI.snowDusk)},uFSNight:{value:C(FUJI.snowNight)},uFRDay:{value:C(FUJI.ridge.day)},uFRDusk:{value:C(FUJI.ridge.dusk)},uFRNight:{value:C(FUJI.ridge.night)}};
  const FU='uniform float uFN,uFSnow;uniform vec3 uFDay,uFDusk,uFNight,uFSDay,uFSDusk,uFSNight,uFRDay,uFRDusk,uFRNight;\nvec3 fuji3(vec3 a,vec3 b,vec3 c){return uFN<.5?mix(a,b,uFN*2.):mix(b,c,uFN*2.-1.);}\n';
- const fujiMat=new THREE.MeshBasicMaterial({toneMapped:false,side:THREE.DoubleSide});
+ // Fuji's anchor sits far below the city's ground plane (main.js cityGround: y −0.02 to CITY_EXTENT + 40, −1.6 to ±600),
+ // so a depth test would hide it under the ground (the wave-5 regression). The body is drawn right after the ground
+ // (renderOrder −5 vs −10) with no depth test but writing its depth, so everything in the city still draws over it and
+ // the haze still tests against it. Without a depth test the body cannot sort itself: the fragment shader drops the
+ // back half (it always faces the camera, so the front half is sin(angle) > 0 and never overlaps itself in a side view),
+ // and the Tanzawa ridge comes last in the buffer, so it covers the foot.
+ const fujiMat=new THREE.MeshBasicMaterial({toneMapped:false,side:THREE.DoubleSide,depthTest:false,depthWrite:true});
  fujiMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,fu);
   sh.vertexShader='attribute float aLit,aF,aAng,aLayer;varying float vLit,vF,vAng,vLayer;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vLit=aLit;vF=aF;vAng=aAng;vLayer=aLayer;');
   sh.fragmentShader=FU+'varying float vLit,vF,vAng,vLayer;\n'+sh.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+ if(vLayer<.5&&sin(vAng)<0.)discard;   // back half of the body (fujiMat has no depth test)
  float fg=.55*sin(vAng*9.+1.3)+.3*sin(vAng*17.+.4)+.15*sin(vAng*31.+2.2);
  float fs=uFSnow-.11*max(0.,-fg)+.03*max(0.,fg)-.018*sin(vAng*71.+.5)-.01*sin(vAng*143.);
  float fsn=smoothstep(fs-.004,fs+.004,vF);
@@ -483,7 +490,7 @@ export function addTokyoStyle(parent,buildings=[]){
  vec3 cl=mix(hz,fuji3(uFSDay,uFSDusk,uFSNight),.62-.3*uFN);
  gl_FragColor=vec4(mix(hz,cl,vCloud),vA*mix(1.,.8-.55*uFN,vCloud));`);};
  hazeMat.customProgramCacheKey=()=>'tokyo-fuji-haze-w4b';
- const mountain=new THREE.Mesh(fgeo,fujiMat),haze=new THREE.Mesh(hgeo,hazeMat);mountain.name='fuji';haze.name='fuji haze';
+ const mountain=new THREE.Mesh(fgeo,fujiMat),haze=new THREE.Mesh(hgeo,hazeMat);mountain.name='fuji';haze.name='fuji haze';mountain.renderOrder=FUJI.renderOrder;
  // Base anchor: at FUJI_AT, low enough that the base sits FUJI.base.sy below screen centre in the default overview.
  const fp=THREE.MathUtils.degToRad(FUJI.view.pitch),fy=THREE.MathUtils.degToRad(FUJI.view.yaw),up=new THREE.Vector3(-Math.sin(fp)*Math.sin(fy),Math.cos(fp),-Math.sin(fp)*Math.cos(fy)),T0=FUJI.base.target;
  const anchor=new THREE.Vector3(FUJI.x,T0[1]+(FUJI.base.sy-(FUJI.x-T0[0])*up.x-(FUJI.z-T0[2])*up.z)/up.y,FUJI.z),FM=new THREE.Matrix4(),fr=new THREE.Vector3(),fu2=new THREE.Vector3(),fb=new THREE.Vector3();

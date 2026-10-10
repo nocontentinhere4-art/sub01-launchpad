@@ -12,6 +12,7 @@ import {cityLayout,isCommercial,BASE_Y} from './lots.js';
 import * as CS from './city-state.js';
 import {weather,night as nightShared,wallMaterial} from './toon.js';
 import {withNightLight} from './windows.js';
+import {RIVER,riverEdges,SKYTREE,addSkytree,addExpressway,expresswayItems,expresswayRoute,expresswayCar,EXPRESSWAY,EXPRESSWAY_CARS,carParts} from './landmarks.js';
 const {districts}=CS;
 // City scale (wave 4A grows the map to 7×7 and exports its edges; fall back to the 5×5 numbers when absent). The
 // metro, skyline, canal and northern edge pieces are placed from these, so moving the city moves them.
@@ -37,14 +38,20 @@ export function expressPosition(seconds){
  if(t<0||t>=dur)return {x:null,dir:0};
  const dir=hash(k,82)<.5?1:-1;return {x:dir*(-EXPRESS.span+t*EXPRESS.speed),dir};
 }
-// ---------- The canal (wave 4B, ref real-04 Nakameguro): pure layout + the boats' loop ----------
-// Water sits 1.5 below the banks between stone walls; walkways with railings and lanterns on both sides; cherry trees
-// (city-green.js) on the outer edge of each walkway lean over the water; a lawn bank on the far (east) side.
-export function canalLayout(){const e=cityExtent(),x=CS.CANAL_X??79;
- return {x,z0:e.minZ-3,z1:e.maxZ+3,half:5.5,walk:1.5,treeOffset:6.65,waterY:-1.05,top:.425,bridges:[-38,2,42],deckY:.93,deckHalf:7,ramp:.8,lawn:5};}
+// ---------- The river (wave 4B canal, ref real-04; wave 5C widens it to a Sumida-like river, owner aerial photo) ----------
+// Water sits 1.5 below the banks between stone walls; terrace walks with railings and lanterns on both sides; cherry
+// trees (city-green.js) on the outer edge of each walk lean over the water; a riverside park on the far (east) bank.
+// Wave 5C: 20 wide instead of 11. The west wall stays put (CANAL_X − 5.5, the city edge), so x is the WATER centre
+// (CANAL_X + 4.5), not CANAL_X; the bridge decks start at CANAL_X − 7 as before (explore.js walks the z = 2 one).
+export function canalLayout(){const e=cityExtent(),R=riverEdges(),half=RIVER.half;
+ return {x:R.x,x0:R.x0,x1:R.x1,z0:e.minZ-3,z1:e.maxZ+3,half,walk:1.5,treeOffset:half+1.15,waterY:-1.05,top:.425,bridges:BRIDGES.map(b=>b.z),deckY:.93,deckHalf:half+1.5,ramp:.8,lawn:12};}
+// Three bridges, three silhouettes and colours: a Kiyosu-style self-anchored suspension bridge (blue), a red Warren
+// through-truss under the expressway, an Eitai-style tied arch (sea green). Lit along their steel at night.
+export const BRIDGES=[{z:-38,style:'suspension',color:'#5B8FD6',light:'#8FC4FF'},{z:2,style:'truss',color:'#C8382E',light:'#FFB08A'},{z:42,style:'arch',color:'#3E9A8C',light:'#CFEFFF'}];
 // Boats run a closed stadium loop: up one lane, a half turn, down the other (concentric lanes, so they never cross).
 // lane = distance of the leg from the canal centre (= the turn radius); phase = 0–1 start along the loop.
-export const BOATS=[{kind:'yakatabune',len:6.4,beam:1.8,speed:.55,lane:1.6,phase:0},{kind:'tour',len:3.8,beam:1.3,speed:1.2,lane:3.3,phase:.43}];
+// Wave 5C: the small tour boat became a Tokyo water bus (long, white, glass cabin) on the outer lane of the wider river.
+export const BOATS=[{kind:'yakatabune',len:6.4,beam:1.8,speed:.55,lane:3,phase:0},{kind:'waterbus',len:6.6,beam:1.9,speed:1.1,lane:6.5,phase:.43}];
 export function boatLoop(boat,c=canalLayout()){const za=c.z0+9,zb=c.z1-9,S=zb-za,r=boat.lane;return {za,zb,S,r,P:2*S+2*Math.PI*r};}
 export function boatPosition(t,boat,c=canalLayout()){
  const {za,zb,S,r,P}=boatLoop(boat,c);let s=((t*boat.speed+boat.phase*P)%P+P)%P;
@@ -54,9 +61,9 @@ export function boatPosition(t,boat,c=canalLayout()){
  if(s<S)return {x:c.x-r,z:za+s,yaw:-Math.PI/2};s-=S;
  const a=s/r;return {x:c.x-r*Math.cos(a),z:zb+r*Math.sin(a),yaw:Math.atan2(-Math.cos(a),Math.sin(a))};
 }
-// Ducks paddle slow figure-eights near the walls, clear of both boat lanes (|x − canal| ≥ 4.2).
+// Ducks paddle slow figure-eights near the walls, clear of both boat lanes (|x − centre| ≥ half − 1.9).
 export function duckPosition(t,i,c=canalLayout()){const side=i%2?1:-1,zc=c.z0+12+(c.z1-c.z0-24)*hash(i,61),a=t*.035+hash(i,62)*6.283;
- const x=c.x+side*(4.55+.45*Math.sin(a*2.1)),z=zc+6*Math.sin(a),dx=side*.45*2.1*Math.cos(a*2.1),dz=6*Math.cos(a);return {x,z,yaw:Math.atan2(-dz,dx)};}
+ const x=c.x+side*(c.half-1.45+.45*Math.sin(a*2.1)),z=zc+6*Math.sin(a),dx=side*.45*2.1*Math.cos(a*2.1),dz=6*Math.cos(a);return {x,z,yaw:Math.atan2(-dz,dx)};}
 
 // Distant skyline (brief 3.11, 3.10): three clusters with gaps (one left open for Fuji), three depth layers whose values
 // step lighter with distance, widths 2–6 and skewed heights 8–30 with no fixed pitch, 1 in 6 with a crown.
@@ -69,7 +76,8 @@ export function skylinePlan(){
   while(u<to){const r=k=>hash(g,layer,u,k),w=2+4*r(1),d=2.4+2.6*r(2),h=Math.min(30,8+22*r(3)**1.8+layer*2*r(4));
    const off=6+layer*7.5+r(5)*3,x=edge==='n'?u+w/2:SX-off-d/2,z=edge==='n'?SZ-off-d/2:u+w/2;
    const crown=hash(g,layer,Math.round(u*4),6)<1/6?['setback','mast','helipad','light'][Math.floor(r(7)*4)]:null;
-   out.push({x,z,w:edge==='n'?w:d,d:edge==='n'?d:w,h,layer,crown,edge,seed:r(8)});
+   // Wave 5C: the Skytree stands in the north cluster; no skyline box inside its footprint.
+   if(Math.hypot(x-SKYTREE.x,z-SKYTREE.z)>SKYTREE.clear+Math.max(w,d)/2)out.push({x,z,w:edge==='n'?w:d,d:edge==='n'?d:w,h,layer,crown,edge,seed:r(8)});
    u+=w+(r(9)<.14+layer*.1?3+r(10)*5:.25+r(10)*.9)+layer*1.8;}}});
  return out;
 }
@@ -154,11 +162,11 @@ void main(){vec2 p=vUv-.5;float a;
 export function addCityLife(parent){
  const root=new THREE.Group();parent.add(root);
  const geo=new THREE.BoxGeometry(1,1,1),dummy=new THREE.Object3D();
- const solid=[],windows=[],water=[];
+ const solid=[],windows=[],water=[],solidDetail=[],windowsDetail=[];   // *Detail: the tail an overview LOD hides (wave 5C)
  const item=(list,x,y,z,w,h,d,color)=>list.push({x,y,z,w,h,d,color});
  const mat=toon({roughness:.86});
  const emissive=new THREE.MeshBasicMaterial({color:'#ffffff',toneMapped:false});
- function batch(items,material,g=geo){const mesh=new THREE.InstancedMesh(g,material,items.length);items.forEach((s,i)=>{dummy.position.set(s.x,s.y,s.z);dummy.rotation.set(s.rx||0,0,s.rz||0);dummy.scale.set(s.w,s.h,s.d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,new THREE.Color(s.color));});root.add(mesh);return mesh;}
+ function batch(items,material,g=geo){const mesh=new THREE.InstancedMesh(g,material,items.length);items.forEach((s,i)=>{dummy.position.set(s.x,s.y,s.z);dummy.rotation.set(s.rx||0,s.ry||0,s.rz||0);dummy.scale.set(s.w,s.h,s.d);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);mesh.setColorAt(i,new THREE.Color(s.color));});root.add(mesh);return mesh;}
  // Skyline bodies are unlit flat values (exact brief colours, fog on top); faces are pre-shaded through vertex colours.
  const skyline=skylinePlan(),skyGeo=geo.clone(),shade=[.88,.9,1.05,1,1,.88];   // +x −x +y −y +z −z
  skyGeo.setAttribute('color',new THREE.Float32BufferAttribute(Array.from({length:24},(_,v)=>Array(3).fill(shade[Math.floor(v/4)])).flat(),3));
@@ -176,12 +184,12 @@ export function addCityLife(parent){
     axis==='z'?item(windows,b.x+t*span,y,b.z+b.d/2+.03,.48,.6,.04,col):item(windows,b.x+b.w/2+.03,y,b.z+t*span,.04,.6,.48,col);}}
   if(b.crown==='light'||b.crown==='mast')item(windows,b.x,top+3.25,b.z,.28,.28,.28,'#FF5A4A');
  }
- // ---------- The canal (wave 4B): walls, walkways, railings, lanterns, bridges with parapets, a lawn bank ----------
- const canal=canalLayout(),CX=canal.x,CL=canal.z1-canal.z0,CM=(canal.z0+canal.z1)/2,stone=[],canalLamps=[];
+ // ---------- The river (wave 4B canal, 5C wider): walls, terrace walks, railings, lanterns, bridges, a riverside park ----------
+ const canal=canalLayout(),CX=canal.x,CL=canal.z1-canal.z0,CM=(canal.z0+canal.z1)/2,stone=[],canalLamps=[],WALK=canal.half+canal.walk/2;
  const onBridge=z=>canal.bridges.some(b=>Math.abs(z-b)<2.35);
- item(solid,CX+7+canal.lawn/2,.18,CM,canal.lawn,.3,CL,'#8FA66B');
+ item(solid,CX+canal.half+canal.walk+canal.lawn/2,.18,CM,canal.lawn,.3,CL,'#8FA66B');
  for(const side of [-1,1]){const rx=CX+side*(canal.half+.12);
-  item(solid,CX+side*6.25,.25,CM,canal.walk,.35,CL,'#B4B1A7');
+  item(solid,CX+side*WALK,.25,CM,canal.walk,.35,CL,'#B4B1A7');
   item(stone,CX+side*(canal.half+.25),(canal.waterY-.4+canal.top)/2,CM,.5,canal.top-canal.waterY+.4,CL,'#8E8B80');
   item(solid,CX+side*(canal.half+.08),canal.top+.035,CM,.2,.07,CL,'#CFCBC0');
   // Railing: posts every 1.6 and two rails per stretch between bridges; lantern strings on bamboo poles above it.
@@ -194,7 +202,28 @@ export function addCityLife(parent){
    item(solid,x,y,z,.2,.28,.2,red?'#C8452D':'#E9E2D2');item(windows,x,y,z,.23,.31,.23,red?'#FF7A4A':'#FFD9A0');
    if(n++%3===0)canalLamps.push([CX+side*(canal.half-.7),z+(hash(side,z,73)-.5)*.6,red]);}
  }
- // Bridges: a stone deck at y 0.93 (explore.js walks it), ramps, parapets with a light coping, four lamp posts each.
+ // Bridges: a stone deck at y 0.93 (explore.js walks it), ramps, parapets with a light coping, four lamp posts each;
+ // then each bridge's steel (wave 5C): segments in the x–y plane, light strips on the same lines at night (detail).
+ const seg=(list,x1,y1,x2,y2,z,t,d,color)=>list.push({x:(x1+x2)/2,y:(y1+y2)/2,z,w:Math.hypot(x2-x1,y2-y1)+t*.5,h:t,d,rz:Math.atan2(y2-y1,x2-x1),color});
+ const waterLights=[];
+ for(const B of BRIDGES){const z=B.z,D=canal.deckY,S=canal.half,col=B.color,lit=B.light;
+  for(const sz of [-1,1]){const zz=z+sz*2.08;item(solid,CX,D-.32,z+sz*2.02,canal.deckHalf*2,.42,.14,col);   // side girder
+   if(B.style==='suspension'){const tx=5,top=D+5.3,mid=D+1.05,anchor=[CX-canal.deckHalf+.4,D+.55];
+    for(const e of [-1,1]){item(solid,CX+e*tx,(canal.waterY+top)/2,zz,.38,top-canal.waterY,.38,col);}
+    const pts=[[anchor[0],anchor[1]],[CX-tx,top],...[-.5,0,.5].map(f=>[CX+f*tx,mid+(top-mid)*f*f]),[CX+tx,top],[2*CX-anchor[0],anchor[1]]];
+    for(let k=0;k<pts.length-1;k++){seg(solid,...pts[k],...pts[k+1],zz,.12,.12,col);seg(windowsDetail,...pts[k],...pts[k+1],zz,.16,.16,lit);}
+    for(let x=-tx+1;x<=tx-1+1e-6;x+=1.6)item(solidDetail,CX+x,(D+.1+mid+(top-mid)*(x/tx)**2)/2,zz,.04,mid+(top-mid)*(x/tx)**2-D-.1,.04,col);}
+   else if(B.style==='truss'){const H=D+3,xs=[-10,-7.5,-5,-2.5,0,2.5,5,7.5,10].map(v=>v*S/10);
+    for(let k=0;k<xs.length-1;k++){const up=k%2===0;seg(solid,CX+xs[k],up?D:H,CX+xs[k+1],up?H:D,zz,.16,.16,col);}
+    seg(solid,CX+xs[1],H,CX+xs[7],H,zz,.2,.2,col);item(windows,CX,H+.13,zz,xs[7]-xs[1],.05,.12,lit);}
+   else{const H=4.6,arc=f=>D+H*(1-f*f),n=10;
+    for(let k=0;k<n;k++){const f0=-1+2*k/n,f1=-1+2*(k+1)/n;seg(solid,CX+f0*S,arc(f0),CX+f1*S,arc(f1),zz,.26,.2,col);seg(windowsDetail,CX+f0*S,arc(f0)+.03,CX+f1*S,arc(f1)+.03,zz,.3,.24,lit);}
+    for(let x=-8;x<=8;x+=2)item(solidDetail,CX+x*S/10,(D+arc(x/10))/2,zz,.05,arc(x/10)-D,.05,col);}}
+  // Cross bracing over the deck (above head height) where the steel rises.
+  if(B.style==='suspension')for(const e of [-1,1])item(solid,CX+e*5,D+4.9,z,.3,.3,4.5,col);
+  if(B.style==='truss')for(const x of [-7.5,-2.5,2.5,7.5])item(solid,CX+x*S/10,D+3,z,.14,.14,4.3,col);
+  if(B.style==='arch')for(const x of [-3,0,3])item(solid,CX+x,D+4.6*(1-(x/10)**2)+.05,z,.16,.16,4.4,col);
+  for(const x of [-6,0,6])waterLights.push([CX+x,z+2.6,lit]);}
  for(const z of canal.bridges){const L=canal.deckHalf*2,rise=canal.deckY-.26,ra=Math.atan2(rise,canal.ramp);
   item(stone,CX,(canal.deckY+.45)/2,z,L,canal.deckY-.45,4,'#A9A79D');item(solid,CX,canal.deckY+.012,z,L,.025,3.5,'#7A7F7C');
   for(const e of [-1,1])stone.push({x:CX+e*(canal.deckHalf+canal.ramp/2),y:(canal.deckY+.26)/2-.1,z,w:Math.hypot(canal.ramp,rise)+.05,h:.2,d:4,rz:-e*ra,color:'#A9A79D'});
@@ -238,12 +267,29 @@ export function addCityLife(parent){
  for(const [x,z,r,s,y] of [[-32,NZ+1.6,3.2,.6],[-29.5,NZ-1.2,1.8,.4],[SX,trackZ+3,4.6,.5,4.85],[SX,trackZ+5.4,3.6,.45]])street.addLightPool(x,z,LIGHT.led,r,{strength:s,y:y??.235,group:'stations'});
  // Canal: lantern light on the water (every third lantern) and the bridge lamps on their decks.
  for(const [x,z,k] of canalLamps)k==='deck'?street.addLightPool(x,z,LIGHT.led,1.6,{strength:.4,y:canal.deckY+.03,group:'canal'}):street.addLightPool(x,z,k?'#FF8A5A':LIGHT.lantern,1.9,{strength:.42,y:canal.waterY+.02,group:'canal'});
+ // Night reflections on the river (wave 5C): each light over the water smears toward the camera (yaw 36°) as a fading
+ // run of three pools, the existing fake-pool trick: the bridges' steel lights and the expressway lamps above the water.
+ const smear=(x,z,color,strength=.38)=>{for(let k=0;k<3;k++)street.addLightPool(x+.588*k*1.15,z+.809*k*1.15,color,1.5-.25*k,{strength:strength*(1-.3*k),y:canal.waterY+.02,group:'river'});};
+ for(const [x,z,c] of waterLights)smear(x,z,c);
+ // ---------- Shuto expressway (landmarks.js): viaduct mesh, piers (core), lamp poles (detail), sodium heads (night) ----------
+ const xway=addExpressway(root),xItems=expresswayItems({waterY:canal.waterY});solid.push(...xItems.core);solidDetail.push(...xItems.detail);windowsDetail.push(...xItems.glow);
+ for(const g of xItems.glow){street.addLightPool(g.x,g.z,EXPRESSWAY.sodium,2.7,{strength:.65,y:EXPRESSWAY.y+.03,group:'expressway'});
+  if(g.x>canal.x0&&g.x<canal.x1)smear(g.x,g.z+1.5,EXPRESSWAY.sodium,.3);}
+ // ---------- Tokyo Skytree (landmarks.js): one mesh in the north skyline; aviation lights join the night windows ----------
+ const skytree=addSkytree(root);for(const l of skytree.lights)item(windows,l.x,l.y,l.z,.5,.5,.5,'#FF3A2A');
+ const solidCore=solid.length,windowsCore=windows.length;solid.push(...solidDetail);windows.push(...windowsDetail);
  const solidMesh=batch(solid,mat);solidMesh.castShadow=true;solidMesh.receiveShadow=true;
  const skyMat=new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false}),skyMesh=batch(skyItems,skyMat,skyGeo);skyMesh.name='skyline';
  // Their feet dissolve into the fog colour (ground haze), so the skyline stands behind the city instead of on nothing.
  skyMat.onBeforeCompile=sh=>{sh.vertexShader='varying float vSkyY;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n vSkyY=(modelMatrix*instanceMatrix*vec4(transformed,1.)).y;');
   sh.fragmentShader='varying float vSkyY;\n'+sh.fragmentShader.replace('#include <fog_fragment>','#include <fog_fragment>\n #ifdef USE_FOG\n gl_FragColor.rgb=mix(gl_FragColor.rgb,fogColor,.85*(1.-smoothstep(0.,11.,vSkyY)));\n #endif');};
  const windowMesh=batch(windows,emissive);windowMesh.visible=false;
+ // Overview LOD (wave 5C): bridge hangers and lights, expressway lamps and cars drop out below zoom 0.3. city.js's
+ // setDetail does not reach this module, so until someone calls life.setDetail() the solid batch reads the camera zoom.
+ solidMesh.userData.lod={core:solidCore,all:solid.length};windowMesh.userData.lod={core:windowsCore,all:windows.length};
+ let detailOn=true,autoDetail=true;
+ function applyDetail(on){detailOn=on;for(const m of [solidMesh,windowMesh])m.count=on?m.userData.lod.all:m.userData.lod.core;}
+ solidMesh.onBeforeRender=(r,s,camera)=>{if(autoDetail&&camera&&(camera.zoom>=.3)!==detailOn)applyDetail(camera.zoom>=.3);};
  // Canal stone (walls, bridge decks, ramps, parapets): the wall material, so walls get weep stains from the top and a
  // dark algae band at the waterline, per instance and for free.
  const stoneMat=wallMaterial({roughness:1,ground:canal.waterY,foot:.5,dirt:.4,cap:.12,capDirt:.1,streak:.24,sill:canal.top,streakFrom:canal.waterY-1});
@@ -273,21 +319,26 @@ export function addCityLife(parent){
  for(const s of [-1,1])BP(0,-.1,.86,s*.76,4.8,.42,.03,'#3D3A36','#FFC27A');
  BP(0,-.1,1.31,0,5.7,.1,1.86,'#2E2A28');BP(0,-.1,1.4,0,5.4,.09,.5,'#2E2A28');
  for(const k of [-2.1,-.7,.7,2.1])for(const s of [-1,1])BP(0,k-.1,1.14,s*.99,.16,.22,.16,'#D2463C','#FF6A4A');
- BP(1,0,.05,0,3.8,.45,1.3,'#F1EEE6');BP(1,2.08,.12,0,.5,.32,.9,'#F1EEE6');BP(1,0,.23,0,3.86,.08,1.34,'#2F6FB5');BP(1,-.1,1.22,0,2.7,.06,1.32,'#2F6FB5');
- for(const x of [-1.25,1.05])for(const s of [-1,1])BP(1,x,.76,s*.6,.05,.92,.05,'#9AA3A8');
- for(let k=0;k<4;k++){const z=k%2?.3:-.3,x=-.95+k*.6;BP(1,x,.5,z,.28,.4,.24,['#2E3A55','#C26A5C','#D9D2C2','#5B6466'][k]);BP(1,x,.8,z,.17,.17,.17,'#E8C4A0');}
+ // Water bus (wave 5C): a long white hull with a blue line, a low glass cabin (lit at night), a white roof and a wheelhouse.
+ BP(1,0,.05,0,6.6,.5,1.9,'#F1EEE6');BP(1,3.6,.14,0,.7,.34,1.3,'#F1EEE6');BP(1,0,.25,0,6.66,.09,1.94,'#2F6FB5');
+ BP(1,-.3,.66,0,5.2,.62,1.72,'#2E4A63','#FFE6B8');BP(1,-.3,1.01,0,5.4,.09,1.84,'#F4F1EA');BP(1,2.75,.86,0,.9,.5,1.3,'#F4F1EA');BP(1,3.21,.9,0,.04,.24,1.1,'#2E4A63','#EAF4FF');
  const DUCKS=6;for(let i=0;i<DUCKS;i++){const o=2+i,drake=hash(i,63)<.5;BP(o,0,.05,0,.34,.16,.2,drake?'#8A8478':'#7A5A3C');BP(o,.17,.2,0,.12,.13,.11,drake?'#2E5E3A':'#6B5443');BP(o,.25,.18,0,.08,.035,.06,'#E3A33C');}
+ // Expressway cars (wave 5C) ride the same dynamic batch: owners after the ducks, lamps glow through nightLight.
+ const CAR0=2+DUCKS,CARS=EXPRESSWAY_CARS.length;EXPRESSWAY_CARS.forEach(([color,kind],i)=>{for(const p of carParts(kind,color))BP(CAR0+i,p.x,p.y,p.z,p.w,p.h,p.d,p.color,p.glow);});
  const boatMat=withNightLight(toon({roughness:.85})),boatGeo=geo.clone(),boatGlow=new Float32Array(parts.length*3);
  parts.forEach((p,i)=>{if(p.glow){const c=new THREE.Color(p.glow).multiplyScalar(.7);boatGlow.set([c.r,c.g,c.b],i*3);}});boatGeo.setAttribute('nightLight',new THREE.InstancedBufferAttribute(boatGlow,3));
  const boatMesh=new THREE.InstancedMesh(boatGeo,boatMat,parts.length);boatMesh.name='canal boats';boatMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);boatMesh.frustumCulled=false;boatMesh.raycast=()=>{};boatMesh.castShadow=true;
  parts.forEach((p,i)=>{boatMesh.setColorAt(i,new THREE.Color(p.color));p.m=new THREE.Matrix4().compose(new THREE.Vector3(p.x,p.y,p.z),new THREE.Quaternion(),new THREE.Vector3(p.w,p.h,p.d));});root.add(boatMesh);
  const ownerM=new THREE.Matrix4(),partM=new THREE.Matrix4(),qY=new THREE.Quaternion(),vP=new THREE.Vector3(),vS=new THREE.Vector3(1,1,1),eY=new THREE.Euler();
- function placeBoats(t){for(let o=0;o<2+DUCKS;o++){const b=o<2?boatPosition(t,BOATS[o],canal):duckPosition(t,o-2,canal),bob=Math.sin(t*1.3+o*1.7)*(o<2?.03:.015);
-   eY.set(Math.sin(t*.9+o)*(o<2?.02:0),b.yaw,0,'YXZ');qY.setFromEuler(eY);vP.set(b.x,canal.waterY-.05+bob,b.z);ownerM.compose(vP,qY,vS);
-   parts.forEach((p,i)=>{if(p.owner===o)boatMesh.setMatrixAt(i,partM.multiplyMatrices(ownerM,p.m));});}
+ const ownerParts=Array.from({length:CAR0+CARS},()=>[]);parts.forEach((p,i)=>ownerParts[p.owner].push(i));const route=expresswayRoute(),ZERO_M=new THREE.Matrix4().makeScale(0,0,0);
+ function placeBoats(t){for(let o=0;o<CAR0+CARS;o++){
+   if(o>=CAR0&&!detailOn){for(const i of ownerParts[o])boatMesh.setMatrixAt(i,ZERO_M);continue;}
+   const car=o>=CAR0,b=car?expresswayCar(t,o-CAR0,route):o<2?boatPosition(t,BOATS[o],canal):duckPosition(t,o-2,canal),bob=car?0:Math.sin(t*1.3+o*1.7)*(o<2?.03:.015);
+   eY.set(car?0:Math.sin(t*.9+o)*(o<2?.02:0),b.yaw,0,'YXZ');qY.setFromEuler(eY);vP.set(b.x,car?b.y:canal.waterY-.05+bob,b.z);ownerM.compose(vP,qY,vS);
+   for(const i of ownerParts[o])boatMesh.setMatrixAt(i,partM.multiplyMatrices(ownerM,parts[i].m));}
   boatMesh.instanceMatrix.needsUpdate=true;}
  // Hanami (sakura weather only): blue tarps on the lawn bank under the cherries, people sitting on them, bento boxes.
- const picnic=[];{const n=typeof matchMedia!=='undefined'&&matchMedia('(max-width:600px)').matches?8:15;for(let k=0;k<n;k++){const z=canal.z0+8+(CL-16)*(k+hash(k,64)*.6)/n,x=CX+8.6+hash(k,65)*1.6,ry=(hash(k,66)-.5)*.5,blue=hash(k,67)<.75?'#3F7FC4':'#2E6FB0';
+ const picnic=[];{const n=typeof matchMedia!=='undefined'&&matchMedia('(max-width:600px)').matches?8:15;for(let k=0;k<n;k++){const z=canal.z0+8+(CL-16)*(k+hash(k,64)*.6)/n,x=CX+canal.half+3.1+hash(k,65)*1.6,ry=(hash(k,66)-.5)*.5,blue=hash(k,67)<.75?'#3F7FC4':'#2E6FB0';
   picnic.push({x,y:.34,z,w:1.8,h:.03,d:1.4,ry,color:blue});const people=2+Math.floor(hash(k,68)*3);
   for(let p=0;p<people;p++){const a=p/people*6.283+hash(k,p,69),px=x+Math.cos(a)*.55,pz=z+Math.sin(a)*.45,c=['#2E3A55','#C26A5C','#D9D2C2','#5B6466','#7FA09C','#E3BE3C'][Math.floor(hash(k,p,70)*6)];
    picnic.push({x:px,y:.56,z:pz,w:.3,h:.42,d:.26,ry:a,color:c},{x:px,y:.86,z:pz,w:.18,h:.18,d:.18,ry:a,color:'#E8C4A0'});}
@@ -296,7 +347,7 @@ export function addCityLife(parent){
  hanami.name='hanami';hanami.visible=false;hanami.raycast=()=>{};hanami.castShadow=true;root.add(hanami);
  // Falling petals by the cherries: only while the blossoms are out (toon weather.sakura).
  const petalTime={value:0},petalGeometry=new THREE.BufferGeometry();
- petalGeometry.setAttribute('position',new THREE.Float32BufferAttribute(Array.from({length:160},(_,i)=>[CX+(i%2?-1:1)*(4.5+hash(i,74)*2.5),.5+(i%17)*.2,canal.z0+5+hash(i,75)*(CL-10)]).flat(),3));
+ petalGeometry.setAttribute('position',new THREE.Float32BufferAttribute(Array.from({length:160},(_,i)=>[CX+(i%2?-1:1)*(canal.half-1+hash(i,74)*2.5),.5+(i%17)*.2,canal.z0+5+hash(i,75)*(CL-10)]).flat(),3));
  const petalMaterial=new THREE.PointsMaterial({color:'#efd0da',size:.13,transparent:true,opacity:.8,depthWrite:false});
  petalMaterial.onBeforeCompile=shader=>{shader.uniforms.petalTime=petalTime;shader.vertexShader='uniform float petalTime;\n'+shader.vertexShader;shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.y = -0.6 + mod(position.y + 1.1 - petalTime * 0.28, 3.5);\ntransformed.x += sin(petalTime * 0.6 + position.z) * 0.5;');};
  const petals=new THREE.Points(petalGeometry,petalMaterial);petals.visible=false;petals.frustumCulled=false;root.add(petals);
@@ -415,11 +466,13 @@ export function addCityLife(parent){
  const skyColor=new THREE.Color(),white=new THREE.Color('#ffffff');
  // Quality hook (quality.js via main.js → city.js): steam wisps per vent, critter share, blimp. Defaults change nothing.
  function setQuality({wisps=Infinity,critters=1,blimp=true}={}){skyLife.setQuality({critters,blimp});if(wisps!==qWisps){qWisps=wisps;setGlow(glowFor);}}
- return {update,setQuality,setNight(value){currentNight=value;for(const m of [mat,stoneMat,boatMat])m.color.copy(value?nightColor('walls'):white);windowMesh.visible=value;street.setNight(value);
+ // Overview LOD hook (main.js may call it next to cityRenderer.setDetail); calling it switches off the zoom fallback.
+ function setDetail(on){autoDetail=false;applyDetail(!!on);}
+ return {update,setQuality,setDetail,setNight(value){currentNight=value;for(const m of [mat,stoneMat,boatMat,xway.material])m.color.copy(value?nightColor('walls'):white);windowMesh.visible=value;street.setNight(value);
    if(!value){lanternBase.forEach((c,i)=>lanterns.setColorAt(i,c));lanterns.instanceColor.needsUpdate=true;}lastDirs='';
    // Skyline values swap per layer; crowns keep the colour of their own layer.
    skyItems.forEach((s,i)=>{const layer=SKYLINE.day.indexOf(s.color);skyMesh.setColorAt(i,skyColor.set(value?SKYLINE.night[layer]:s.color));});skyMesh.instanceColor.needsUpdate=true;},
-  root,river,boats:boatMesh,hanami,canal,trains,express,trainMesh,street,skyline:skyMesh,sky:skyLife,glow,screen,heroScreen,screenMesh,signals,get heroes(){return heroesOn?heroes.length:0;},
+  root,river,boats:boatMesh,hanami,canal,expressway:xway.mesh,skytree:skytree.mesh,solid:solidMesh,windows:windowMesh,trains,express,trainMesh,street,skyline:skyMesh,sky:skyLife,glow,screen,heroScreen,screenMesh,signals,get heroes(){return heroesOn?heroes.length:0;},
   addLightPool:street.addLightPool,clearLightPools:street.clearLightPools,
   stats:()=>({glow:glowGeo.instanceCount,vents:ventCount,trains:trainItems.length,heroes:heroesOn?heroes.length:0,...skyLife.stats()}),
   dispose(){live.subs.delete(onWorld);}};

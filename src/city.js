@@ -318,7 +318,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    instances:renderGroups.reduce((n,g)=>n+g.count,0)+plan.boxes.length,detail:showDetail}),
   // Overview LOD (main.js, camera.zoom < 0.3): hide AC units, small roof items, side pipes and road marks; fade the
   // facade atlas (facades.js facadeDetail, shared with every wallMaterial).
-  setDetail(on){on=!!on;facadeDetail.value=on?1:0;if(on===showDetail)return;showDetail=on;for(const g of renderGroups)g.count=on?g.userData.lod.all:g.userData.lod.core;},
+  setDetail(on){on=!!on;facadeDetail.value=on?1:0;life?.setDetail?.(on);if(on===showDetail)return;showDetail=on;for(const g of renderGroups)g.count=on?g.userData.lod.all:g.userData.lod.core;},
   update(seconds){life.update(seconds);crowd.update(seconds,options.gpu);traffic.update(seconds);},
   setNight(value){currentNight=value;for(const m of [windowMat,towerMat,ribbonMat])m.userData.night.value=value?1:0;
    for(const m of [wallMat,windowMat,towerMat,ribbonMat])m.color.copy(value?NIGHT_WALL:DAY);groundMat.color.copy(value?NIGHT_GROUND:DAY);
