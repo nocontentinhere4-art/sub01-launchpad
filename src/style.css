@@ -183,7 +183,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 .ca-chip button:hover,.ca-chip a:hover{background:var(--fill-1)}
 .ca-chip a{padding:0 10px;border-left:1px solid var(--stroke);color:var(--ink-3)}
 .ca-chip .i{width:14px;height:14px}
-@media (max-width:600px){.ca-chip{height:32px}.ca-chip button{padding:0 9px;gap:6px;font-size:11px}.ca-chip a{padding:0 8px}.ca-chip .i{width:13px;height:13px}.topbar:has(.ca-chip:not([hidden])) .brand-name{display:none}}
+@media (max-width:600px){.ca-chip{height:32px}.ca-chip button{padding:0 9px;gap:6px;font-size:11px}.ca-chip a{padding:0 8px}.ca-chip .i{width:13px;height:13px}.topbar:has(.ca-chip:not([hidden])) .brand-name{display:none}.topbar:has(.ca-chip:not([hidden])) .brand{padding:5px;gap:0}}  /* logo alone = a 42px circle */
 .brand-name{display:grid;gap:5px;font:800 15px/1 var(--f-ui);font-stretch:115%;letter-spacing:.14em}
 .brand-name small{font:500 10.5px/1 var(--f-mono);letter-spacing:.16em;color:var(--ink-2)}
 .preview-badge{display:inline-flex;align-items:center;gap:9px;height:30px;padding:0 13px;border-radius:var(--r-pill);font:500 11px/1 var(--f-mono);letter-spacing:.13em;color:var(--ink-2);white-space:nowrap}
