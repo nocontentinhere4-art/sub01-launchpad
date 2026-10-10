@@ -454,6 +454,9 @@ function loadDetailVerdict(ideaId,plot){
 const IDEA_STATUS={submitted:'In his mailbox',evaluating:'SUB-01 is thinking',selected:'He will build it',declined:'He passed',generating:'Being built',preview_ready:'Ready for your review',approved:'Approved by you',launch_prepared:'Launch ready',awaiting_signature:'Waiting for your signature',confirming:'Confirming on-chain',launched:'Launched',failed:'Stopped: needs attention',cancelled:'Cancelled'};
 let knownStatus=null;
 // The account chip: signed out a wallet icon and "Sign in"; signed in an avatar with the initials, the name and a chevron.
+// The SUBZERONE token's contract address in the topbar (owner 2026-10-10): tap copies it, the arrow opens pump.fun.
+function caChip(t){const box=$('ca-chip');if(!box||!t?.mint)return;const mint=String(t.mint);$('ca-addr').textContent=short(mint,4);$('ca-open').href=t.pumpfun||`https://pump.fun/coin/${mint}`;box.hidden=false;
+  $('ca-copy').onclick=async()=>{try{await navigator.clipboard.writeText(mint);notify(`CA copied · ${t.project||'SUBZERONE'} ($${t.ticker||'SUB-01'})`);}catch{notify(mint);}};}
 function accountChip(name){const b=$('account-button'),nm=Object.assign(document.createElement('span'),{className:'nm',textContent:name||'Sign in'});
   if(!name){b.replaceChildren(icon('wallet'),nm);return;}
   const initials=(name.match(/[\p{L}\p{N}]/gu)||['?']).slice(0,2).join('').toUpperCase();
@@ -664,7 +667,7 @@ async function getJSON(path){const res=await fetch(path,{credentials:'same-origi
 function pollLoop(run,delay){let timer=0;const tick=async()=>{try{if(!document.hidden)await run();}catch(err){console.warn('[city] poll',err?.message||err);}finally{timer=setTimeout(tick,delay());}};
  timer=setTimeout(tick,delay());return ()=>clearTimeout(timer);}
 async function pollWorld(){
- let next;try{next=await getJSON('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions){lookOptions=await getJSON('/api/world/options');cityRenderer.crowd.setLookOptions(lookOptions);}setServer(true);worldFails=0;}catch{worldFails++;setServer(false);return;}
+ let next;try{next=await getJSON('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions){lookOptions=await getJSON('/api/world/options');caChip(lookOptions?.sub01);cityRenderer.crowd.setLookOptions(lookOptions);}setServer(true);worldFails=0;}catch{worldFails++;setServer(false);return;}
  world=next;setCityWorld(world);const items=applyCoinOverrides(worldBuildings(world)),key=JSON.stringify(items);let flipped=[];
  if(key!==worldKey){worldKey=key;
   // A party only for a site seen building and now open, not for one that was already open when first seen.
