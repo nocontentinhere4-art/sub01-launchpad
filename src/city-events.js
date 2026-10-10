@@ -7,6 +7,7 @@ import {createPet,petFollow} from './accessories.js';
 import {groundY,WALK_SPEED,RUN_SPEED} from './explore.js';
 import {subLotsOf,builtHeight,BASE_Y} from './lots.js';
 import {safeImageUrl} from './city-screens.js';
+import {coinVisuals,accentOf} from './coin-tier.js';
 // City reactions to /api/world `events`: fireworks + street party on launches, neon/graffiti on launched buildings,
 // client-only visits and explore mode (one roaming model at a time). Particles are pure functions of (seed, time) in the vertex shader: the CPU only writes a few uniforms.
 export const FIRE_AGE=60e3,PARTY_S=40,MAX_OPEN=7,KINDS=['accepted','site_live','launched'];
@@ -58,15 +59,25 @@ export function decorations(buildings,events){
 function siteOf(b,all){const lot=subLotsOf(b.plotId,all).user;if(!lot)return null;const fz=lot.front==='+z'?1:-1,top=BASE_Y+builtHeight(lot,b);return {lot,fz,top};}
 // Instances for the launched decorations: atlas planes, box frames/poles, spotlight bases. Pure, so tests can check placement.
 // The neon stands on the front edge of the real roof, the spotlight on its back corner (wave 4A: lots.js heights).
+// Coin stats (coin-tier.js coinVisuals, from b.stats): the neon carries the trend `pulse` (up: slowly brighter, down:
+// steady and dimmer, never a price colour); tier 4 adds the GIANT sign: a square accent-coloured panel two storeys tall
+// (GIANT_H) standing on a steel frame in the middle of the roof, above city.js's tier-3 penthouse, logo + ticker when
+// the project has art (safeImageUrl: only the server's own /meta/ paths), ticker alone otherwise.
+export const GIANT_H=5,GIANT_LIFT=2.3,MAX_GIANT=2;
 export function decorItems({open},all=open){
  const signs=[],boxes=[],cones=[];
  for(const b of open){const p=plotOf(b.plotId),s=siteOf(b,all),text=signText(b.ticker,b.name);if(!s)continue;
-  const {lot,fz,top}=s,y=top+1.4,z=lot.frontZ-fz*.5;
-  signs.push({kind:'neon',text,x:lot.x,y,z:z+fz*.07,w:4,h:1,ry:fz>0?0:Math.PI});
+  const {lot,fz,top}=s,y=top+1.4,z=lot.frontZ-fz*.5,v=coinVisuals(b.stats),pulse=v?.pulse||0;
+  signs.push({kind:'neon',text,x:lot.x,y,z:z+fz*.07,w:4,h:1,ry:fz>0?0:Math.PI,pulse});
   boxes.push({x:lot.x,y,z,w:4.2,h:1.15,d:.12,color:'#1a2230'});
   for(const dx of [-1.6,1.6])boxes.push({x:lot.x+dx,y:(top+y-.5)/2,z,w:.1,h:y-.5-top,d:.1,color:'#2b3440'});
   signs.push({kind:'graffiti',text,x:p.x+2.55,y:1,z:p.z,w:4.4,h:1.1,ry:Math.PI/2});
   cones.push({x:lot.x-(lot.width/2-.5),y:top,z:lot.z-fz*(lot.depth/2-.6)});
+  if(v?.sign){const gw=Math.min(GIANT_H,lot.width-.3),gy=top+GIANT_LIFT+GIANT_H/2,gz=lot.z;
+   signs.push({kind:'giant',text,logo:safeImageUrl(b.logoUrl),color:accentOf(b.color),x:lot.x,y:gy,z:gz+fz*.09,w:gw,h:GIANT_H,ry:fz>0?0:Math.PI,pulse,plotId:b.plotId});
+   boxes.push({x:lot.x,y:gy,z:gz,w:gw+.24,h:GIANT_H+.24,d:.14,color:'#1a2230'});
+   for(const dx of [-.38,.38])boxes.push({x:lot.x+dx*gw,y:(top+gy-GIANT_H/2)/2,z:gz,w:.12,h:gy-GIANT_H/2-top,d:.12,color:'#2b3440'});
+   boxes.push({x:lot.x,y:gy-GIANT_H/2-.07,z:gz,w:gw+.3,h:.1,d:.5,color:'#2b3440'});}
  }
  return {signs,boxes,cones};
 }
@@ -109,13 +120,19 @@ export function coinPlan(buildings,all=buildings){
   const side=site?-1:hash(b.plotId)&1?1:-1,bw=site?.9:1.15,bh=bw*2,bx=lot.x+side*(lot.width/2-.14),bz=lot.frontZ+fz*(.06+bw/2),by=Math.max(BASE_Y+.45+bh/2,top-.35-bh/2);
   for(const ry of [Math.PI/2,-Math.PI/2])planes.push({key:card.key,kind:'banner',plotId:b.plotId,x:bx+Math.sin(ry)*.025,y:by,z:bz,w:bw,h:bh,ry});
   boxes.push({x:bx,y:by+bh/2+.06,z:bz,w:.06,h:.08,d:bw+.1,color:'#2b3440'});
+  const v=coinVisuals(b.stats);
   // Rooftop billboard with the logo (public projects with art), on two posts at the back of the roof, both faces readable.
-  if(card.logoKey){const w=Math.min(1.8,lot.width-.4),h=w*2,bz2=lot.z-fz*(lot.depth/2-.45),y0=top+(b.phase==='open'?1.1:.55);
+  // At tier 4 the giant sign (decorItems) carries the logo instead.
+  if(card.logoKey&&!v?.sign){const w=Math.min(1.8,lot.width-.4),h=w*2,bz2=lot.z-fz*(lot.depth/2-.45),y0=top+(b.phase==='open'?1.1:.55);
    for(const ry of [0,Math.PI])planes.push({key:card.logoKey,kind:'logo',plotId:b.plotId,x:lot.x,y:y0+h/2,z:bz2+Math.cos(ry)*.07,w,h,ry});
    boxes.push({x:lot.x,y:y0+h/2,z:bz2,w:w+.14,h:h+.14,d:.1,color:'#1a2230'});
    for(const dx of [-.35,.35])boxes.push({x:lot.x+dx*w,y:(top+y0)/2,z:bz2,w:.1,h:y0-top,d:.1,color:'#2b3440'});}
   // Beacon: on a 1.2 m mast at the front corner opposite the banner, clear of the roof clutter.
-  if(card.soon){const x=lot.x-side*(lot.width/2-.3),z=lot.frontZ-fz*.3;beacons.push({x,y:top+1.35,z,plotId:b.plotId});boxes.push({x,y:top+.6,z,w:.08,h:1.2,d:.08,color:'#2b3440'});}
+  if(card.soon){const x=lot.x-side*(lot.width/2-.3),z=lot.frontZ-fz*.3;beacons.push({kind:'beacon',x,y:top+1.35,z,plotId:b.plotId});boxes.push({x,y:top+.6,z,w:.08,h:1.2,d:.08,color:'#2b3440'});}
+  // Coin tiers (coin-tier.js): tier 3 a slow sweeping spotlight beam from the back corner opposite the cone (one additive
+  // quad in the beacon batch, kind 'beam'); tier 4 the orange beacon on top of the giant sign. No extra draw call.
+  if(v?.roof)beacons.push({kind:'beam',x:lot.x+(lot.width/2-.9),y:top+.2,z:lot.z-fz*(lot.depth/2-.9),plotId:b.plotId});
+  if(v?.sign)beacons.push({kind:'beacon',x:lot.x,y:top+GIANT_LIFT+GIANT_H+.45,z:lot.z,plotId:b.plotId});
  }
  return {cards,planes,boxes,beacons};
 }
@@ -192,8 +209,25 @@ void main(){vec4 s=uShower[int(aSlot+.5)];float age=uTime-s.w-position.y*2.5;
 }
 
 // Atlas tiles 512×128: 1+2i / 2+2i = neon / graffiti of the i-th launched sign (tile 0 is unused since the coin banners
-// took over OPEN SOON).
-const TW=512,TH=128,COLS=2,ROWS=8;
+// took over OPEN SOON). Rows 8–11 (GIANT_ROW0, GIANT_ROWS) are two 512² blocks for the tier-4 giant signs: the instance
+// attribute aTile is (tile x, tile y, tiles wide, tiles high), so one plane can map a whole block.
+const TW=512,TH=128,COLS=2,ROWS=12,GIANT_ROW0=8,GIANT_ROWS=4;
+const giantKey=s=>`g|${s.text}|${s.color}|${s.logo||''}`;
+// One giant block: a dark panel with a glowing accent border; the logo (clipped square) over the ticker, or the ticker
+// alone, huge. Drawn in the accent colour, so at night the sign is lit in the project's own colour.
+function drawGiant(ctx,g,s,img){
+ const x=g*TW,y=GIANT_ROW0*TH,W=TW,H=TH*GIANT_ROWS,c=s.color,font=px=>`900 ${px}px "Arial Black", Arial, sans-serif`;
+ ctx.save();ctx.translate(x,y);ctx.clearRect(0,0,W,H);ctx.beginPath();ctx.rect(0,0,W,H);ctx.clip();ctx.textAlign='center';ctx.textBaseline='middle';
+ ctx.fillStyle='#10151f';rrect(ctx,6,6,W-12,H-12,30);ctx.fill();
+ ctx.shadowColor=c;ctx.shadowBlur=30;ctx.strokeStyle=c;ctx.lineWidth=10;rrect(ctx,26,26,W-52,H-52,22);ctx.stroke();
+ const neon=(text,ty,px,max)=>{ctx.shadowBlur=36;ctx.fillStyle=c;ctx.font=font(px);ctx.fillText(text,W/2,ty,max);ctx.shadowBlur=8;ctx.fillStyle='#fffaf0';ctx.font=font(px-4);ctx.fillText(text,W/2,ty,max-6);};
+ if(img){const box=W-128,k=Math.max(box/img.naturalWidth,box/img.naturalHeight),iw=img.naturalWidth*k,ih=img.naturalHeight*k;
+  ctx.shadowBlur=0;ctx.save();rrect(ctx,64,50,box,box,22);ctx.clip();ctx.drawImage(img,W/2-iw/2,50+box/2-ih/2,iw,ih);ctx.restore();
+  ctx.fillStyle=c;ctx.fillRect(64,50+box+12,box,6);neon(s.text,H-76,86,W-100);}
+ else{const px=Math.min(190,Math.floor(1040/Math.max(3,s.text.length)));neon(s.text,H/2+6,px,W-90);
+  ctx.shadowBlur=0;ctx.fillStyle=c;ctx.fillRect(90,H/2+px*.55+8,W-180,6);ctx.fillRect(90,H/2-px*.55-14,W-180,6);}
+ ctx.restore();
+}
 function drawTile(ctx,tile,kind,text){
  const x=tile%COLS*TW,y=Math.floor(tile/COLS)*TH,c=NEON[hash(text)%NEON.length],r=rng(hash(text));
  ctx.save();ctx.translate(x,y);ctx.clearRect(0,0,TW,TH);ctx.beginPath();ctx.rect(0,0,TW,TH);ctx.clip();ctx.textAlign='center';ctx.textBaseline='middle';
@@ -223,15 +257,18 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
  // Party crowd: ≤12 six-box figures in one instanced mesh, only visible during a party; up close (gpu.active) the guests are
  // characters from crowd-gpu.js instead (walking in, then waving and jumping).
  const CROWD=mobile?6:10,crowd=new THREE.InstancedMesh(unit,toon(),CROWD*6);crowd.frustumCulled=false;crowd.visible=false;root.add(crowd);
- const decorBoxes=new THREE.InstancedMesh(unit,toon(),MAX_OPEN*3+MAX_COINS*5);decorBoxes.count=0;root.add(decorBoxes);
- let signs=null,atlas=null,ctx=null,coins=null,coinAtlas=null,coinCtx=null;
+ const decorBoxes=new THREE.InstancedMesh(unit,toon(),MAX_OPEN*7+MAX_COINS*5);decorBoxes.count=0;root.add(decorBoxes);
+ let signs=null,atlas=null,ctx=null,coins=null,coinAtlas=null,coinCtx=null;const signTime={value:0};
  if(typeof document!=='undefined'){
   const canvas=document.createElement('canvas');canvas.width=TW*COLS;canvas.height=TH*ROWS;ctx=canvas.getContext('2d');
   atlas=new THREE.CanvasTexture(canvas);atlas.colorSpace=THREE.SRGBColorSpace;atlas.anisotropy=2;
-  const g=new THREE.PlaneGeometry(1,1);g.setAttribute('aTile',new THREE.InstancedBufferAttribute(new Float32Array(MAX_OPEN*2*2+64),2));
+  const SIGN_N=MAX_OPEN*3+32,g=new THREE.PlaneGeometry(1,1);g.setAttribute('aTile',new THREE.InstancedBufferAttribute(new Float32Array(SIGN_N*4),4));g.setAttribute('aPulse',new THREE.InstancedBufferAttribute(new Float32Array(SIGN_N),1));
   const mat=new THREE.MeshBasicMaterial({map:atlas,alphaTest:.5,side:THREE.DoubleSide,toneMapped:false});
-  mat.onBeforeCompile=s=>{s.vertexShader='attribute vec2 aTile;\n'+s.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>\nvMapUv=(vMapUv+aTile)/vec2(${COLS}.,${ROWS}.);`);};mat.customProgramCacheKey=()=>'city-events-atlas';
-  signs=new THREE.InstancedMesh(g,mat,MAX_OPEN*2+32);signs.count=0;root.add(signs);
+  // aPulse (coin trend): +1 breathes slowly brighter, −1 holds at 72 %, 0 steady. The phase comes from the instance position.
+  mat.onBeforeCompile=s=>{s.uniforms.uSignTime=signTime;s.vertexShader='attribute vec4 aTile;attribute float aPulse;varying float vPulse,vPh;\n'+s.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>\nvMapUv=(vMapUv*aTile.zw+aTile.xy)/vec2(${COLS}.,${ROWS}.);vPulse=aPulse;vPh=instanceMatrix[3].x*.37+instanceMatrix[3].z*.21;`);
+   s.fragmentShader='uniform float uSignTime;varying float vPulse,vPh;\n'+s.fragmentShader.replace('#include <alphatest_fragment>','diffuseColor.rgb*=vPulse>.5?.8+.45*(.5+.5*sin(uSignTime*1.3+vPh)):vPulse<-.5?.72:1.;\n#include <alphatest_fragment>');};
+  mat.customProgramCacheKey=()=>'city-events-atlas-v2';
+  signs=new THREE.InstancedMesh(g,mat,SIGN_N);signs.count=0;root.add(signs);
   // Coin atlas: 8 × 4 tiles of 128×256 on one 1024² canvas; single-sided planes (each billboard is two, back to back).
   const cc=document.createElement('canvas');cc.width=COIN_TW*COIN_COLS;cc.height=COIN_TH*COIN_ROWS;coinCtx=cc.getContext('2d');
   coinAtlas=new THREE.CanvasTexture(cc);coinAtlas.colorSpace=THREE.SRGBColorSpace;coinAtlas.anisotropy=4;
@@ -242,11 +279,20 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
  }
  // Night beacons on launching-soon buildings: camera-facing additive glows that pulse (one instanced mesh, night only).
  // Size in world units, never under ~16 px so the overview still shows them (uPx = screen px per world unit).
- const beaconTime={value:0},beaconPx={value:20},beacons=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),new THREE.ShaderMaterial({uniforms:{uTime:beaconTime,uPx:beaconPx},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
-  vertexShader:`uniform float uTime,uPx;varying vec2 vUv;varying float vK;void main(){vUv=uv;float ph=instanceMatrix[3].x*.73+instanceMatrix[3].z*.41;vK=.5+.5*sin(uTime*3.4+ph);
- vec4 mv=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);mv.xy+=position.xy*max(1.6+.8*vK,(16.+8.*vK)/max(uPx,.01));mv.z+=1.5;gl_Position=projectionMatrix*mv;}`,
-  fragmentShader:`varying vec2 vUv;varying float vK;void main(){float d=length(vUv-.5)*2.;if(d>1.)discard;float core=1.-smoothstep(.0,.28,d),halo=pow(1.-d,2.);
- gl_FragColor=vec4(vec3(1.,.5,.16)*(core*1.6+halo*(.35+.65*vK)),1.);}`}),MAX_COINS);
+ // aKind 1 (coin tier 3): the same quad as a 3.6 × 9 beam standing on the roof, a warm wedge that sweeps slowly (sin of
+ // time and the instance position), fading with height. Same mesh, same draw call.
+ const BEACON_N=MAX_COINS*2,beaconGeo=new THREE.PlaneGeometry(1,1),beaconKind=new THREE.InstancedBufferAttribute(new Float32Array(BEACON_N),1);beaconGeo.setAttribute('aKind',beaconKind);
+ const beaconTime={value:0},beaconPx={value:20},beacons=new THREE.InstancedMesh(beaconGeo,new THREE.ShaderMaterial({uniforms:{uTime:beaconTime,uPx:beaconPx},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+  vertexShader:`uniform float uTime,uPx;attribute float aKind;varying vec2 vUv;varying float vK,vKind,vPh;void main(){vUv=uv;vKind=aKind;float ph=instanceMatrix[3].x*.73+instanceMatrix[3].z*.41;vPh=ph;vK=.5+.5*sin(uTime*3.4+ph);
+ vec4 mv=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);
+ if(aKind>.5)mv.xy+=vec2(position.x*3.6,(position.y+.5)*9.);else mv.xy+=position.xy*max(1.6+.8*vK,(16.+8.*vK)/max(uPx,.01));
+ mv.z+=1.5;gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`uniform float uTime;varying vec2 vUv;varying float vK,vKind,vPh;void main(){
+ if(vKind>.5){vec2 p=vec2(vUv.x-.5,vUv.y);float ang=.5*sin(uTime*.3+vPh);vec2 d=vec2(sin(ang),cos(ang));float along=dot(p,d),across=abs(dot(p,vec2(d.y,-d.x)));
+  if(along<0.||along>1.)discard;float w=.035+along*.19,beam=(1.-smoothstep(0.,w,across))*(1.-along)*(1.-along*.55);
+  gl_FragColor=vec4(vec3(1.,.95,.8)*beam*1.15,1.);return;}
+ float d=length(vUv-.5)*2.;if(d>1.)discard;float core=1.-smoothstep(.0,.28,d),halo=pow(1.-d,2.);
+ gl_FragColor=vec4(vec3(1.,.5,.16)*(core*1.6+halo*(.35+.65*vK)),1.);}`}),BEACON_N);
  beacons.count=0;beacons.frustumCulled=false;beacons.visible=false;beacons.name='beacons';root.add(beacons);
  // Spotlight cones: apex on the roof, swept by the vertex shader; night only.
  const coneGeo=new THREE.ConeGeometry(1.9,16,14,1,true);coneGeo.rotateX(Math.PI);coneGeo.translate(0,8,0);
@@ -256,16 +302,18 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
  gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(p,1.);}`,
   fragmentShader:`varying float vT;void main(){gl_FragColor=vec4(1.,.93,.75,(1.-vT)*(.25+.75*(1.-vT))*.55);}`}),MAX_OPEN);
  cones.count=0;cones.frustumCulled=false;cones.visible=false;root.add(cones);
- let night=false,decorKey='',buildings=[];const tileOf=new Map();
+ let night=false,decorKey='',buildings=[];const tileOf=new Map(),giantOf=new Map();
  // Quality hook (quality.js via main.js): how many of the 6 firework slots may burst at once (fewer points drawn).
  const FW_PER=fw.points.geometry.attributes.position.count/fw.slots;let fwSlots=fw.slots;
+ const beaconCount=kind=>{let n=0;for(let i=0;i<beacons.count;i++)if((beaconKind.getX(i)>.5)===(kind==='beam'))n++;return n;};
  function setQuality({fireworks=fw.slots}={}){fwSlots=Math.max(1,Math.min(fw.slots,fireworks|0));fw.points.geometry.setDrawRange(0,fwSlots*FW_PER);}
  function decorate(next,events){
   buildings=Array.isArray(next)?next:[];const d=decorations(buildings,events),items=decorItems(d,buildings),coin=coinPlan(buildings);
   drawCheers();
   const key=JSON.stringify([items,coin]);if(key===decorKey)return;decorKey=key;
   items.boxes.push(...coin.boxes);items.boxes.length=Math.min(items.boxes.length,decorBoxes.instanceMatrix.count);
-  coin.beacons.forEach((b,i)=>{m4.compose(v3.set(b.x,b.y,b.z),q.identity(),s3.setScalar(1));beacons.setMatrixAt(i,m4);});beacons.count=coin.beacons.length;beacons.instanceMatrix.needsUpdate=true;beacons.visible=night&&beacons.count>0;
+  coin.beacons.length=Math.min(coin.beacons.length,beacons.instanceMatrix.count);
+  coin.beacons.forEach((b,i)=>{m4.compose(v3.set(b.x,b.y,b.z),q.identity(),s3.setScalar(1));beacons.setMatrixAt(i,m4);beaconKind.setX(i,b.kind==='beam'?1:0);});beacons.count=coin.beacons.length;beacons.instanceMatrix.needsUpdate=beaconKind.needsUpdate=true;beacons.visible=night&&beacons.count>0;
   drawCoins(coin);
   items.boxes.forEach((b,i)=>{m4.compose(v3.set(b.x,b.y,b.z),q.identity(),s3.set(b.w,b.h,b.d));decorBoxes.setMatrixAt(i,m4);decorBoxes.setColorAt(i,color.set(b.color));});
   decorBoxes.count=items.boxes.length;decorBoxes.instanceMatrix.needsUpdate=true;if(decorBoxes.instanceColor)decorBoxes.instanceColor.needsUpdate=true;decorBoxes.computeBoundingSphere();
@@ -275,11 +323,17 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
   const texts=[...new Set(d.open.map(b=>signText(b.ticker,b.name)))];for(const t of [...tileOf.keys()])if(!texts.includes(t))tileOf.delete(t);
   let dirty=false;
   for(const t of texts)if(!tileOf.has(t)){const used=new Set(tileOf.values());let i=0;while(used.has(i))i++;tileOf.set(t,i);drawTile(ctx,1+2*i,'neon',t);drawTile(ctx,2+2*i,'graffiti',t);dirty=true;}
+  // Giant blocks (tier 4) are cached by ticker + colour + logo, at most MAX_GIANT; a logo redraws its block when it arrives.
+  const giants=items.signs.filter(s=>s.kind==='giant'),gkeys=giants.map(giantKey);for(const k of [...giantOf.keys()])if(!gkeys.includes(k))giantOf.delete(k);
+  for(const s of giants){const k=giantKey(s);if(giantOf.has(k))continue;const used=new Set(giantOf.values());let i=0;while(used.has(i))i++;if(i>=MAX_GIANT)continue;giantOf.set(k,i);
+   drawGiant(ctx,i,s,logoImage(s.logo,()=>{if(giantOf.get(k)!==i)return;const img=logoImage(s.logo);if(img){drawGiant(ctx,i,s,img);atlas.needsUpdate=true;}}));dirty=true;}
   if(dirty)atlas.needsUpdate=true;
-  const attr=signs.geometry.getAttribute('aTile'),list=items.signs.slice(0,signs.instanceMatrix.count);
-  list.forEach((s,i)=>{const t=1+2*tileOf.get(s.text)+(s.kind==='graffiti'?1:0);attr.setXY(i,...tileUV(t));
-   m4.compose(v3.set(s.x,s.y,s.z),q.setFromEuler(e3.set(0,s.ry,0)),s3.set(s.w,s.h,1));signs.setMatrixAt(i,m4);});
-  signs.count=list.length;attr.needsUpdate=true;signs.instanceMatrix.needsUpdate=true;signs.computeBoundingSphere();
+  const attr=signs.geometry.getAttribute('aTile'),pulse=signs.geometry.getAttribute('aPulse');let n=0;
+  for(const s of items.signs){if(n>=signs.instanceMatrix.count)break;
+   if(s.kind==='giant'){const g=giantOf.get(giantKey(s));if(g===undefined)continue;attr.setXYZW(n,g,0,1,GIANT_ROWS);}
+   else{const t=1+2*tileOf.get(s.text)+(s.kind==='graffiti'?1:0),[u,v]=tileUV(t);attr.setXYZW(n,u,v,1,1);}
+   pulse.setX(n,s.pulse||0);m4.compose(v3.set(s.x,s.y,s.z),q.setFromEuler(e3.set(0,s.ry,0)),s3.set(s.w,s.h,1));signs.setMatrixAt(n++,m4);}
+  signs.count=n;attr.needsUpdate=pulse.needsUpdate=true;signs.instanceMatrix.needsUpdate=true;signs.computeBoundingSphere();
  }
  // Coin tiles keep their slot while in use; new or changed cards are drawn, logos redraw their tile when they arrive.
  let coinTiles=new Map();
@@ -388,7 +442,7 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
    fw.points.visible=queue.length>0||b.some(x=>T<x.w+BURST_S);
   }
   if(cf.points.visible)cf.points.visible=cf.uniforms.uShower.value.some(s=>T<s.w+SHOWER_S+2.5);
-  fw.uniforms.uTime.value=cf.uniforms.uTime.value=T;fw.uniforms.uScale.value=cf.uniforms.uScale.value=beaconPx.value=pxPerUnit;coneTime.value=beaconTime.value=reducedMotion?0:T;
+  fw.uniforms.uTime.value=cf.uniforms.uTime.value=T;fw.uniforms.uScale.value=cf.uniforms.uScale.value=beaconPx.value=pxPerUnit;coneTime.value=beaconTime.value=signTime.value=reducedMotion?0:T;
   if(party){if(T>party.end){party=null;crowd.visible=false;crowd.count=0;}else drawParty(T);}
   if(roam)stepRoam(dt,T);
   stepBuffs(T);
@@ -440,5 +494,5 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
   // Additive sparks vanish on the pale day sky, so daytime fireworks blend normally.
   setNight(v){night=!!v;cones.visible=night&&cones.count>0;beacons.visible=night&&beacons.count>0;fw.points.material.blending=night?THREE.AdditiveBlending:THREE.NormalBlending;},
   get visiting(){return roam?.mode==='visit';},get roaming(){return roam?.mode||null;},get party(){return party;},get visitor(){return roam?.char?.root||null;},get pet(){return roam?.pet?.root||null;},
-  stats:()=>({points:fw.points.geometry.attributes.position.count+cf.points.geometry.attributes.position.count,signs:signs?.count||0,boxes:decorBoxes.count,cones:cones.count,coins:coins?.count||0,coinTiles:coinTiles.size,beacons:beacons.count,buffs:buffs.count,cheers:cheers.count})};
+  stats:()=>({points:fw.points.geometry.attributes.position.count+cf.points.geometry.attributes.position.count,signs:signs?.count||0,giants:giantOf.size,boxes:decorBoxes.count,cones:cones.count,coins:coins?.count||0,coinTiles:coinTiles.size,beacons:beacons.count,beams:beaconCount('beam'),buffs:buffs.count,cheers:cheers.count})};
 }

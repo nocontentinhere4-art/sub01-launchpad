@@ -48,6 +48,12 @@ test('ema, ledger, leaderboard and disclosure rows carry only public fields',()=
  assert.deepEqual(boardRows({top:[{name:'Yui',points:10,wallet:'X'}]}),[{rank:1,name:'Yui',points:10}]);
  const d=disclosureRows({system:'SUB-01',nature:'AI dev driven by a model of real human brain activity',datasets:[],operator:null,ai_act:'Art. 50 disclosure'});
  assert.deepEqual(d.map(r=>r.label),['System','What it is','Datasets','Operator','EU AI Act']);assert.equal(d.find(r=>r.label==='Datasets').value,'Not listed yet');
+ // Coin stats disclosure: the building-lights rule, the thresholds and the sources, only when the server sends coin_stats.
+ const c=disclosureRows({system:'SUB-01',coin_stats:{text:'Real numbers or nothing.',sources:['DexScreener public API','Helius DAS'],thresholds:{lit:{holders:1000,volume24hUsd:25000},roof:{holders:10000,marketCapUsd:1000000},sign:{holders:100000,marketCapUsd:10000000}},refresh:'every 5 minutes'}});
+ assert.deepEqual(c.map(r=>r.label),['System','Datasets','Operator','Building lights','Market data sources']);const [,,,bl,src]=c;
+ assert.equal(bl.value,'Real numbers or nothing. Thresholds: lit at 1,000 holders or $25K 24 h volume · roof at 10,000 holders or $1M mcap · sign at 100,000 holders or $10M mcap. Refresh: every 5 minutes.');
+ assert.equal(src.value,'DexScreener public API · Helius DAS');
+ assert.equal(disclosureRows({system:'S',coin_stats:{}}).find(r=>r.label==='Building lights').value,'Thresholds: lit at 1,000 holders or $25K 24 h volume · roof at 10,000 holders or $1M mcap · sign at 100,000 holders or $10M mcap.','an empty coin_stats still prints the default thresholds');
  assert.match(CHEER_LINE,/do not influence/);
 });
 test('the wallet prompt explains the three new actions',()=>{

@@ -265,6 +265,7 @@ export function planHero(){
  glow(-7.95,F1+.51+.45,-6.58,.55,'#FFB870','nightstand');glow(-7.0,F1+.14,H.z0+.2,.22,'#FFB870','nightlight');
  // ----- the example places and Orange Apartments (typed facades: ground 3.0, storeys 2.5, parapet 0.6)
  const ex=examples();W.push(...ex.W);P.push(...ex.P);G.push(...ex.G);S.push(...ex.S);L.push(...ex.L);pools.push(...ex.pools);
+ const fl=fillers();W.push(...fl.W);P.push(...fl.P);G.push(...fl.G);L.push(...fl.L);pools.push(...fl.pools);
  picks.push({id:'home',...ext(LOT.x0,LOT.x1,TOP,RIDGE,LOT.z0,LOT.z1)},...ex.picks);
  return {walls:W,props:P,glass:G,signs:S,glows:L,pools,picks,labels:{home:RIDGE+.9,...ex.labels},flag:{x:-5.03,y:1.2,z:-.58}};
 }
@@ -374,6 +375,70 @@ L.push({x:mx,y:TOP+H+4.25,z:mz,size:.5,color:'#FF3B3B',kind:'beacon'});
   P.push(ext(13.0,13.35,TOP,TOP+1.2,-1.2,-.9,'#E3BE3C'));P.push(ext(12.9,12.98,TOP,TOP+2.6,-1.5,-1.42,'#B7B4AA'),ext(12.66,13.22,TOP+2.3,TOP+2.86,-1.5,-1.44,'#D2463C'),ext(12.76,13.12,TOP+2.4,TOP+2.76,-1.44,-1.43,'#F4F1EA'));}
  {const x=2.3,z=4.75;P.push(ext(.2,4.6,TOP,TOP+.05,4.3,8.0,'#7E9A63'),ext(.2,4.6,TOP,TOP+.4,4.28,4.36,'#8C8F86'));P.push(ext(x-.6,x+.6,TOP+.4,TOP+.46,z+.4,z+.8,'#9A7A60'));for(const u of [-.5,.5])P.push(ext(x+u-.04,x+u+.04,TOP,TOP+.4,z+.45,z+.75,'#5B6466'));}
  return {W,P,G,S,L,pools,picks,labels};
+}
+// The block's bare pads (owner 2026-10-10 "non mi piace che ci sono sti spazi vuoti"; artdir/GAPS.md), filled with what a
+// Tokyo block keeps behind its street fronts. South back strip (z 10.6…14.7, behind the Apartments / Studio / Arcade, seen
+// from the camera): a covered bike shed, a vending wall, a tiny Inari slot with two torii, a vegetable patch, the sentō
+// with its chimney behind the Arcade; the east pad: the kōban on the corner and a konbini-style parking apron with planters.
+// North back strip (z −10.5…−7.3, behind the house, the Workshop and the coin parking): a drum-tank yard, laundry poles,
+// a second bike shed, a field behind the Workshop, a batting cage behind the parking; bike racks and planters in the
+// house/Workshop gap. All in the existing walls / props / glass batches; nothing touches the house, the mailbox, the
+// billboard, the picks or the walker. Night: the glass carries `light`, the lantern and the kōban lamp are glows.
+function fillers(){
+ const W=[],P=[],G=[],L=[],pools=[];
+ const w=(...a)=>W.push(ext(...a)),p=(...a)=>P.push(ext(...a)),g=(o,...a)=>G.push(ext(...a,o));
+ const glow=(x,y,z,size,color,kind,o={})=>L.push({x,y,z,size,color,kind,...o});
+ const y=TOP,pad=(x0,x1,z0,z1,c)=>p(x0,x1,y,y+.045,z0,z1,c);
+ const post=(x,z,h,c='#5B6466',t=.1)=>p(x-t/2,x+t/2,y,y+h,z-t/2,z+t/2,c);
+ const bike=(x,z,along)=>along?p(x-.75,x+.75,y,y+.62,z-.04,z+.04,'#2B2B2B'):p(x-.04,x+.04,y,y+.62,z-.75,z+.75,'#2B2B2B');
+ const shed=(x0,x1,z0,z1,n)=>{pad(x0,x1,z0,z1,'#A6A398');for(const x of [x0+.25,x1-.25])for(const z of [z0+.25,z1-.25])post(x,z,2.2,'#7E8789');p(x0,x1,y+2.2,y+2.26,z0,z1,'#B9C6C4');
+  p(x0+.3,x1-.3,y+.28,y+.33,(z0+z1)/2-.45,(z0+z1)/2-.4,'#8E9392');for(let i=0;i<n;i++)bike(x0+.5+i*(x1-x0-1)/(n-1),(z0+z1)/2,false);};
+ const tank=(x,z)=>{for(const a of [0,Math.PI/4])P.push({...ext(x-.48,x+.48,y,y+1.6,z-.48,z+.48,'#B9C6C4'),ry:a});};
+ const planter=(x,z,i)=>{p(x-.3,x+.3,y,y+.4,z-.3,z+.3,['#9A7A60','#B9C6C4','#7D8B8E'][i%3]);P.push({...ext(x-.36,x+.36,y+.4,y+.72,z-.36,z+.36,i%2?C.green:C.green2),ry:i*.7});};
+ // ----- south strip
+ shed(-13.4,-9.4,11.0,14.2,6);
+ pad(-8.9,-6.1,13.4,14.7,'#B4B1A7');p(-8.9,-6.1,y,y+1.6,14.45,14.7,C.block);
+ [[-8.4,'#EDEDE8'],[-7.5,'#C63B34'],[-6.6,'#2E6FB0']].forEach(([x,c])=>{p(x-.43,x+.43,y,y+1.75,13.75,14.4,c);g({light:'#EAF4FF'},x-.34,x+.34,y+.95,y+1.3,14.4,14.43,'#CFE3EA');});
+ p(-8.75,-8.4,y,y+.8,13.2,13.6,'#7D8B8E');pools.push([-7.5,14.9,'#EAF4FF',1.6,.45,.21]);
+ {const cx=-3.9;p(-5.4,-2.4,y,y+.06,10.8,14.6,'#C9C3B4');p(cx-.45,cx+.45,y+.06,y+.075,11.6,14.6,C.stone);
+  [[13.9,1],[12.9,.9]].forEach(([z,s])=>{const h=2.1*s;for(const sx of [-1,1]){const x=cx+sx*.6*s;p(x-.065*s,x+.065*s,y,y+h,z-.065*s,z+.065*s,C.red);}
+   p(cx-.95*s,cx+.95*s,y+h,y+h+.11*s,z-.1*s,z+.1*s,'#2B2B2B');p(cx-.88*s,cx+.88*s,y+h-.1*s,y+h,z-.08*s,z+.08*s,C.red);p(cx-.78*s,cx+.78*s,y+h-.56*s,y+h-.46*s,z-.05*s,z+.05*s,C.red);});
+  p(cx-.5,cx+.5,y,y+.5,10.9,11.8,C.stone);p(cx-.38,cx+.38,y+.5,y+1.2,11.0,11.7,'#A8784C');p(cx-.5,cx+.5,y+1.2,y+1.45,10.85,11.85,'#3E4246');p(cx-.3,cx+.3,y+1.45,y+1.6,10.95,11.75,'#3E4246');
+  for(const x of [cx-.75,cx+.75]){p(x-.14,x+.14,y,y+.55,11.95,12.25,C.stone);p(x-.08,x+.08,y+.55,y+.9,12.0,12.2,'#ECE8DE');}
+  p(-5.25,-5.2,y,y+2.5,14.3,14.35,C.metal);p(-5.23,-4.95,y+1.0,y+2.4,14.31,14.34,C.red);
+  glow(cx,y+1.1,11.9,.8,'#FFB066','lantern');pools.push([cx,12.2,'#FFB066',1.8,.45,.21]);}
+ {pad(-1.8,2.8,10.8,14.6,'#6B5443');[11.4,12.2,13.0,13.8].forEach((z,i)=>{p(-1.5,1.5,y+.04,y+.26,z-.21,z+.21,'#5A4634');p(-1.4,1.4,y+.26,y+.54,z-.17,z+.17,['#5E8F3E','#7FA66B','#3E7A5C','#9BB36A'][i]);});
+  p(1.9,2.7,y,y+1.7,11.0,12.0,'#8E9392');p(1.84,2.76,y+1.7,y+1.76,10.94,12.06,'#6E7774');post(2.3,13.9,.9,'#8E9392',.06);}
+ {pad(3.6,10.4,10.7,14.7,'#B4B1A7');w(4.0,10.0,y,y+3.4,11.0,14.0,'#D9CDB4');w(4.0,10.0,y+3.4,y+4.85,11.6,13.4,'#D9CDB4');
+  W.push(slopeX(3.7,10.3,12.5,y+4.9,14.3,y+3.4,.14,C.roof),slopeX(3.7,10.3,10.7,y+3.4,12.5,y+4.9,.14,C.roof));p(3.7,10.3,y+4.86,y+4.96,12.4,12.6,'#3A414A');
+  p(6.3,8.1,y+2.3,y+3.0,14.0,14.05,'#2F4F8A');g({light:'#FFC27A'},6.5,7.9,y+.1,y+2.2,14.0,14.04,GLASS_LOW);p(6.2,8.2,y+3.0,y+3.08,13.95,14.12,'#4A3A2E');
+  p(9.4,10.1,y,y+10.0,11.0,11.7,'#9C998F');p(9.35,10.15,y+10.0,y+10.3,10.95,11.75,'#4F5658');
+  for(let i=0;i<4;i++)bike(4.5+i*.5,14.45,false);post(3.9,14.3,3.4);g({light:'#FF9E7A'},3.55,4.25,y+3.4,y+4.1,14.24,14.36,C.red);
+  pools.push([7.2,14.9,'#FFD9A0',2.4,.5,.21]);}
+ // ----- east pad: the kōban on the corner, the apron behind it
+ {const x0=11.3,x1=13.3,z0=4.5,z1=6.7,H=5.6;pad(10.6,13.85,4.4,14.6,'#B4B1A7');w(x0,x1,y,y+H,z0,z1,'#EAE6DD');p(x0+.1,x1-.1,y+H,y+H+.03,z0+.1,z1-.1,'#7C8A80');
+  g({light:'#FFE6B8'},x1,x1+.05,y+.1,y+2.1,5.1,5.9,GLASS_LOW);g({light:'#D8E6F0'},x1,x1+.04,y+3.5,y+4.6,z0+.3,z1-.3,GLASS_LOW);
+  p(x1,x1+.1,y+2.9,y+3.4,z0+.15,z1-.15,'#2F3437');p(x1+.1,x1+.3,y+3.0,y+3.3,6.2,6.45,C.red);glow(x1+.32,y+3.15,6.32,.5,'#FF3B3B','lantern');
+  bike(x1+.5,5.0,false);pools.push([x1+.9,5.5,'#FFE6B8',1.6,.4,.21]);
+  for(const z of [7.6,10.9,14.2])p(10.7,13.6,y+.045,y+.055,z-.04,z+.04,'#ECEAE2');
+  {const cx=12.2,cz=9.3;p(cx-.48,cx+.48,y+.18,y+.75,cz-.95,cz+.95,'#9AA3A8');p(cx-.43,cx+.43,y+.75,y+1.18,cz-.5,cz+.6,'#8A939A');for(const s of [-1,1])for(const t of [-1,1])p(cx+s*.42,cx+s*.5,y,y+.34,cz+t*.6-.17,cz+t*.6+.17,'#2B2B2B');}
+  for(const z of [8.2,10.4,12.6])p(13.65,13.8,y,y+.9,z-.08,z+.08,'#4B6A8A');[11.2,12.1,13.0].forEach((x,i)=>planter(x,14.2,i));p(13.3,13.7,y,y+.9,13.4,13.8,'#7D8B8E');}
+ // ----- north strip
+ {pad(-13.6,-11.4,-10.5,-8.2,'#A9A79D');tank(-13.1,-9.3);tank(-11.9,-9.3);for(const yy of [.5,.95])p(-13.6,-11.4,y+yy,y+yy+.04,-8.4,-8.36,'#8E9392');}
+ {pad(-9.4,-6.4,-10.5,-7.6,'#6F8F5E');for(const x of [-9.1,-6.7])post(x,-9.0,1.95,'#B9B6AE');p(-9.1,-6.7,y+1.9,y+1.93,-9.015,-8.985,'#B9B6AE');
+  [[-8.7,'#E8E4DA'],[-8.2,'#9DB4C8'],[-7.7,'#D9A5A0'],[-7.2,'#F2E6B8']].forEach(([x,c],i)=>P.push({...ext(x-.17,x+.17,y+1.37,y+1.87,-9.01,-8.99,c),ry:(i%2?.15:-.12)}));
+  P.push({...ext(-7.2,-6.6,y,y+.6,-10.3,-9.7,'#5E7A4E'),ry:.4});}
+ shed(-6.0,-2.4,-10.5,-7.8,5);
+ {pad(-2.2,.4,-6.3,-.8,'#B4B1A7');p(-1.04,-.96,y+.28,y+.33,-5.8,-1.8,'#8E9392');for(let i=0;i<5;i++)bike(-1.0,-5.4+i*.8,true);planter(-1.7,-1.1,0);planter(-.1,-1.1,1);}
+ {pad(1.0,5.8,-10.5,-7.3,'#6B5443');[-9.9,-9.1,-8.3].forEach((z,i)=>{p(1.3,4.8,y+.04,y+.26,z-.21,z+.21,'#5A4634');p(1.4,4.7,y+.26,y+.54,z-.17,z+.17,['#7FA66B','#3E7A5C','#5E8F3E'][i]);});
+  p(5.0,5.7,y,y+1.7,-10.4,-9.5,'#8E9392');p(4.94,5.76,y+1.7,y+1.76,-10.46,-9.44,'#6E7774');post(1.3,-7.6,.9,'#8E9392',.06);}
+ {const x0=6.6,x1=13.4,z0=-10.5,z1=-6.1,H=5.5,net='#3E7A5C';pad(x0,x1,z0,z1,'#5F9C4C');
+  for(const x of [x0,(x0+x1)/2,x1])for(const z of [z0,z1])post(x,z,H,'#2F5F48',.1);
+  for(const z of [z0,z1])for(const h of [H,2.6])p(x0,x1,y+h-.03,y+h+.03,z-.03,z+.03,net);for(const x of [x0,x1])for(const h of [H,2.6])p(x-.03,x+.03,y+h-.03,y+h+.03,z0,z1,net);
+  for(let x=x0+1.1;x<x1-.5;x+=1.1)p(x-.015,x+.015,y,y+H,z0-.015,z0+.015,net);for(let z=z0+1.1;z<z1-.5;z+=1.1)for(const x of [x0,x1])p(x-.015,x+.015,y,y+H,z-.015,z+.015,net);
+  for(const x of [7.7,10.0,12.3]){p(x-.25,x+.25,y,y+1.0,-10.15,-9.65,'#4F5658');P.push({...ext(x-.22,x+.22,y+.05,y+.06,-7.12,-6.68,'#F2F1EA'),ry:Math.PI/4});}
+  g({light:'#FFE08A'},x1+.02,x1+.14,y+4.4,y+5.1,z1+.1,z1+1.7,'#E3BE3C');pools.push([10.0,-8.3,'#EAF4FF',3.4,.5,.21]);}
+ return {W,P,G,L,pools};
 }
 function tint(hex,f){const c=new THREE.Color(hex);return '#'+(f>0?c.lerp(new THREE.Color('#ffffff'),f):c.lerp(new THREE.Color('#000000'),-f)).getHexString();}
 

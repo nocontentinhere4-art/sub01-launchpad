@@ -352,6 +352,27 @@ h1 em{filter:drop-shadow(0 6px 24px rgba(251,117,43,.35))}
 .progress{height:8px;border-radius:8px;background:var(--fill-2);overflow:hidden}
 .progress i{display:block;height:100%;border-radius:8px;background:linear-gradient(90deg,var(--accent-lo),var(--accent),#FFB27F);box-shadow:0 0 14px rgba(251,117,43,.7);transition:width .6s}
 .roles{display:flex;flex-direction:column;gap:5px;margin:14px 0 0;font:500 11px/1.4 var(--f-mono);color:var(--ink-2);overflow-wrap:anywhere}
+/* ON-CHAIN (coin-tier.js): the launched coin's numbers with source + age. Mock data is flagged in orange; stale values dim. */
+.onchain{margin:14px 0 0;padding:12px 14px 12px;border-radius:14px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.onchain-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.onchain-src{font:500 10px/1.2 var(--f-mono);letter-spacing:.06em;color:var(--ink-2);text-align:right}
+.onchain.is-mock .onchain-src{color:var(--accent-hi);font-weight:700}
+.onchain.is-mock{box-shadow:inset 0 0 0 1px rgba(251,117,43,.55)}
+.onchain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 12px;margin:12px 0 0}
+.onchain-grid>div{min-width:0}
+.onchain-grid dt{font:500 10px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+.onchain-grid dd{margin:5px 0 0;font:650 14px/1.25 var(--f-ui);color:var(--ink);overflow-wrap:anywhere}
+.onchain-grid dd.dim{color:var(--ink-2);font-weight:500}
+.onchain-grid dd small{display:block;margin-top:3px;font:450 11px/1.35 var(--f-ui);color:var(--ink-2)}
+.onchain-grid>div.wide{grid-column:1/-1;margin-top:2px;padding-top:10px;border-top:1px solid var(--stroke)}
+.onchain-empty{grid-column:1/-1;margin:0;font:450 12px/1.5 var(--f-ui);color:var(--ink-2)}
+.onchain-link{margin-top:10px;font-size:12px}
+/* World label tier mark: three bars, filled up to the tier (lit 1, roof 2, sign 3); a grey dot for stale market data. */
+.world-label .tier-mark{display:inline-flex;align-items:flex-end;gap:2px;height:10px;margin-left:9px}
+.world-label .tier-mark i{position:static;width:3px;height:4px;margin:0;border-radius:1px;background:rgba(255,255,255,.28);box-shadow:none}
+.world-label .tier-mark i:nth-child(2){height:7px}.world-label .tier-mark i:nth-child(3){height:10px}
+.world-label .tier-mark[data-tier="2"] i:nth-child(1),.world-label .tier-mark[data-tier="3"] i:nth-child(-n+2),.world-label .tier-mark[data-tier="4"] i{background:var(--accent-hi);box-shadow:0 0 6px var(--accent-hi)}
+.stale-dot{display:inline-block;width:6px;height:6px;margin-left:7px;border-radius:50%;background:var(--ink-3)}
 .takeover-open{color:var(--danger-ink)}
 /* Build progress as a metro line: done = filled station, now = ring and halo, next = hollow. */
 .milestones{--line:0%;position:relative;display:flex;justify-content:space-between;margin:22px 4px 0;padding-top:18px}
@@ -648,6 +669,7 @@ h1 em{filter:drop-shadow(0 6px 24px rgba(251,117,43,.35))}
  .detail-card h2,.idea-card h2{font-size:40px}.creator-card h2{font-size:38px}
  .hanko{width:70px;height:70px;margin-right:6px}.hanko .jp{font-size:14px}.hanko small{font-size:7px}
  .detail-stats{flex-wrap:wrap}.detail-stats>div{flex:1 1 40%}
+ .onchain-grid{grid-template-columns:1fr 1fr}
  .detail-stats>#detail-fees-box{flex:1 1 100%;background:linear-gradient(90deg,var(--stroke-2) 50%,transparent 0) 0 0/6px 1px repeat-x}
  .form-grid{grid-template-columns:1fr;gap:0}
  .creator-card{padding-bottom:0}

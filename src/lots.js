@@ -179,6 +179,26 @@ const onPitch=(d,s,x,width)=>d.id===TOWER_DISTRICT&&s>0&&Math.abs(x-TOWER_PITCH.
 // Open-ground kinds a vacant plot can take besides parking (city-green plants inside a park, only around the others).
 export const PARK_KINDS=new Set(['park','pitch','court','playground']);
 const parkKind=id=>{const v=rng(id+':spot-kind')();return v<.5?'park':v<.68?'pitch':v<.84?'court':'playground';};
+// Owner 2026-10-10 "non mi piace che ci sono sti spazi vuoti": the empty ground becomes what a Tokyo street really has
+// (artdir/GAPS.md). A vacant plot outside the third ring is no longer always a coin parking: its kind is hashed per plot
+// (so other plots never move it) and weighted by the district's character; a 2.2 plot gap can be a kōban, a public
+// toilet cube or a mechanical bike rack beside the vending wall; a back-lane slot without a house (and the gaps ≥ 2.3
+// between the houses) gets a bike shed, a drum water-tank yard, laundry poles, a tiny field or, in the old districts,
+// a cemetery; under the viaduct (the lane at z −43) the leftover slots are a gado-shita taxi pool. city.js drawSpot
+// draws every kind; city-green plants only inside the park kinds and the shrines.
+export const VACANT_KINDS={
+ neon:[['coin-parking',30],['pachinko',20],['gas-station',15],['taxi-stand',15],['batting',10],['car-dealer',10]],
+ office:[['coin-parking',35],['gas-station',20],['taxi-stand',20],['bus-depot',15],['car-dealer',10]],
+ home:[['coin-parking',30],['kindergarten',20],['sento',15],['bike-park',10],['farm',10],['gas-station',10],['batting',5]],
+ old:[['coin-parking',20],['sento',25],['temple',25],['kindergarten',10],['farm',15],['cemetery',5]]};
+export const RING3_KINDS=[['farm',40],['sento',15],['temple',15],['coin-parking',30]];       // the ring-3 share that is not a park
+export const GAP_KINDS=[['vending',55],['bike-park',20],['koban',15],['toilet',10]];
+export const INTERIOR_KINDS=[['bike-park',30],['tank-yard',30],['laundry',20],['farm',20]],VIADUCT_KINDS=[['taxi-stand',50],['bike-park',30],['tank-yard',20]];
+export const GAP_SET=new Set(GAP_KINDS.map(([k])=>k));
+export const OPEN_KINDS=new Set(['alley','vending','parking','coin-parking','shrine',...PARK_KINDS,...Object.values(VACANT_KINDS).flat().map(([k])=>k),...RING3_KINDS.map(([k])=>k),...GAP_SET,...INTERIOR_KINDS.map(([k])=>k),...VIADUCT_KINDS.map(([k])=>k)]);
+function vacantKind(d,id,x){const r=rng(id+':vacant-kind');
+ if(isRing3(d.id))return x<.72?parkKind(id):pick(r,RING3_KINDS);   // x: the plot's own first roll, as before, so the ring-3 parks stay where they were
+ const table=VACANT_KINDS[CATEGORY[d.id]||'home'];return pick(r,table.filter(([k])=>k!=='cemetery'||CATEGORY[d.id]==='old'));}
 // Shrines (owner 2026-10-10: "too many in the same place, put a few around the city"): only districts on one diagonal of
 // the grid (col + 2·row ≡ 2 mod 7 → 7 of 49) get one, on their first vacant plot (north row first, west to east).
 export const shrineDistrict=d=>(((Math.round(d.x/29)+2*Math.round((d.z-2)/30))%7)+7)%7===2;
@@ -194,7 +214,7 @@ function sideElements(d,s,buildings){
  plots.forEach((p,k)=>{
   const b=p.reserved?null:buildings.find(b=>b.plotId===p.id),r=rng(p.id+':split');   // a building record on a reserved plot is ignored
   if(p.reserved)el.push({kind:'spot',spot:'park',plotId:p.id,x:p.x,width:5.8,vacant:true,reserved:true,reservedKind:p.reservedKind,cars:[]});
-  else if(p.vacant&&!b){const x=r(),kind=TOWER_PARKS.includes(p.id)?'park':shrinePlot(d,buildings)===p.id?'shrine':isRing3(d.id)?(x<.72?parkKind(p.id):'coin-parking'):'coin-parking';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
+  else if(p.vacant&&!b){const x=r(),kind=TOWER_PARKS.includes(p.id)?'park':shrinePlot(d,buildings)===p.id?'shrine':vacantKind(d,p.id,x);el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
   else{
    let split=pick(r,SPLITS).slice();
    if(b&&split.length===3)split=[1.8,4];
@@ -215,7 +235,7 @@ function sideElements(d,s,buildings){
    const px=left?g0+.1+pw/2:g1-.1-pw/2,ax=left?g1-.1-.35:g0+.1+.35;
    const parts=[{kind:'building',role:'filler',x:px,width:pw,seed:`${d.id}:${s}:gap${k}`,gap:'alley'},{kind:'spot',spot:'alley',x:ax,width:.7,acSide:left?-1:1,pole:true}];
    el.push(...(left?parts:parts.reverse()));}
-  else el.push({kind:'spot',spot:'vending',x:(g0+g1)/2,width:2.2,machines:2+(gr()<.35?1:0)});
+  else{const m=2+(gr()<.35?1:0),spot=pick(gr,GAP_KINDS);el.push({kind:'spot',spot,x:(g0+g1)/2,width:2.2,machines:spot==='vending'?m:0});}
  });
  return {front,el};
 }
@@ -232,7 +252,7 @@ function layoutDistrict(d,buildings,out){
  // Repair: never let open gaps drop a street edge under 85 % building face.
  for(const side of sides){
   for(const e of side.el){if(streetFill(side.el,d)>=.85)break;
-   if(e.kind==='spot'&&e.spot==='vending'){Object.assign(e,{kind:'building',role:'filler',width:1.8,seed:`${d.id}:${e.x.toFixed(2)}:fill`,gap:'pencil'});delete e.spot;}}
+   if(e.kind==='spot'&&GAP_SET.has(e.spot)&&!e.vacant){Object.assign(e,{kind:'building',role:'filler',width:1.8,seed:`${d.id}:${e.x.toFixed(2)}:fill`,gap:'pencil'});delete e.spot;delete e.machines;}}
   for(let i=0;i<side.el.length&&streetFill(side.el,d)<.85;i++){const e=side.el[i];
    if(e.kind==='spot'&&e.splitOpen){Object.assign(e,{kind:'building',role:'sub',width:2.2-JOINT,user:false,seed:`${e.plotId}:open`});delete e.spot;}}
   for(let i=0;i<side.el.length&&streetFill(side.el,d)<.85;i++){const e=side.el[i];
@@ -335,12 +355,21 @@ function layoutDistrict(d,buildings,out){
  // Block interior (brief 3.2; owner 2026-10-10 "too many empty strips"): a back lane runs along the row boundary
  // (city.js ground, z = d.z ± 15), and low houses face it from nearly every slot, with one coin parking and one or two
  // vacant lots. INNER is the lane's building line (lane half 1.5 + a 1.1 walk; faces at 12.4 after the 0.8 setback).
- const INNER=13.2,slots=[];
- for(const s of [-1,1]){let x=d.x-EDGE+.2;const r=rng(`${d.id}:interior:${s}`);while(true){const w=between(r,3.4,4.8),gap=between(r,.6,2.4);if(x+w>d.x+EDGE-.2)break;if(!onPitch(d,s,x+w/2,w))slots.push({s,x:x+w/2,width:w});x+=w+gap;}}
- const order=slots.map(v=>({v,k:dr()})).sort((a,b)=>a.k-b.k).map(o=>o.v);
+ const INNER=13.2,slots=[],gaps=[];
+ for(const s of [-1,1]){let x=d.x-EDGE+.2;const r=rng(`${d.id}:interior:${s}`);while(true){const w=between(r,3.4,4.8),gap=between(r,.6,2.4);if(x+w>d.x+EDGE-.2)break;if(!onPitch(d,s,x+w/2,w))slots.push({s,x:x+w/2,width:w});
+   if(gap>=2.3&&x+w+gap<d.x+EDGE-.2&&!onPitch(d,s,x+w+gap/2,gap))gaps.push({s,x:x+w+gap/2,width:gap-.4});x+=w+gap;}}
+ const order=slots.map(v=>({v,k:dr()})).sort((a,b)=>a.k-b.k).map(o=>o.v),viaductAt=s=>(s>0&&d.z===ROAD_Z[1])||(s<0&&d.z===ROAD_Z[2]);
  const parking=order.shift(),houses=order.slice(0,Math.max(3,order.length-1-Math.floor(dr()*2)));
+ // A back-lane spot: centre 11.4 from the district centre, its front at the lane edge (13.5), like the interior parking.
+ // Under the viaduct the deck (half 2.3 about the lane) would hide them: those sit 2.2 nearer the centre, like the houses.
+ const laneSpot=(h,kind,width,depth,extra={})=>{const front=h.s<0?'-z':'+z',fz=fzOf(front),zc=d.z+h.s*(13.5-depth/2-(viaductAt(h.s)?2.2:0));
+  out.spots.push({id:`${d.id}:interior:${kind}:${h.x.toFixed(2)}`,plotId:null,district:d.id,kind,x:h.x,z:zc,width,depth,front,frontZ:zc+fz*depth/2,cars:[],machines:0,acSide:0,pole:false,bays:0,...extra});};
  if(parking){const front=parking.s<0?'-z':'+z',fz=fzOf(front),zc=d.z+parking.s*11.4;
   out.spots.push({id:`${d.id}:interior:parking`,plotId:null,district:d.id,kind:'coin-parking',x:parking.x,z:zc,width:Math.max(parking.width,4.2),depth:4.2,front,frontZ:zc+fz*2.1,cars:[0,1,2].filter(()=>dr()<.5),bays:3});}
+ // The slots that stayed empty (owner 2026-10-10 "spazi vuoti"), and the gaps ≥ 2.0 between the houses.
+ for(const h of order.slice(houses.length)){const r=rng(`${d.id}:lane:${h.x.toFixed(2)}`),table=viaductAt(h.s)?VIADUCT_KINDS:category==='old'?[...INTERIOR_KINDS,['cemetery',25]]:INTERIOR_KINDS;laneSpot(h,pick(r,table),h.width,4.2);}
+ for(const g of gaps){if(parking&&g.s===parking.s&&Math.abs(g.x-parking.x)<Math.max(parking.width,4.2)/2+g.width/2+.1)continue;   // the parking is widened to 4.2
+  const r=rng(`${d.id}:lanegap:${g.x.toFixed(2)}`);laneSpot(g,pick(r,[['laundry',50],['tank-yard',30],['bike-park',20]]),g.width,3.2,{mini:true});}
  for(const h of houses){const r=rng(`${d.id}:house:${h.x.toFixed(2)}`),front=h.s<0?'-z':'+z',fz=fzOf(front),tile=r()<.7,type=tile?'T5':'T4';
   // The Shuto expressway (landmarks.js) runs along the boundary between the second and third rows: houses there keep
   // the older, deeper setback so the deck (half 2.3 about z −44) never passes over a roof.

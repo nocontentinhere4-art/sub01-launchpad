@@ -73,3 +73,15 @@ test('city: no landmark stands on a road; each one is inside its reserved ground
  const p3=cityPlots.find(p=>p.id==='shibuya-3');off(SHIBUYA_TOWER.x,SHIBUYA_TOWER.z,1.85);inside(SHIBUYA_TOWER.x,SHIBUYA_TOWER.z,1.85,{x0:p3.x-2.9,x1:p3.x+2.9,z0:p3.z-2.7,z1:p3.z+2.7});
  assert.equal(TRANSMITTER.plotId,'nakano-3');assert.equal(SHIBUYA_TOWER.plotId,'shibuya-3');
 });
+
+test('city: coin tiers add the lit canopy, the roof kit and the penthouse to the existing batches; no draw call, no height change',async()=>{
+ const {createCity}=await import('../src/city.js');const {mockStats}=await import('../src/coin-tier.js');
+ const city=createCity(new THREE.Group(),[],()=>{},[]);const at=(tier,trend='up')=>[{plotId:'shibuya-2',type:'project',color:'mint',phase:'open',progress:1,name:'Arc',ticker:'ARC',stats:tier==null?null:mockStats(tier,trend)}];
+ city.redraw(at(null));const base=city.stats(),h=city.heightOf('shibuya-2');
+ city.redraw(at(1));const t1=city.stats();assert.equal(JSON.stringify(t1),JSON.stringify(base),'tier 1: nothing beyond the launched look');
+ city.redraw(at(2));const t2=city.stats();assert.equal(t2.drawCalls,base.drawCalls);assert.ok(t2.windows>base.windows&&t2.walls>base.walls,'canopy');
+ city.redraw(at(3,'down'));const t3=city.stats();assert.equal(t3.drawCalls,base.drawCalls);assert.ok(t3.windows>t2.windows+4,'parapet strips + garden lamps + mast tip');assert.ok(t3.walls>t2.walls,'penthouse');
+ city.redraw(at(4));const t4=city.stats();assert.equal(t4.drawCalls,base.drawCalls);assert.ok(t4.instances>=t3.instances-2);
+ assert.equal(city.heightOf('shibuya-2'),h,'the building height never follows market data');
+ city.redraw(at(null));assert.equal(JSON.stringify(city.stats()),JSON.stringify(base),'back to the plain look');
+});

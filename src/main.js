@@ -27,6 +27,7 @@ import {createCityEvents,freshEvents} from './city-events.js';
 import {createExplorer,cityPois} from './explore.js';
 import {kanjiOf,codeOf,addressCode} from './districts-kanji.js';
 import {icon,cta,tile} from './icons.js';
+import {coinVisuals,statusLine,onchainRows,sourceLabel,mockStats,DEFAULT_THRESHOLDS} from './coin-tier.js';
 import {createGuest} from './guest.js'; // guest:
 import {createCalendarUI} from './calendar-ui.js';
 import {createRituals,createShrinePicks,shrineSpots} from './rituals.js';
@@ -129,6 +130,11 @@ function addLabel(place, height) {
   // A ticket: the stub dot, the name, the ticker in orange (tickets carry 'Name · $TICK').
   const [name, ticker] = (place.id === 'home' ? 'SUB-01 / HOME' : place.name.toUpperCase()).split(' · $');
   element.append(dot, document.createTextNode(name), ...(ticker ? [Object.assign(document.createElement('em'), { textContent: '$' + ticker })] : []));
+  // Coin tier mark (coin-tier.js coinVisuals): three little bars, tier 2–4 fill them; a grey dot when the data is stale.
+  // No numbers in the world: those live in the detail sheet with their source.
+  const coin=place.building?.phase==='open'?coinVisuals(place.building.stats):null;
+  if(coin&&coin.tier>=2){const m=document.createElement('span');m.className='tier-mark';m.dataset.tier=String(coin.tier);m.title=`Coin tier: ${coin.tierName}${coin.mock?' (mock data)':''}`;for(let i=0;i<3;i++)m.append(document.createElement('i'));element.append(m);}
+  if(coin?.stale){const st=document.createElement('span');st.className='stale-dot';st.title='Market data is stale';element.append(st);}
   element.onclick = () => showPlace(place); $('labels').append(element);
   labels.push({ element, position: new THREE.Vector3(place.x, height, place.z) });
 }
@@ -257,7 +263,7 @@ function placeFor(plot){
   const b=cityBuildings.find(b=>b.plotId===plot.id);if(!b)return plot;
   const mine=me?.plots?.some(p=>p.plotId===plot.id);
   if(b.type==='apartment')return{...plot,name:b.name+"'s apartment",kind:`RESIDENT / ${plot.districtName}`,status:mine?'Your home':'Home of '+b.name,description:mine?'Your apartment. Enter to arrange your room.':`${b.name} lives here.`,color:'#69a694',claimed:true,building:b,mine};
-  return{...plot,name:b.name,kind:`PROJECT / ${plot.districtName}`,status:b.stageLabel+(b.ticker?' · $'+b.ticker:''),description:{thinking:'SUB-01 is deciding whether to build it.',scaffold:'SUB-01 is building it right now.',stopped:'Work stopped; it needs attention.',review:'Built. Waiting for its author to review.',launch:'Getting ready to launch.',open:'Launched. Its building is open.'}[b.phase],color:'#fb752b',claimed:true,building:b,mine};
+  return{...plot,name:b.name,kind:`PROJECT / ${plot.districtName}`,status:b.phase==='open'?statusLine(b.stageLabel,b.stats,b.ticker):b.stageLabel+(b.ticker?' · $'+b.ticker:''),description:{thinking:'SUB-01 is deciding whether to build it.',scaffold:'SUB-01 is building it right now.',stopped:'Work stopped; it needs attention.',review:'Built. Waiting for its author to review.',launch:'Getting ready to launch.',open:'Launched. Its building is open.'}[b.phase],color:'#fb752b',claimed:true,building:b,mine};
 }
 // The leading tile of a place (icons.js tile()): the real thing, never a glyph. A project shows its coin logo (private →
 // a lock), a resident their initials on their colour, SUB-01 the brand mark, landmarks an SVG glyph, a free lot its kanji.
@@ -287,10 +293,40 @@ function showPlace(p) {
   if(predictable)rituals?.predict($('detail-predict'),{ideaId:ideaIdOf(b),own:!!p.mine});else rituals?.predict(null,{ideaId:null});
   $('detail-diary').hidden=p.id!=='home';const card=serverCardUrl(b,p.id);$('detail-share').hidden=!card;if(card)$('detail-share').href=card;
   if(project&&b.slug)loadRoles(b);$('detail-name').textContent=p.name;$('detail-category').textContent=p.kind;
+  renderOnchain(project&&b.phase==='open'?b:null);
   $('detail-description').textContent=p.description;$('detail-state').textContent=p.status;
   const vacant=!b&&!p.ideaId&&cityPlots.some(l=>l.id===p.id),noLogo=project&&p.mine&&!b.private&&!b.logoUrl;$('detail-icon').replaceChildren(tile(vacant?{empty:true,label:'Your logo here'}:tileSpec(p),'lg'));$('detail-tile-cap').hidden=!(vacant||noLogo);$('detail-tile-cap').textContent=noLogo?'Your coin logo goes here':'Your logo here';
   visitWalk(p);cta($('visit-button'),p.ideaId?'Open the idea ↗':b?.type==='apartment'?(p.mine?'Enter your room →':'Visit '+b.name+'\'s room →'):project?(b.slug?(p.mine?'Open your office ↗':'Open project page ↗'):'Watch the site →'):cityPlots.some(l=>l.id===p.id)?'Drop an idea here →':'Visit this place →');
   openDialog('detail-backdrop');
+}
+// ON-CHAIN (coin-tier.js, CITY-API.md "Coin stats"): the launched coin's numbers with their source and age. Honest data:
+// a missing number reads "no data yet" (never 0), a mock source is labelled MOCK DATA in orange, stale values are dimmed.
+// Thresholds come from /api/disclosure `coin_stats.thresholds` (fetched once); the documented defaults until then.
+let thresholds=DEFAULT_THRESHOLDS,thresholdsAsked=false;
+function loadThresholds(){if(thresholdsAsked)return;thresholdsAsked=true;getJSON('/api/disclosure').then(d=>{if(d?.coin_stats?.thresholds){thresholds=d.coin_stats.thresholds;if(selectedPlace?.building?.phase==='open')renderOnchain(selectedPlace.building);}}).catch(()=>{thresholdsAsked=false;});}
+function renderOnchain(b){
+  const box=$('detail-onchain'),stats=b?.stats||null;box.hidden=!b;if(!b)return;loadThresholds();
+  const mock=!!stats?.mock;box.classList.toggle('is-mock',mock);box.classList.toggle('is-stale',!!stats&&!stats.fresh);
+  $('detail-onchain-src').textContent=stats?sourceLabel(stats):'no data yet';
+  const grid=$('detail-onchain-grid');grid.replaceChildren();
+  const rows=stats?onchainRows(stats,thresholds):[];
+  if(!rows.length){const dd=document.createElement('p');dd.className='onchain-empty';dd.textContent=stats===null&&b.launched?'No market data yet: the building stays dark until the first fetch.':'No market data yet.';grid.append(dd);}
+  for(const r of rows){const cell=document.createElement('div');if(r.label==='Tier')cell.className='wide';const dt=document.createElement('dt');dt.textContent=r.label;const dd=document.createElement('dd');dd.textContent=r.value;if(r.dim)dd.classList.add('dim');
+    if(r.note){const n=document.createElement('small');n.textContent=r.note;dd.append(n);}cell.append(dt,dd);grid.append(cell);}
+  const link=$('detail-onchain-link');link.hidden=!stats?.url;if(stats?.url)link.href=stats.url;
+}
+// Dev-only override (rendering only, never sent anywhere): window.__city.debug.coinTier(plotId, tier, trend, {mock:true,
+// fresh, logo}) injects a synthetic `stats` record on that plot's project building, or makes a mock launched project there
+// when the plot has none (replacing an apartment for the session). The record is marked mock, so the sheet shows the
+// orange MOCK DATA label and the label's title says so. coinTier(plotId, null) removes it.
+const coinOverrides=new Map();
+function applyCoinOverrides(items){
+  if(!coinOverrides.size)return items;const out=items.filter(b=>!coinOverrides.has(b.plotId)||b.type==='project');
+  for(const [plotId,o] of coinOverrides){const i=out.findIndex(b=>b.plotId===plotId);
+    const base=i>=0?out[i]:{plotId,type:'project',phase:'open',progress:1,name:'Mock Coin',ticker:'MOCK',stageLabel:'Launched',slug:null,launched:true,mint:null,logoUrl:null,bannerUrl:null,private:false,color:'orange'};
+    const b={...base,phase:'open',launched:true,private:false,ticker:base.ticker||'MOCK',logoUrl:o.logo??base.logoUrl,stats:mockStats(o.tier,o.trend,{fresh:o.fresh!==false})};
+    if(i>=0)out[i]=b;else out.push(b);}
+  return out;
 }
 function focusPlace(p) {
   cityTour=null;follow=false;
@@ -538,14 +574,14 @@ function pollLoop(run,delay){let timer=0;const tick=async()=>{try{if(!document.h
  timer=setTimeout(tick,delay());return ()=>clearTimeout(timer);}
 async function pollWorld(){
  let next;try{next=await getJSON('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions){lookOptions=await getJSON('/api/world/options');cityRenderer.crowd.setLookOptions(lookOptions);}setServer(true);worldFails=0;}catch{worldFails++;setServer(false);return;}
- world=next;setCityWorld(world);const items=worldBuildings(world),key=JSON.stringify(items);let flipped=[];
+ world=next;setCityWorld(world);const items=applyCoinOverrides(worldBuildings(world)),key=JSON.stringify(items);let flipped=[];
  if(key!==worldKey){worldKey=key;
   // A party only for a site seen building and now open, not for one that was already open when first seen.
   flipped=items.filter(b=>b.phase==='open'&&cityBuildings.some(o=>o.plotId===b.plotId&&o.type==='project'&&o.phase!=='open'));
   const opened=items.filter(b=>b.phase==='open'&&!cityBuildings.some(o=>o.plotId===b.plotId&&o.phase==='open'));
   cityBuildings=items;cityRenderer.redraw(items);cityGreen?.redraw(items);residents.set(residentList());renderList();
   for(const l of worldLabels){l.element.remove();labels.splice(labels.indexOf(l),1);}worldLabels.length=0;
-  for(const b of items.filter(b=>b.type==='project')){const plot=cityPlots.find(p=>p.id===b.plotId);addLabel({...placeFor(plot),name:b.ticker?`${b.name} · $${b.ticker}`:b.name,color:b.phase==='open'?'#ffcf6e':'#fb752b'},(cityRenderer.heightOf(b.plotId)??3)+(b.phase==='open'?2.6:1.4));worldLabels.push(labels.at(-1));}
+  for(const b of items.filter(b=>b.type==='project')){const plot=cityPlots.find(p=>p.id===b.plotId);addLabel({...placeFor(plot),name:b.ticker?`${b.name} · $${b.ticker}`:b.name,color:b.phase==='open'?'#ffcf6e':'#fb752b'},(cityRenderer.heightOf(b.plotId)??3)+(b.phase==='open'?2.6:1.4)+(b.phase==='open'?coinVisuals(b.stats)?.labelLift||0:0));worldLabels.push(labels.at(-1));}
   if(opened.length&&worldKey&&$('activity-text'))notify(`${opened[0].name} just opened its doors.`);
   updateShrines();
  }
@@ -667,6 +703,9 @@ const quality={get level(){return governor.level;},set(l){governor.set(l,perform
 const sceneCount=root=>{let n=0;root.traverse(()=>n++);return n;};
 const aptPlots=()=>cityBuildings.filter(b=>b.type==='apartment'&&frontOf(b.plotId)).map(b=>b.plotId);
 window.__city={quality,get scene(){return scene;},get green(){return cityGreen?.stats();},get fuses(){return fuses;},
+  // Dev-only (see applyCoinOverrides): coinTier('shibuya-2',3,'up') lights a mock tier on that plot at the next poll; show() opens its sheet.
+  debug:{coinTier(plotId,tier,trend='flat',o={}){if(!cityPlots.some(p=>p.id===plotId))return false;if(tier==null)coinOverrides.delete(plotId);else coinOverrides.set(plotId,{tier,trend,...o});worldKey='';return pollWorld().then(()=>true);},
+   show(plotId){showPlace({id:plotId});},get overrides(){return [...coinOverrides.entries()];},get events(){return cityEvents.stats();},get city(){return cityRenderer?.stats();}},
   memory(){const m=renderer.info.memory;return {heapMB:performance.memory?+(performance.memory.usedJSHeapSize/1048576).toFixed(1):null,geometries:m.geometries,textures:m.textures,programs:renderer.info.programs?.length??null,objects:sceneCount(scene),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles};},
   get camera(){const t=controls.target;return {x:+t.x.toFixed(2),y:+t.y.toFixed(2),z:+t.z.toFixed(2),zoom:+camera.zoom.toFixed(3)};},
   view({x=0,y=2,z=0,zoom=1}={}){cityTour=null;follow=false;cameraTween=null;aimCamera(new THREE.Vector3(x,y,z));camera.zoom=zoom;camera.updateProjectionMatrix();controls.update();},
@@ -687,8 +726,9 @@ function ideaIdOf(b){if(!b)return null;const w=world?.plots?.find(p=>p.plotId===
 function ensureResident(next){if(!me?.user){guest.requireWallet('claim',()=>ensureResident(next));return;}if(!resident()){openCreator(next);return;}next?.();}
 // Buffs: every resident's from /api/world (kind only), yours from your own slip at once (until midnight JST).
 function updateBuffs(){if(myBuff&&Date.now()>myBuff.until)myBuff=null;const mine=resident()?.plotId;
-  cityEvents.setBuffs(cityBuildings.filter(b=>b.type==='apartment').map(b=>{const f=frontOf(b.plotId),own=b.plotId===mine,kind=own&&myBuff?myBuff.kind:b.resident?.buff;
-   return f&&kind&&kind!=='none'&&{x:f.x+1.2,z:f.z,kind,mine:own};}).filter(Boolean));}
+  // Owner 2026-10-10: no halos or orbiting spheres on characters. The omikuji buff is text on the slip only; the
+  // batch stays (city-events) but is never fed, so nothing is drawn around anyone.
+  cityEvents.setBuffs([]);}
 // Cheer counters over thinking sites: the ema board's counts, matched to the building like ideaIdOf.
 function updateCheers(){const e=rituals?.ema||[];if(!e.length){cityEvents.setCheers([]);return;}
   cityEvents.setCheers(cityBuildings.filter(b=>b.type==='project'&&b.phase==='thinking'&&!b.private).map(b=>{const id=ideaIdOf(b),x=e.find(r=>r.ideaId===id);return x&&{plotId:b.plotId,cheers:x.cheers};}).filter(Boolean));}

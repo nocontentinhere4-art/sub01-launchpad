@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {REASONS} from './guest.js';
 import {icon} from './icons.js';
+import {thresholdsLine} from './coin-tier.js';
 // Shrine rituals (docs/CITY-API.md "Rituals"): the omikuji (one slip per Tokyo day), the ema board (ideas pinned
 // before the vote, with cheers for their author), build-or-pass predictions on the detail card, the leaderboard, the
 // vote ledger with its chain check and the About sheet. Nothing here has value: fortunes are cosmetic until midnight
@@ -94,9 +95,13 @@ export function disclosureRows(d){
  if(!d||typeof d!=='object')return [];
  const rows=[['System',d.system],['What it is',d.nature],
   ['Datasets',Array.isArray(d.datasets)&&d.datasets.length?d.datasets.join(', '):'Not listed yet'],['How it decides',d.decision],['Human gate',d.human_gate],
-  ['Operator',d.operator||'Not named yet'],['EU AI Act',d.ai_act],['Updated',d.updated_at]];
+  ['Operator',d.operator||'Not named yet'],['EU AI Act',d.ai_act],
+  // Coin stats (CITY-API.md "Coin stats"): what lights a launched building, the thresholds and the sources the city prints.
+  ['Building lights',coinStatsText(d.coin_stats)],['Market data sources',Array.isArray(d.coin_stats?.sources)&&d.coin_stats.sources.length?d.coin_stats.sources.join(' · '):null],
+  ['Updated',d.updated_at]];
  return rows.filter(([,v])=>typeof v==='string'&&v.trim()).map(([k,v])=>({label:k,value:v}));
 }
+function coinStatsText(c){if(!c||typeof c!=='object')return null;const text=str(c.text).trim();return [text,`Thresholds: ${thresholdsLine(c.thresholds)}.`,str(c.refresh).trim()?`Refresh: ${str(c.refresh).trim()}.`:''].filter(Boolean).join(' ');}
 
 // ---------- 3D: shrine picks
 // One invisible box per shrine spot (torii height), pushed to main.js's `interactive` list; hit.instanceId → the spot.
@@ -146,7 +151,7 @@ export function createRituals(ctx){
   }
   const slip=el('div',{className:'omikuji-slip'+(omi.phase==='unfolding'?' is-unfolding':'')+(f.id==='kyo'?' is-kyo':'')},
    el('span',{className:'jp omikuji-kanji',textContent:f.kanji}),el('b',{textContent:f.name}),el('p',{textContent:f.text}),
-   el('small',{textContent:f.buff.kind!=='none'?`Today your character wears a ${f.buff.kind==='glow'?'warm glow':f.buff.kind} until midnight JST.`:f.id==='kyo'?'Tie it to the shrine tree and leave it behind.':'No buff today. Tomorrow brings a new slip.'}));
+   el('small',{textContent:f.id==='kyo'?'Tie it to the shrine tree and leave it behind.':'Tomorrow brings a new slip.'}));
   if(omi.phase==='unfolding'){const done=()=>{omi=omikujiStep(omi,{type:'shown'});slip.classList.remove('is-unfolding');};slip.addEventListener('animationend',done,{once:true});setTimeout(done,2200);}
   box.append(slip,el('p',{className:'fine',textContent:`${f.date?f.date+' · ':''}${f.note}`}));return box;
  }

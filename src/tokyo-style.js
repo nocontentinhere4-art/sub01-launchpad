@@ -157,7 +157,8 @@ export function stylePlan(buildings=[]){
    {const bx=x+along[0]*(n-.38),bz=z+along[1]*(n-.38);const bin={x:bx-face[0]*.1,y:BASE_Y+.4,z:bz-face[1]*.1,w:.38,h:.8,d:.38,ry:0,color:'#7D8B8E',role:'bin'};if(clearOfPoles(bx,bz,.25,.25)&&!clips([bin])){P(bin);small++;}}
    const mx=x+along[0]*(n-1)*.475,mz=z+along[1]*(n-1)*.475;pools.push([mx+face[0]*.9,mz+face[1]*.9,'#EAF4FF',1.3+n*.15,.45]);small+=n;};
   // Against the side wall of a parking spot / coin parking, fronts toward the spot, the row running to its back.
-  const sideSpots=spots.filter(s=>(s.kind==='parking'||s.kind==='coin-parking')&&!s.id.includes('interior')).map(s=>({s,k:rng(s.id+':vend')()})).sort((a,b)=>a.k-b.k).map(o=>o.s);
+  // (2026-10-10: the new open kinds with a free kerb side keep their machines there too; city.js keeps those sides clear.)
+  const sideSpots=spots.filter(s=>['parking','coin-parking','gas-station','car-dealer','taxi-stand','bus-depot','kindergarten','farm','bike-park'].includes(s.kind)&&!s.id.includes('interior')).map(s=>({s,k:rng(s.id+':vend')()})).sort((a,b)=>a.k-b.k).map(o=>o.s);
   for(const s of sideSpots){if(!clusters)break;const fz=s.front==='+z'?1:-1,rs=rng(s.id+':vend');
    for(const side of rs()<.5?[-1,1]:[1,-1]){
     const bay=side<0?0:(s.bays||1)-1;if(s.kind==='coin-parking'&&s.cars.includes(bay))continue;

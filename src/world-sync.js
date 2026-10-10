@@ -1,4 +1,5 @@
 import {cityPlots,districts,ROAD_Z,BOULEVARD_X} from './city-state.js';
+import {cleanStats} from './coin-tier.js';
 // Pure helpers that turn the server's /api/world snapshot into what the city draws.
 export const HOME_DESK={x:-4.5,z:-5.75},HOME_BED={x:-7.75,z:-5.4};   // hero-home.js: the gaming chair, the bedside in the loft
 const PALETTE=['orange','mint','violet','sand'];
@@ -20,9 +21,10 @@ export function worldBuildings(world){
   if(!cityPlots.some(c=>c.id===p.plotId&&!c.reserved))continue;   // a row on a reserved (tower park) plot is ignored
   if(p.kind==='project'&&p.project){const phase=phaseOf(p.project.stage);if(!phase)continue;
    const x=p.project,priv=!x.slug&&!x.ticker&&x.name==='Private project';
-   // Private ideas: the server sends only 'Private project' + stage; nothing else is carried (no ticker, art or mint).
+   // Private ideas: the server sends only 'Private project' + stage; nothing else is carried (no ticker, art, mint or stats).
+   // `stats` (coin-tier.js cleanStats): the launched coin's on-chain record, only for public launched projects; null otherwise.
    out.push({plotId:p.plotId,type:'project',phase,progress:Math.max(0,Math.min(1,Number(x.progress)||0)),name:x.name,ticker:priv?null:x.ticker||null,stageLabel:x.stageLabel,slug:x.slug||null,launched:!!x.launched,mint:priv?null:x.mint||null,
-    logoUrl:priv?null:x.logoUrl||null,bannerUrl:priv?null:x.bannerUrl||null,private:priv,color:PALETTE[hash(p.plotId)%4]});}
+    logoUrl:priv?null:x.logoUrl||null,bannerUrl:priv?null:x.bannerUrl||null,private:priv,color:PALETTE[hash(p.plotId)%4],stats:priv||!x.launched?null:cleanStats(x.stats)});}
   else if(p.kind==='apartment'&&p.resident)out.push({plotId:p.plotId,type:'apartment',phase:'home',progress:1,name:p.resident.name,resident:p.resident,color:PALETTE[hash(p.resident.name)%4]});
  }
  return out;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET,isRing3,builtHeight,CATEGORY,TOWER_PARKS,TOWER_PITCH,TOWER_PARK,TRANSMITTER_YARD,PARK_KINDS} from '../src/lots.js';
+import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET,isRing3,builtHeight,CATEGORY,TOWER_PARKS,TOWER_PITCH,TOWER_PARK,TRANSMITTER_YARD,PARK_KINDS,OPEN_KINDS,VACANT_KINDS,RING3_KINDS,GAP_SET,INTERIOR_KINDS,VIADUCT_KINDS} from '../src/lots.js';
 import {cityPlots,districts,buildingColors,RESERVED_PLOTS,RESERVED_KIND,tower,ROAD_Z} from '../src/city-state.js';
 import {TOWER} from '../src/tokyo-tower.js';
 import {frontOf} from '../src/world-sync.js';
@@ -28,7 +28,8 @@ test('lots: fronts face the district street (plots at d.z+6 face −z) and agree
 test('lots: every plot is covered; vacant plots are T8 spots; the user takes the widest sub-lot in their colour',()=>{
  for(const p of cityPlots){const s=subLotsOf(p.id);
   if(p.reserved){assert.equal(s.lots.length,0);assert.equal(s.spots.length,1);assert.equal(s.spots[0].kind,'park');assert.equal(s.spots[0].reserved,true);}
-  else if(p.vacant){assert.equal(s.lots.length,0);assert.ok((isRing3(p.district)?[...PARK_KINDS,'coin-parking','shrine']:TOWER_PARKS.includes(p.id)?['park','coin-parking','shrine']:['coin-parking','shrine']).includes(s.spots[0].kind));}
+  else if(p.vacant){assert.equal(s.lots.length,0);const k=s.spots[0].kind;assert.ok(OPEN_KINDS.has(k)&&!['alley','vending','parking','koban','toilet'].includes(k),`${p.id} ${k}`);
+   if(isRing3(p.district))assert.ok(PARK_KINDS.has(k)||k==='shrine'||RING3_KINDS.some(([v])=>v===k),`${p.id} ${k}`);else if(!TOWER_PARKS.includes(p.id))assert.ok(k==='shrine'||VACANT_KINDS[CATEGORY[p.district]].some(([v])=>v===k),`${p.id} ${k}`);}
   else{assert.ok(s.lots.length>=1&&s.lots.length<=3);for(const l of s.lots)assert.ok(Math.abs(l.x-p.x)<=2.9&&l.width>1.5&&l.height>=3.5&&[l.x,l.z,l.width,l.depth,l.height].every(Number.isFinite));}}
  const u=subLotsOf('shibuya-2',user);assert.equal(u.user.wall,buildingColors.orange);assert.equal(u.user.type,'T1');
  assert.equal(u.user.width,Math.max(...u.lots.map(l=>l.width)));assert.equal(subLotsOf('shibuya-5',user).user.type,'T3');
@@ -150,4 +151,38 @@ test('lots: ring-3 parks vary deterministically into pitches, courts and playgro
  assert.ok(!L.spots.some(s=>!isRing3(s.district)&&s.kind!=='park'&&PARK_KINDS.has(s.kind)),'only the third ring varies');
  const again=cityLayout([{plotId:'kichijoji-2',type:'project',color:'mint'}]);
  assert.deepEqual(again.spots.filter(s=>s.plotId&&isRing3(s.district)&&PARK_KINDS.has(s.kind)).map(s=>[s.plotId,s.kind]),open.map(s=>[s.plotId,s.kind]),'the kinds do not move with other plots');
+});
+
+// Owner 2026-10-10 "non mi piace che ci sono sti spazi vuoti": vacant plots, plot gaps and the back lane carry real Tokyo
+// fillers (artdir/GAPS.md), hashed per slot, inside their block and off every road, lane, landmark ground and building.
+test('lots: gap fillers — ≥ 10 new kinds in use, weighted by district character, deterministic, inside the block and clear of roads and landmarks',()=>{
+ const L=cityLayout([]),NEW=['gas-station','taxi-stand','car-dealer','bus-depot','pachinko','batting','sento','temple','cemetery','kindergarten','farm','bike-park','koban','toilet','tank-yard','laundry'];
+ const used=new Set(L.spots.filter(s=>NEW.includes(s.kind)).map(s=>s.kind));assert.ok(used.size>=10,`${[...used].sort()}`);
+ const vac=L.spots.filter(s=>s.plotId&&cityPlots.find(p=>p.id===s.plotId)?.vacant&&!isRing3(s.district)&&!s.reserved),kinds=s=>new Set(vac.filter(x=>CATEGORY[x.district]===s).map(x=>x.kind));
+ assert.ok([...kinds('neon')].some(k=>['pachinko','gas-station','taxi-stand','batting','car-dealer'].includes(k)),'neon districts get the loud fillers');
+ assert.ok([...kinds('old')].some(k=>['sento','temple','kindergarten','farm','cemetery'].includes(k)),'old districts get the quiet ones');
+ assert.ok(!vac.some(s=>CATEGORY[s.district]==='old'&&['pachinko','gas-station','car-dealer','bus-depot'].includes(s.kind)),'nothing loud in an old district');
+ assert.ok(!vac.some(s=>CATEGORY[s.district]==='neon'&&['sento','temple','cemetery','kindergarten'].includes(s.kind)),'nothing quiet in a neon district');
+ const ring3=L.spots.filter(s=>s.plotId&&isRing3(s.district)&&cityPlots.find(p=>p.id===s.plotId).vacant);assert.ok(ring3.some(s=>s.kind==='farm'),'ring 3 has fields');
+ const gaps=L.spots.filter(s=>!s.ghost&&!s.plotId&&GAP_SET.has(s.kind)&&!s.id.includes(':interior:'));assert.ok(['koban','toilet','bike-park'].filter(k=>gaps.some(s=>s.kind===k)).length>=2,'gap kinds beside the vending walls (most gaps are repaired into pencils for the 85 % street face)');
+ assert.ok(gaps.every(s=>s.width===2.2&&s.depth===4.8));
+ const lane=L.spots.filter(s=>!s.ghost&&s.id.includes(':interior:')&&s.kind!=='coin-parking');assert.ok(lane.length>=60,`${lane.length} back-lane fillers`);
+ assert.ok(['bike-park','tank-yard','laundry','farm'].every(k=>lane.some(s=>s.kind===k)));
+ assert.ok(lane.some(s=>s.kind==='cemetery'&&CATEGORY[s.district]==='old')&&!lane.some(s=>s.kind==='cemetery'&&CATEGORY[s.district]!=='old'),'cemeteries only behind the old blocks');
+ const viaductSide=s=>{const d=districts.find(d=>d.id===s.district);const side=Math.sign(s.z-d.z);return (side>0&&d.z===ROAD_Z[1])||(side<0&&d.z===ROAD_Z[2]);};
+ assert.ok(lane.some(s=>s.kind==='taxi-stand'&&viaductSide(s)),'a taxi pool under the viaduct');assert.ok(!lane.some(s=>s.kind==='taxi-stand'&&!viaductSide(s)),'taxi pools only under the viaduct');
+ assert.ok(lane.filter(s=>s.mini).every(s=>s.depth===3.2&&s.width>=1.6&&s.width<=2.0),'the mini fillers sit in the house gaps');
+ const all=[...districts];
+ for(const s of L.spots){if(s.ghost)continue;const d=all.find(d=>d.id===s.district),dz=Math.abs(s.z-d.z),half=s.depth/2;
+  if(!(s.kind==='coin-parking'&&!s.plotId))assert.ok(Math.abs(s.x-d.x)+s.width/2<=11.01,`${s.id} beyond the facade line`);   // the interior parking is widened to 4.2 (pre-existing)
+  assert.ok(dz-half>=3.3-1e-9,`${s.id} on the district street`);assert.ok(dz+half<=13.5+1e-9,`${s.id} on the back lane`);
+  const inBox=b=>b.district===s.district&&Math.sign(s.z-d.z)===b.s&&s.x+s.width/2>b.x0+.01&&s.x-s.width/2<b.x1-.01;
+  if(!s.reserved)assert.ok(!inBox(TOWER_PARK)&&!inBox(TRANSMITTER_YARD),`${s.id} on a landmark's ground`);
+  if(s.id.includes(':interior:'))assert.ok(Math.abs(s.x-TOWER_PITCH.x)>=TOWER_PITCH.w/2+s.width/2||Math.abs(s.z-TOWER_PITCH.z)>=TOWER_PITCH.d/2+half,`${s.id} on the pitch`);}
+ // Interior fillers overlap no interior house and no other spot.
+ const inter=L.spots.filter(s=>!s.ghost&&s.id.includes(':interior:'));
+ for(const s of inter){for(const l of L.lots)if(l.role==='interior'&&l.district===s.district)assert.ok(Math.abs(l.x-s.x)>=l.width/2+s.width/2-.01||Math.abs(l.z-s.z)>=l.depth/2+s.depth/2-.01,`${s.id} hits ${l.id}`);
+  for(const o of inter)if(o!==s&&o.district===s.district)assert.ok(Math.abs(o.x-s.x)>=o.width/2+s.width/2-.01||Math.abs(o.z-s.z)>=o.depth/2+s.depth/2-.01,`${s.id} hits ${o.id}`);}
+ const again=cityLayout([{plotId:'ueno-2',type:'project',color:'mint'}]);
+ assert.deepEqual(again.spots.filter(s=>NEW.includes(s.kind)).map(s=>[s.id,s.kind]),L.spots.filter(s=>NEW.includes(s.kind)).map(s=>[s.id,s.kind]),'fillers never move with other plots');
 });

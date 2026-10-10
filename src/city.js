@@ -11,13 +11,15 @@ import {cityPlots,districts,tower,TRANSMITTER,SHIBUYA_TOWER,plotView,BOULEVARD_X
 const ALL_BOULEVARDS=[...BOULEVARD_X,...OUTER_BOULEVARD_X];
 import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial,isRing3,builtHeight,TOWER_PITCH,TOWER_PARK,TRANSMITTER_YARD} from './lots.js';
 import {boulevardFurniture,LIGHT} from './city-street.js';
+import {coinVisuals} from './coin-tier.js';
 const wallMaterial=params=>(T.wallMaterial||T.toon)(params);
 // Night multipliers are plain 0–1 factors (brief 3.9: walls ×#6F7D99, ground ×#55617A), not sRGB colours.
 const factor=hex=>new THREE.Color().setHex(parseInt(hex.slice(1),16),THREE.LinearSRGBColorSpace);
 const NIGHT_WALL=T.nightColor?T.nightColor('walls'):factor('#6F7D99'),NIGHT_GROUND=T.nightColor?T.nightColor('ground'):factor('#55617A'),DAY=new THREE.Color(1,1,1);
 const WHITE=new THREE.Color('#ffffff'),BLACK=new THREE.Color('#000000');
 const tint=(hex,f)=>{const c=new THREE.Color(hex);return f>0?c.lerp(WHITE,f):c.lerp(BLACK,-f);};
-const GLASS_LOW='#3D525B',GLASS_HIGH='#5E7881',AC='#E5E1D6';
+const GLASS_LO='#3D525B',GLASS_HI='#5E7881',AC='#E5E1D6';
+const GLASS_LOW=GLASS_LO,GLASS_HIGH=GLASS_HI;   // drawLot shadows these with the coin-tier warm variants
 const ROWS=ROAD_Z,BLVD_Z0=OUTER_EXTENT.minZ,BLVD_Z1=OUTER_EXTENT.maxZ;   // boulevards run on through the outer ring
 const CARS=['#E8E6E0','#2F3437','#9AA3A8','#1F2A44','#B33A32','#D9D3C3'];
 // Wave 5A facade codes used below (facades.js): plain surfaces per lot.facade, decals, flags.
@@ -35,6 +37,10 @@ function nightLit(material){
 function shaped(x,y,z,pre,rot,post){const m=new THREE.Matrix4().makeScale(...pre);m.premultiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rot)));m.premultiply(new THREE.Matrix4().makeScale(...post));return m.premultiply(new THREE.Matrix4().makeTranslation(x,y,z));}
 // 2700 K homes, office white, a few cool stairwells, the rest dark (brief 3.9 night).
 const bandLight=(r,home)=>{const x=r();return x<.1?'#D8E6F0':x<(home?.48:.6)?(home?'#FFC27A':'#FFE6B8'):null;};
+// Coin tier 2+ (coin-tier.js litShare ≈ 0.9): nearly every band glows at night, a touch brighter; the same hash draw, so the
+// few dark bands are the same ones at every redraw.
+const coinLight=(r,share)=>{const x=r();return x<.1?'#D8E6F0':x<share?'#FFE2A8':null;};
+const WARM_GLASS=new THREE.Color('#7A6A50');
 // The landmarks' settings (owner 2026-10-10 "no structure in the middle of a street; give each its own place"):
 // the tower park (lots.js TOWER_PARK: lawn, a raised paver forecourt with a step and low walls on the street, pads under
 // the back feet, gravel paths, benches, lamps, the temple hall in the back-west corner; trees from city-green.js), the
@@ -225,8 +231,10 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  function drawLot(lot,st={}){
   const fz=lot.front==='+z'?1:-1,w=lot.width,D=lot.depth,H=lot.height,t=lot.type,y0=BASE_Y,backZ=lot.frontZ-fz*D;
   const F=(key,u,y,v,ww,h,dd,color,o)=>add(key,lot.x+u,y0+y,lot.frontZ+fz*v,ww,h,dd,color,o);
-  const r=rng(lot.id+':draw'),rr=rng(lot.id+':w5a-draw'),home=['T2','T3','T4','T5'].includes(t);
-  const glass=(k,o={})=>({...o,light:st.dark?null:bandLight(r,home)});
+  const r=rng(lot.id+':draw'),rr=rng(lot.id+':w5a-draw'),home=['T2','T3','T4','T5'].includes(t),coin=st.coin||null;
+  const glass=(k,o={})=>({...o,light:st.dark?null:coin?.lit?coinLight(r,coin.litShare):bandLight(r,home),...(coin?.lit?{glow:1.15}:{})});
+  // Coin tier 2+ by day: the glass leans warm (still under the window shader's glass threshold, so the interiors stay).
+  const GLASS_LOW=coin?.lit?'#'+new THREE.Color(GLASS_LO).lerp(WARM_GLASS,.3).getHexString():GLASS_LO,GLASS_HIGH=coin?.lit?'#'+new THREE.Color(GLASS_HI).lerp(WARM_GLASS,.3).getHexString():GLASS_HI;
   // Glass curtain facades read as glass: the wall colour leans to the brief's blue-grey glass.
   const wall=lot.facade==='glass'&&!lot.user?'#'+tint(lot.wall,0).lerp(new THREE.Color('#5A7680'),.7).getHexString():lot.wall;
   const band=tint(wall,.14),sill=tint(wall,.26),floors=lot.floors,body={fac:fc(lot.facade||'plaster')},ry0=fz>0?0:Math.PI;
@@ -317,8 +325,8 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   if(lot.stair)(far?fine:fn=>fn())(()=>{const u=0,c=r()<.5?'#6E7774':'#C9B79A',zc=backZ-fz*.5;
    for(let k=0;k<floors-1;k++){const ya=k?yk(k):0,yb=yk(k+1),dir=k%2?1:-1,run=Math.min(2.2,w-.4),L=Math.hypot(run,yb-ya),a=Math.atan2(yb-ya,run*dir);
     add('walls',lot.x+u,y0+(ya+yb)/2,zc,L,.12,.9,c,{rz:a});add('walls',lot.x+dir*(run/2+.45),y0+yb,zc,.9,.12,.9,c);fine(()=>add('walls',lot.x+u,y0+(ya+yb)/2+.9,zc-fz*.43,L,.05,.05,c,{rz:a}));}});
-  // Roof clutter in corner slots.
-  if(!st.bare)(far?fine:fn=>fn())(()=>{const ry=y0+(t==='T5'?lot.eave+.6:H+.1),fp=[];
+  // Roof clutter in corner slots (a coin tier-3 roof is kept clear for its kit below).
+  if(!st.bare&&!coin?.roof)(far?fine:fn=>fn())(()=>{const ry=y0+(t==='T5'?lot.eave+.6:H+.1),fp=[];
    for(const it of lot.roofItems){
    const x=lot.x+it.u,z=lot.z+fz*it.v;fp.push([it.u,it.v,it.w/2+.3,it.d/2+.3]);
    if(it.kind==='bulkhead'){const side=it.u>0?-1:1;add('roofs',x,ry+.9,z,it.w,1.8,it.d,tint(wall,-.1),body);
@@ -346,6 +354,38 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
     if(lr&&t!=='T5'&&clear(0,lv,lr.len/2,.2)){const z=lot.z+fz*lv;for(const s of [-1,1])add('roofs',lot.x+s*lr.len/2,ry+.6,z,.04,1.2,.04,'#B9B6AE');add('roofs',lot.x,ry+1.18,z,lr.len,.025,.025,'#B9B6AE');
      const nc=Math.max(2,Math.floor(lr.len/.6));for(let i=0;i<nc;i++)add('roofs',lot.x-lr.len/2+.3+i*(lr.len-.6)/Math.max(1,nc-1),ry+.9,z,.34,.5,.02,['#E8E4DA','#9DB4C8','#D9A5A0','#F2E6B8','#C7D3B4'][Math.floor(rr()*5)],{ry:(rr()-.5)*.3});}
    });});
+  if(coin)coinKit(lot,coin,{fz,w,D,H,t,y0,wall,body,F});
+ }
+ // ---------- Coin tiers on a launched building (coin-tier.js coinVisuals; CITY-API.md "Coin stats") ----------
+ // The building's HEIGHT never follows market data: lots are fixed by lots.js and neighbours touch, so a taller body
+ // would cut into the next facade and shift every roof item. The silhouette grows instead: tier 3+ gets a rooftop
+ // structure (a mechanical penthouse and a mast, about 1–2 storeys) that stands on the unchanged roof.
+ //   tier 2 'lit'  : the glass is handled in drawLot (coinLight / warm day tint); here the entrance gets a lit canopy
+ //                   and a small pool of light on the sidewalk.
+ //   tier 3 'roof' : an edge-lit parapet (four thin window boxes with light), roof-garden lamps and planters, the
+ //                   penthouse + mast, a soft pool on the street in front. city-events adds the sweeping beam.
+ //   tier 4 'sign' : the giant sign and its beacon are city-events'; the mast moves to the side to leave it the centre.
+ // Everything joins the existing batches (walls / roofs / windows), so no draw call is added.
+ function coinKit(lot,coin,{fz,w,D,H,t,y0,wall,body,F}){
+  const warm='#FFE6B8',white='#FFF2D4';
+  if(coin.lit&&t!=='T5'&&lot.shop!=='pilotis'){const cw=Math.min(w-.5,2.8);
+   F('walls',0,GROUND+.02,.42,cw+.1,.08,.84,'#2B3440');F('windows',0,GROUND-.05,.42,cw,.07,.74,'#E8E6DE',{light:warm,glow:1.2});
+   pools.push([lot.x,lot.frontZ+fz*1.1,warm,Math.min(2.4,w*.5),.45,'coin']);}
+  if(!coin.roof)return;
+  const top=t==='T5'?lot.eave:H,ry=y0+top;
+  // Parapet: a light strip on each roof edge, inside the coping.
+  for(const s of [-1,1]){add('windows',lot.x,ry+.1,lot.z+s*(D/2-.1),w-.26,.08,.08,'#E8E6DE',{light:white,glow:1});add('windows',lot.x+s*(w/2-.1),ry+.1,lot.z,.08,.08,D-.4,'#E8E6DE',{light:white,glow:1});}
+  // Roof garden on the front half: three lamps on short posts, planters between them.
+  const gz=lot.z+fz*(D/2-.75),n=w>4?3:2;
+  for(let i=0;i<n;i++){const gx=lot.x-w/2+.7+i*(w-1.4)/Math.max(1,n-1);add('roofs',gx,ry+.45,gz,.06,.9,.06,'#8E9392');add('windows',gx,ry+.95,gz,.24,.14,.24,'#E8E6DE',{light:warm,glow:1});
+   if(i<n-1)add('roofs',gx+(w-1.4)/Math.max(1,n-1)/2,ry+.22,gz-fz*.1,.9,.44,.5,'#6F8F5E');}
+  // Penthouse at the back half, mast beside it (centred when there is no giant sign).
+  const pw=Math.min(w*.46,2.6),pd=Math.min(D*.42,2.4),px=lot.x-w*.08,pz=lot.z-fz*(D/2-pd/2-.55);
+  add('walls',px,ry+.95,pz,pw,1.9,pd,tint(wall,-.08),body);add('roofs',px,ry+1.92,pz,pw+.1,.06,pd+.1,tint(wall,.12));
+  add('walls',px+pw/2*.6,ry+.9,pz+fz*(pd/2+.02),.6,1.5,.04,'#4F5658',{fac:F_DOOR});
+  const mx=coin.sign?lot.x+w/2-.45:px+pw/2-.2,mz=coin.sign?lot.z-fz*(D/2-.45):pz-fz*(pd/2-.2),mh=coin.sign?2.6:3.4,my=coin.sign?ry:ry+1.9;
+  add('roofs',mx,my+mh/2,mz,.1,mh,.1,'#8E9392');add('roofs',mx,my+mh*.7,mz,.5,.03,.03,'#8E9392');add('windows',mx,my+mh+.08,mz,.14,.14,.14,'#E8E6DE',{light:white,glow:1.2});
+  pools.push([lot.x,lot.frontZ+fz*1.7,white,Math.min(3.4,w*.7),.5,'coin']);
  }
  function drawSpot(s){
   const fz=s.front==='+z'?1:-1,y0=BASE_Y,F=(key,u,y,v,w,h,d,c,o)=>add(key,s.x+u,y0+y,s.frontZ+fz*v,w,h,d,c,o),r=rng(s.id+':spot');
@@ -404,7 +444,101 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    const hz=s.frontZ-fz*(s.depth-1);F('walls',0,.3,-s.depth+1,1.2,.6,1.0,'#9C998F',{fac:fc('concrete')});F('walls',0,1.05,-s.depth+1,.9,.9,.8,'#7A5A3C',{fac:fc('wood')});
    for(const sd of [-1,1])add('prisms',s.x,y0+1.5+.21,hz+sd*.3,1.3,.46,.6,'#6B7A7E',{ry:sd>0?0:Math.PI,fac:fc('kawara',{noEdge:true})});
    // The shrine grove comes from city-green.js.
-  }
+  }else fillSpot(s,F,r,car);
+ }
+ // ---------- Gap fillers (owner 2026-10-10 "spazi vuoti"; artdir/GAPS.md; lots.js VACANT_KINDS / GAP_KINDS / INTERIOR_KINDS) ----------
+ // Real Tokyo things on the ground that used to be bare: a gas-station canopy, a taxi pool, a car-dealer lot with flags, a bus
+ // depot, a pachinko hall, a batting cage, a sentō with its chimney, a temple with a bell tower and a cemetery, a kindergarten
+ // yard, a vegetable field, mechanical bike racks, a kōban, a toilet cube, a drum water-tank yard, laundry poles. Everything
+ // joins the existing batches (small parts as detail), each kind has one or two night lights. F as in drawSpot: u along the
+ // street from the spot's centre, v outward from its front (negative = into the plot), y above the district pad.
+ function fillSpot(s,F,r,car){
+  const W=s.width,D=s.depth,fz=s.front==='+z'?1:-1,k=s.kind,y0=BASE_Y,cz=s.frontZ-fz*D/2,C={fac:fc('concrete')},M={fac:fc('metal')},WD={fac:fc('wood')},PV={fac:fc('pavers')};
+  const pad=(c,o,inset=.15)=>F('roofs',0,.02,-D/2,W-inset,.04,D-inset,c,o);
+  const pole=(u,v,h,c='#5B6466')=>F('walls',u,h/2,v,.1,h,.1,c);
+  const signbox=(u,v,h,w,c,light,glow=.9)=>{pole(u,v,h);F('windows',u,h+.35,v,w,.7,.12,c,{light,glow});};
+  const hut=(u,v,w,h,d,c,light,o=C)=>{F('walls',u,h/2,v,w,h,d,c,o);F('roofs',u,h+.03,v,w+.12,.06,d+.12,'#6E7774');if(light)F('windows',u,h*.5,v+d/2+.01,w*.55,.7,.04,GLASS_LOW,{light,glow:.7});};
+  const bike=(u,v)=>F('walls',u,.45,v,.08,.62,1.5,'#2B2B2B');   // one thin dark box: wheels, frame and saddle in one at this zoom
+  const bikes=(n,u0,v,step)=>fine(()=>{for(let i=0;i<n;i++)bike(u0+i*step,v);});
+  const gable=(u,v,w,d,eave,rise,c)=>{const half=(d+.8)/2,len=w+.6;for(const sd of [-1,1])add('prisms',s.x+u,y0+eave-.05+rise/2,s.frontZ+fz*v+sd*half/2,len,rise,half,c,{ry:sd>0?0:Math.PI,fac:fc('kawara',{noEdge:true})});fine(()=>add('roofs',s.x+u,y0+eave-.05+rise+.03,s.frontZ+fz*v,len,.1,.2,tint(c,-.18)));};
+  const taxi=(u,v)=>{const c=r()<.5?'#2F3437':'#C9D34A';F('walls',u,.45,v,.95,.55,1.9,c);F('walls',u,.9,v-.1,.85,.42,1.0,tint(c,-.12));F('windows',u,1.17,v-.1,.3,.12,.3,'#E8E6DE',{light:'#FFB84A',glow:.8});};
+  const stones=(u0,u1,v0,v1)=>{const cols=Math.max(1,Math.floor((u1-u0)/.8)),rows=Math.max(1,Math.floor((v1-v0)/1.1));
+   for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){const u=u0+.4+i*.8,v=v0+.5+j*1.1;F('walls',u,.55,v,.3,.9,.2,'#8E9290',C);fine(()=>F('walls',u,.08,v,.5,.14,.42,'#7A7F7C',C));}};
+  if(k==='gas-station'){pad('#646B6C',{fac:fc('asphalt')});const cv=-2.3;
+   for(const e of [-1,1])F('walls',e*1.7,2.1,cv,.4,4.2,.4,'#E8E6E0',C);
+   F('roofs',0,4.35,cv,W-.4,.35,3.6,'#E8E6E0');for(const q of [-1,1])F('walls',0,4.2,cv+q*1.8,W-.4,.42,.06,'#D2463C');F('windows',0,4.15,cv,W-1.0,.03,3.0,'#E8E6DE',{light:'#FFFFFF',glow:.7});
+   for(const e of [-1,1]){F('walls',e*1.2,.1,cv,.9,.2,1.8,'#B4B1A7',C);F('walls',e*1.2,.8,cv,.45,1.3,.5,'#F4F1EA',M);F('walls',e*1.2,1.1,cv+.26,.4,.35,.03,'#D2463C');}
+   hut(1.3,-D+.75,2.6,2.8,1.3,'#F4F1EA','#EAF4FF');signbox(-W/2+.4,-D+.5,5,.9,'#2F6FB5','#9FD0FF');pools.push([s.x,cz,'#F4F6FF',3.2,.55]);}   // the price sign at the back corner: tokyo-style parks vending machines at the kerb sides
+  else if(k==='taxi-stand'){pad('#646B6C',{fac:fc('asphalt')});const n=Math.max(1,Math.min(3,Math.floor((W-.6)/1.15))),u0=-(n-1)/2*1.15,bv=-D*.56;
+   for(let i=0;i<=n;i++)F('roofs',u0-.575+i*1.15,.045,bv,.08,.01,2.2,'#ECEAE2',{fac:F_PAINT});
+   for(let i=0;i<n;i++)if(r()<.8)taxi(u0+i*1.15,bv);
+   const su=W/2-.75,sv=-D+.7;F('walls',su,2.3,sv,1.3,.08,1.1,'#5B6466',M);for(const e of [-1,1])pole(su+e*.55,sv-.45,2.3,'#7E8789');F('windows',su,1.4,sv-.5,1.2,1.7,.04,GLASS_LOW);   // shelter and sign at the back: the kerb sides stay free for tokyo-style's vending machines
+   signbox(-W/2+.4,-D+.5,3.0,.8,'#2F6FB5','#9FD0FF');pools.push([s.x,cz,'#FFF2D4',2.4,.4]);}
+  else if(k==='car-dealer'){pad('#C4BBAA',PV);const n=Math.max(2,Math.min(3,Math.floor((W-.8)/1.35))),u0=-(n-1)/2*1.35;
+   for(const v of [-D*.3,-D*.68])for(let i=0;i<n;i++)if(r()<.85)car(u0+i*1.35,v);
+   fine(()=>{for(let i=0;i<4;i++){const u=-W/2+.6+i*(W-1.2)/3;pole(u,-.25,3.2,'#B9C0C8');F('walls',u+.22,2.85,-.25,.4,.5,.03,['#D2463C','#E3BE3C','#2F6FB5','#F4F1EA'][i%4]);}});
+   const hu=W/2-1.2,hv=-D+.95;F('windows',hu,1.4,hv,2.0,2.8,1.6,GLASS_HIGH,{light:'#EAF4FF',glow:.8});F('roofs',hu,2.83,hv,2.2,.08,1.8,'#5B6466');pools.push([s.x+hu,s.frontZ+fz*hv,'#EAF4FF',2.2,.5]);}
+  else if(k==='bus-depot'){pad('#646B6C',{fac:fc('asphalt')});const bl=W-1.8,c=r()<.5?'#3E9B5C':'#F4F1EA';
+   F('walls',0,1.5,-1.65,bl,2.6,2.3,c);F('windows',0,1.95,-1.65,bl-.2,.8,2.36,GLASS_LOW);F('roofs',0,2.83,-1.65,bl-.1,.08,2.2,tint(c,-.15));for(const e of [-1,1])F('walls',e*(bl/2-.6),.25,-1.65,.5,.5,2.4,'#2B2B2B');
+   for(const e of [-1,1])F('walls',e*1.6,1.8,-4.2,.18,3.6,.18,'#8E9392',M);F('walls',0,3.6,-4.2,3.4,.18,.9,'#8E9392',M);fine(()=>{for(const e of [-1,0,1])F('walls',e*.9,3.2,-4.2,.3,.6,.3,'#4B6A8A');});
+   hut(-W/2+1.0,-D+.8,1.8,2.6,1.4,'#B4B1A7','#D8E6F0');signbox(W/2-.4,-D+.5,4.2,1.2,'#3E9B5C','#B8F0C4');pools.push([s.x,cz,'#FFD9A0',3.0,.45]);}
+  else if(k==='pachinko'){pad('#B9B4A8',PV);const hw=W-.5,hv=-D/2-.2,hd=D-1.6,H=4.4,fv=hv+hd/2;
+   F('walls',0,H/2,hv,hw,H,hd,'#EAE6DD',C);F('roofs',0,H+.015,hv,hw-.3,.03,hd-.3,'#8B8F87',{fac:F_ROOF});
+   F('windows',0,1.45,fv+.03,hw-1.0,2.5,.06,'#2A2440',{light:'#FF5FA2',glow:.9});F('walls',0,3.55,fv+.06,hw+.1,1.3,.14,'#D2463C');F('walls',0,3.55,fv+.14,hw-.6,.9,.03,'#F2E6B8');
+   F('walls',0,H+1.1,hv-.3,hw-1.2,2.2,.3,'#1E1B26');for(const q of [-1,1])F('windows',0,H+1.1,hv-.3+q*.17,hw-1.5,1.8,.03,'#FF8FCF',{light:'#FF5FA2',glow:1});   // lit on both faces: the south row shows its back to the camera
+   fine(()=>{for(let i=0;i<6;i++)F('windows',-hw/2+.6+i*(hw-1.2)/5,2.85,fv+.15,.18,.18,.1,'#FFD36E',{light:'#FFD36E',glow:1});});
+   bikes(4,-hw/2+.5,fv+.9,.45);pools.push([s.x,s.frontZ-fz*.6,'#FF8FCF',3.0,.6]);}
+  else if(k==='batting'){pad('#7E9A63',undefined,.5);const w=W-.6,d=D-.6,H=5.5,cv=-D/2,net='#3E7A5C';
+   // The net cage as lines, not walls (a solid box hid the lanes): six posts, top and mid rails, thin verticals (detail).
+   F('roofs',0,.05,cv,w-.3,.06,d-.3,'#5F9C4C');for(const e of [-1,0,1])for(const q of [-1,1])F('walls',e*w/2,H/2,cv+q*d/2,.1,H,.1,'#2F5F48');
+   for(const q of [-1,1]){F('walls',0,H,cv+q*d/2,w,.06,.06,net);F('walls',q*w/2,H,cv,.06,.06,d,net);F('walls',0,2.6,cv+q*d/2,w,.04,.04,net);F('walls',q*w/2,2.6,cv,.04,.04,d,net);}
+   fine(()=>{for(let u=-w/2+1.1;u<w/2-.5;u+=1.1)F('walls',u,H/2,cv-d/2,.03,H,.03,net);for(let v=1.1;v<d-.5;v+=1.1)for(const e of [-1,1])F('walls',e*w/2,H/2,cv-d/2+v,.03,H,.03,net);});
+   for(const e of [-1,0,1]){F('walls',e*w/3,.55,-D+.9,.5,1.0,.5,'#4F5658',M);add('marks',s.x+e*w/3,y0+.106,s.frontZ-fz*1.3,.45,.008,.45,'#F2F1EA',{fac:F_PAINT,ry:Math.PI/4});}
+   signbox(W/2-.4,-.15,5.6,1.6,'#E3BE3C','#FFE08A',1);pools.push([s.x,cz,'#EAF4FF',3.6,.5]);}
+  else if(k==='sento'){pad('#B4B1A7',PV);const hw=W-1.0,hd=D-1.5,hv=-.9-hd/2,eave=3.4;
+   F('walls',0,eave/2,hv,hw,eave,hd,'#D9CDB4',{fac:fc('plaster')});gable(0,hv,hw,hd,eave,1.5,'#4E5864');
+   F('walls',0,2.35,-.86,2.3,.75,.05,'#2F4F8A');F('windows',0,1.0,-.86,1.6,1.9,.04,GLASS_LOW,{light:'#FFC27A',glow:.85});fine(()=>F('walls',0,2.75,-.9,2.5,.08,.08,'#4A3A2E',WD));
+   const cu=W/2-.75,cv=-D+1.0;F('walls',cu,4.8,cv,.7,9.6,.7,'#9C998F',C);F('walls',cu,9.7,cv,.8,.3,.8,'#4F5658');
+   bikes(4,-hw/2+.4,-.45,.5);signbox(-W/2+.45,-.4,3.4,.7,'#D2463C','#FF9E7A');pools.push([s.x,s.frontZ-fz*.5,'#FFD9A0',2.4,.5]);}
+  else if(k==='temple'){pad('#C9C3B4',{fac:fc('membrane')});F('roofs',-1.2,.05,-D*.4,.9,.02,D*.75,'#9C998F',PV);
+   const hw=3.0,hd=2.4,hu=-1.2,hv=-D+1.5,eave=2.6;F('walls',hu,.15,hv,hw+.3,.3,hd+.4,'#9C998F',C);F('walls',hu,.3+eave/2,hv,hw,eave,hd,'#6B5443',WD);
+   F('walls',hu,1.3,hv+hd/2+.03,hw-.6,1.8,.06,'#2B2B2B');F('windows',hu,1.2,hv+hd/2+.07,.9,1.4,.03,'#3A2A20',{light:'#FFC27A',glow:.7});gable(hu,hv,hw,hd,.3+eave,1.4,'#4E5864');
+   const bu=W/2-1.0,bv=-1.3;for(const a of [-.5,.5])for(const b of [-.5,.5])F('walls',bu+a,1.2,bv+b,.12,2.4,.12,'#6B5443',WD);F('roofs',bu,2.5,bv,1.8,.14,1.8,'#4E5864');F('roofs',bu,2.75,bv,1.2,.36,1.2,'#4E5864');F('walls',bu,1.4,bv,.5,.7,.5,'#5A6A5E',M);
+   stones(.4,W/2-.2,-D+.4,-2.5);
+   const mu=-W/2+.65,mv=-1.9;F('walls',mu,.8,mv,.14,1.6,.14,'#4A3A2E',WD);F('walls',mu,2.0,mv,1.3,1.1,1.3,'#B8472E');fine(()=>F('walls',mu+.25,2.5,mv-.2,.8,.6,.8,'#D2603A'));
+   toro(s.x-.2,s.frontZ-fz*1.0);lamp(s.x+W/2-.4,s.frontZ-fz*(D-.5),'#FFB066',2.0,.4,2.6);}
+  else if(k==='cemetery'){pad('#C9C3B4',{fac:fc('membrane')});F('roofs',0,.05,-D/2,.8,.02,D-.4,'#9C998F',PV);
+   stones(-W/2+.2,-.6,-D+.3,-.8);stones(.6,W/2-.2,-D+.3,-.8);
+   F('walls',0,.35,-D+.15,W-.3,.7,.3,'#4F6B45');toro(s.x-.9,s.frontZ-fz*.5);lamp(s.x+.9,s.frontZ-fz*.5,'#FFB066',1.8,.35,2.6);}
+  else if(k==='kindergarten'){const bd=2.0,bv=-D+bd/2+.15,yd=D-bd-.3;pad('#D9C9A3',undefined,.3);
+   F('walls',0,1.6,bv,W-.6,3.2,bd,'#F2E6B8',{fac:fc('plaster')});F('roofs',0,3.25,bv,W-.3,.12,bd+.3,'#C26A5C');F('windows',0,1.7,bv+bd/2+.03,W-1.6,1.2,.04,GLASS_LOW,{light:'#FFE6B8',glow:.75});
+   const R=1.0,cv=-yd/2-.1;for(let q=0;q<8;q++){const a=(q+.5)*Math.PI/4;add('marks',s.x+.6+Math.cos(a)*R,y0+.106,s.frontZ+fz*cv+Math.sin(a)*R,.08,.008,2*R*Math.sin(Math.PI/8)+.06,'#F2F1EA',{fac:F_PAINT,ry:-a});}
+   const su=-W/2+1.3,sv=cv-.4;F('walls',su,1.3,sv,.7,.08,.7,'#4B6A8A');for(const e of [-1,1])F('walls',su+e*.3,.65,sv,.08,1.3,.08,'#7E8789');F('walls',su+1.1,.75,sv,2.3,.08,.6,'#E0612B',{rz:-.55});
+   fine(()=>{const n=Math.floor((W-.6)/.7);for(let i=0;i<n;i++)F('walls',-W/2+.5+i*.7,.4,-.15,.1,.8,.1,['#D2463C','#2F6FB5','#E3BE3C','#3E9B5C'][i%4]);F('walls',0,.78,-.15,W-.6,.05,.05,'#8E9392');});
+   pools.push([s.x,s.frontZ+fz*(bv+bd/2+.6),'#FFE6B8',2.6,.45]);}
+  else if(k==='farm'){F('roofs',0,.02,-D/2,W-.2,.05,D-.2,'#6B5443');const n=Math.max(2,Math.floor((D-1.2)/.8)),rw=W-(s.mini?.4:1.6),ru=-(W-rw)/2+.1;
+   for(let i=0;i<n;i++){const v=-.7-i*.8,g=['#5E8F3E','#7FA66B','#3E7A5C','#9BB36A'][Math.floor(r()*4)];F('roofs',ru,.14,v,rw,.2,.42,'#5A4634');F('roofs',ru,.36,v,rw-.2,.3,.34,g);}
+   if(!s.mini){hut(W/2-.85,-D+.75,1.3,1.8,1.1,'#8E9392',null,M);fine(()=>{for(const e of [-1,1])pole(e*(W/2-.4),-.1,.7,'#9A7A60');F('walls',-.3,.6,-.1,W-.9,.03,.03,'#C9B79A');});}}
+  else if(k==='bike-park'){pad('#A6A398',C);const n=Math.max(2,Math.min(4,Math.floor((W-.5)/.55))),u0=-(n-1)/2*.55,bv=-D*.55;
+   F('walls',0,.3,bv-.4,n*.55,.05,.05,'#8E9392',M);bikes(n,u0,bv,.55);
+   if(W>=3){for(const e of [-1,1])pole(e*(W/2-.35),bv,2.2,'#7E8789');F('roofs',0,2.25,bv,W-.4,.06,2.4,'#B9C6C4');}
+   if(!s.mini)F('windows',-W/2+.3,1.6,-.2,.5,.3,.06,'#2F6FB5',{light:'#9FD0FF',glow:.5});}
+  else if(k==='koban'){pad('#B4B1A7',PV);const w=Math.min(2.0,W-.2),d=2.2,H=5.6,v=-1.25,fv=v+d/2;
+   F('walls',0,H/2,v,w,H,d,'#EAE6DD',{fac:fc('tileWhite')});F('roofs',0,H+.015,v,w-.2,.03,d-.2,'#7C8A80',{fac:F_ROOF});
+   F('windows',-.3,1.05,fv+.02,.8,2.0,.05,GLASS_LOW,{light:'#FFE6B8',glow:.85});F('windows',0,4.1,fv+.02,w-.5,1.1,.04,GLASS_LOW,{light:'#D8E6F0',glow:.5});
+   F('walls',0,3.15,fv+.06,w-.2,.5,.1,'#2F3437');F('windows',w/2-.22,3.15,fv+.22,.28,.28,.22,'#D2463C',{light:'#FF3B3B',glow:1});
+   fine(()=>{bike(w/2+.1,v+.4);F('walls',-.6,.4,-D+.8,.6,.45,.6,'#B9C6C4');});pools.push([s.x,s.frontZ+fz*(fv+.6),'#FFE6B8',1.6,.4]);}
+  else if(k==='toilet'){pad('#A6A398',C);const w=Math.min(2.0,W-.2),d=2.4,H=2.7,v=-D/2,fv=v+d/2;
+   F('walls',0,H/2,v,w,H,d,'#B4B1A7',C);F('roofs',0,H+.015,v,w-.2,.03,d-.2,'#7C8A80',{fac:F_ROOF});
+   F('walls',-.42,1.9,fv+.02,.3,.4,.03,'#2F6FB5');F('walls',.42,1.9,fv+.02,.3,.4,.03,'#D2463C');F('windows',0,2.45,fv+.05,.6,.14,.1,'#E8E6DE',{light:'#EAF4FF',glow:.7});
+   fine(()=>{for(const e of [-1,1])F('walls',e*(w/2+.3),.4,v,.4,.7,d-.4,'#4F6B45');});pools.push([s.x,s.frontZ+fz*(fv+.6),'#EAF4FF',1.4,.35]);}
+  else if(k==='tank-yard'){pad('#A9A79D',C);const n=Math.max(1,Math.min(2,Math.floor((W-.3)/1.35))),u0=-(n-1)/2*1.35,tv=-D*.5;
+   for(let i=0;i<n;i++){const u=u0+i*1.35;for(const a of [0,Math.PI/4])F('walls',u,.95,tv,.95,1.6,.95,'#B9C6C4',{ry:a,fac:fc('metal')});}
+   fine(()=>{F('walls',0,.95,-.2,W-.3,.04,.04,'#8E9392');F('walls',0,.5,-.2,W-.3,.04,.04,'#8E9392');});}
+  else if(k==='laundry'){F('roofs',0,.02,-D/2,W-.2,.05,D-.3,'#6F8F5E');const lv=-D*.5;
+   for(const e of [-1,1])pole(e*(W/2-.25),lv,1.95,'#B9B6AE');F('walls',0,1.9,lv,W-.5,.03,.03,'#B9B6AE');
+   fine(()=>{const n=Math.max(2,Math.min(4,Math.floor((W-.6)/.5)));for(let i=0;i<n;i++)F('walls',-(n-1)/2*.5+i*.5,1.62,lv,.34,.5,.02,['#E8E4DA','#9DB4C8','#D9A5A0','#F2E6B8','#C7D3B4'][Math.floor(r()*5)],{ry:(r()-.5)*.3});
+});}
  }
  // Construction phases at the new storey scale (3.0 ground + 2.5 per floor).
  function drawSite(lot,b){
@@ -419,7 +553,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   return h;
  }
  let renderGroups=[],style,life,currentNight=false,pools=[],showDetail=true;
- const applyPools=()=>{if(!life?.addLightPool)return;style?.bindLife?.(life);life.clearLightPools('konbini');for(const [x,z,c,r,s] of pools)life.addLightPool(x,z,c,r,{group:'konbini',strength:s});};const heights=new Map(),counts={};
+ const applyPools=()=>{if(!life?.addLightPool)return;style?.bindLife?.(life);life.clearLightPools('konbini');life.clearLightPools('coin');for(const [x,z,c,r,s,g='konbini'] of pools)life.addLightPool(x,z,c,r,{group:g,strength:s});};const heights=new Map(),counts={};
  const picks=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial({visible:false}),cityPlots.length);
  picks.userData.cityPlot=true;root.add(picks);interactive.push(picks);
  const setPick=(i,x,z,w,h,d)=>{dummy.position.set(x,BASE_Y+h/2,z);dummy.rotation.set(0,0,0);dummy.scale.set(w,h,d);dummy.updateMatrix();picks.setMatrixAt(i,dummy.matrix);};
@@ -429,7 +563,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   for(const lot of layout.lots){
    const b=lot.user?buildings.find(x=>x.plotId===lot.plotId):null;
    if(b&&['thinking','scaffold','stopped'].includes(b.phase)){heights.set(lot.plotId,drawSite(lot,b));continue;}
-   drawLot(lot,{dark:b?.phase==='review'});
+   drawLot(lot,{dark:b?.phase==='review',coin:b?.phase==='open'?coinVisuals(b.stats):null});
    if(b?.phase==='review'){const fz=lot.front==='+z'?1:-1;add('windows',lot.x,BASE_Y+lot.height/2,lot.frontZ+fz*.08,lot.width+.1,lot.height,.04,'#fb8a45');}
    if(b?.phase==='open'){const fz=lot.front==='+z'?1:-1;add('windows',lot.x,BASE_Y+lot.height+1.3,lot.z+fz*.4,Math.min(3.6,lot.width-.2),1.1,.25,'#ffcf6e',{light:'#ffcf6e'});}
    if(lot.plotId){if(lot.user)heights.set(lot.plotId,lot.height);else if(!userPlots.has(lot.plotId))heights.set(lot.plotId,Math.max(heights.get(lot.plotId)||0,lot.height));}

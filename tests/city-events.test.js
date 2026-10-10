@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {freshEvents,signText,partySpots,visitRoute,decorations,decorItems,buildFireworks,buildConfetti,createCityEvents,FIRE_AGE,
- coinCard,coinPlan,allocTiles,shortMint,STATE_TEXT,COIN_TILES,MAX_COINS} from '../src/city-events.js';
+ coinCard,coinPlan,allocTiles,shortMint,STATE_TEXT,COIN_TILES,MAX_COINS,GIANT_H,GIANT_LIFT,MAX_GIANT} from '../src/city-events.js';
+import {mockStats} from '../src/coin-tier.js';
 import {subLotsOf,builtHeight,BASE_Y} from '../src/lots.js';
 import {frontOf} from '../src/world-sync.js';
 import {cityPlots} from '../src/city-state.js';
@@ -122,4 +123,33 @@ test('city events: coins and beacons add no meshes per project and stay within f
  const before=meshes(),b=Array.from({length:30},(_,i)=>({plotId:cityPlots[i*9].id,type:'project',phase:['thinking','review','open'][i%3],ticker:'C'+i,name:'C'+i}));
  ev.decorate(b,[]);assert.equal(meshes(),before);const st=ev.stats();assert.ok(st.boxes<=7*3+MAX_COINS*5);assert.ok(st.beacons>0&&st.beacons<=MAX_COINS);
  ev.setNight(true);ev.update(.016);ev.setNight(false);
+});
+
+// ---------- Coin tiers (coin-tier.js → city-events): the giant sign, the beam, the trend pulse ----------
+const openWith=(plotId,stats,extra={})=>({plotId,type:'project',phase:'open',ticker:'ARC',name:'Arc',color:'mint',stats,...extra});
+test('coin tiers: tier 1 draws the plain launched look; tier 3 adds a beam; tier 4 the giant sign + beacon and drops the small logo board',()=>{
+ const plain=decorItems({open:[openWith('shibuya-2',null)]}),t1=decorItems({open:[openWith('shibuya-2',mockStats(1,'up'))]});
+ const noPulse=l=>JSON.stringify(l.map(({pulse,...s})=>s));assert.equal(noPulse(plain.signs),noPulse(t1.signs),'tier 1: same signs');assert.ok(t1.signs.every(s=>!s.pulse),'pulse 0 even trending up');
+ assert.equal(plain.boxes.length,t1.boxes.length);assert.equal(coinPlan([openWith('shibuya-2',mockStats(1,'up'))]).beacons.length,0);
+ const t2=decorItems({open:[openWith('shibuya-2',mockStats(2,'up'))]});assert.equal(t2.signs.find(s=>s.kind==='neon').pulse,1,'trend up pulses the neon');
+ assert.equal(decorItems({open:[openWith('shibuya-2',mockStats(2,'down'))]}).signs.find(s=>s.kind==='neon').pulse,-1);
+ assert.ok(!t2.signs.some(s=>s.kind==='giant'));
+ const b3=openWith('shibuya-2',mockStats(3,'flat')),p3=coinPlan([b3]),s=subLotsOf('shibuya-2',[b3]).user,top=BASE_Y+builtHeight(s,b3);
+ assert.deepEqual(p3.beacons.map(b=>b.kind),['beam']);const beam=p3.beacons[0];assert.ok(Math.abs(beam.y-top)<.5,'the beam starts on the roof');
+ assert.ok(Math.abs(beam.x-s.x)<=s.width/2&&Math.abs(beam.z-s.z)<=s.depth/2,'inside the roof');
+ const b4=openWith('shibuya-2',mockStats(4,'up'),{logoUrl:'/meta/arc/logo-v2.png'}),d4=decorItems({open:[b4]}),p4=coinPlan([b4]);
+ const g=d4.signs.find(s=>s.kind==='giant');assert.ok(g,'giant sign');assert.equal(g.h,GIANT_H);assert.ok(g.w<=s.width-.3);assert.equal(g.logo,'/meta/arc/logo-v2.png');assert.equal(g.color,'#69A694','the project accent, never a price colour');
+ assert.ok(Math.abs(g.y-GIANT_H/2-top-GIANT_LIFT)<1e-9,'two storeys standing above the penthouse');assert.equal(g.pulse,1);assert.equal(g.text,'$ARC');
+ assert.equal(d4.boxes.length,decorItems({open:[openWith('shibuya-2',null)]}).boxes.length+4,'frame: back panel, two posts, sill');
+ assert.deepEqual(p4.beacons.map(b=>b.kind),['beam','beacon']);assert.ok(p4.beacons[1].y>g.y+GIANT_H/2,'beacon on top of the sign');
+ assert.ok(!p4.planes.some(p=>p.kind==='logo'),'the giant sign carries the logo');assert.ok(coinPlan([openWith('shibuya-2',mockStats(3),{logoUrl:'/meta/arc/logo-v2.png'})]).planes.some(p=>p.kind==='logo'),'tier 3 keeps the small board');
+ assert.equal(decorItems({open:[openWith('shibuya-2',mockStats(4),{logoUrl:'https://evil.example/x.png'})]}).signs.find(s=>s.kind==='giant').logo,null,'only the server\'s own art');
+});
+test('coin tiers: the giant sign and the beam live in the existing batches (no mesh, no draw call) within fixed buffers',()=>{
+ const scene=new THREE.Group(),ev=createCityEvents(scene);const meshes=()=>{let n=0;scene.traverse(o=>{if(o.isMesh||o.isPoints)n++;});return n;};
+ const before=meshes(),b=Array.from({length:12},(_,i)=>openWith(cityPlots[i*11].id,mockStats(1+i%4,['up','down','flat'][i%3]),{ticker:'C'+i,name:'C'+i}));
+ ev.decorate(b,[]);assert.equal(meshes(),before);const st=ev.stats();
+ assert.equal(st.beams,b.filter(x=>x.stats.tier>=3).length);assert.equal(st.beacons,st.beams+b.filter(x=>x.stats.tier>=4).length);
+ assert.equal(st.giants,0,'no document: no atlas, no giant tiles');ev.setNight(true);ev.update(.016,20);ev.setNight(false);
+ assert.ok(MAX_GIANT>=1);
 });

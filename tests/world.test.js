@@ -50,3 +50,15 @@ test('world projects carry public art only; private projects carry nothing but t
  assert.deepEqual(b.map(x=>[x.plotId,x.phase,x.private,x.logoUrl]),[['kichijoji-2','review',false,'/meta/kichi/logo-v1.png'],['yanaka-3','scaffold',true,null]]);
  assert.equal(b[1].ticker,null);
 });
+
+test('world: launched public projects carry their coin stats (normalised); unlaunched and private ones carry null',()=>{
+ const stats={tier:3,tierName:'roof',by:'holders',trend:'up',fresh:true,holders:{count:12345,exact:true,atLeast:false,at:1,source:'helius'},marketCapUsd:2345000,volume24hUsd:1,liquidityUsd:2,priceChange24hPct:12.5,at:1760000000000,source:'dexscreener',url:'https://dexscreener.com/solana/x'};
+ const b=worldBuildings({plots:[
+  {plotId:'kichijoji-2',kind:'project',project:{slug:'kichi',name:'Kichi',ticker:'KICHI',stage:'launched',stageLabel:'Launched',progress:1,launched:true,mint:'So11111111111111111111111111111111111111112',stats}},
+  {plotId:'yanaka-3',kind:'project',project:{slug:null,name:'Private project',ticker:null,stage:'launched',progress:1,launched:true,stats}},
+  {plotId:'ginza-1',kind:'project',project:{slug:'g',name:'G',ticker:'G',stage:'approved',progress:.7,launched:false,stats}},
+  {plotId:'ueno-3',kind:'project',project:{slug:'m',name:'M',ticker:'M',stage:'launched',stageLabel:'Launched',progress:1,launched:true,stats:{tier:2,source:'mock',mock:true,at:5,marketCapUsd:1}}}]});
+ assert.equal(b[0].stats.tier,3);assert.equal(b[0].stats.tierName,'roof');assert.equal(b[0].stats.mock,false);assert.equal(b[0].stats.url,stats.url);
+ assert.equal(b[1].stats,null,'private: nothing');assert.equal(b[2].stats,null,'not launched: nothing');assert.equal(b[3].stats.mock,true,'mock stays marked');
+ assert.equal(worldBuildings({plots:[{plotId:'ueno-3',kind:'project',project:{slug:'m',name:'M',ticker:'M',stage:'launched',launched:true}}]})[0].stats,null,'no stats object yet');
+});

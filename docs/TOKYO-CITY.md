@@ -32,6 +32,22 @@ Define free/paid entitlement and retention before sales. Transfers need authoriz
 
 Residents can draft a ticker before launching. A ticker does not establish token identity: chain + mint address does. Only mark a coin linked after verifying the launch transaction and project authorization. An existing token requires proof of the relevant authority and clear distinction between an official project and a community page. Do not treat owning a few tokens as proof of creator control.
 
+### Building lights from on-chain data (coin tiers)
+
+A launched public project's building follows the server's `plots[].project.stats` (CITY-API.md "Coin stats (building
+lights)"): tier 1 `open` is the plain launched look; tier 2 `lit` (1k holders or $25k 24 h volume) fills the windows at
+night, warms the glass by day and lights the entrance canopy; tier 3 `roof` (10k holders or $1M mcap) lights the whole
+roof: an edge-lit parapet, garden lamps, a penthouse + mast (the silhouette grows 1–2 storeys; the building's height never
+follows market data, lots are fixed and neighbours touch), a pool on the street and a slow sweeping beam; tier 4 `sign`
+(100k holders or $10M mcap) adds the giant rooftop sign (logo + ticker in the project's accent) with a beacon on top.
+`trend` up makes the neon/sign breathe brighter, down holds it dimmer; never a red/green price colour. Nothing is
+estimated: no `stats` or `at: null` reads "no data yet", `fresh: false` dims the sheet's numbers and puts a grey dot on
+the building's label, and a `mock` source (local dev) is labelled MOCK DATA in orange wherever a number is shown.
+Pure helpers in `src/coin-tier.js`; drawing in `src/city.js` (coinKit) and `src/city-events.js` (giant sign, beam,
+pulse); all in the existing batches, no extra draw call. Dev-only: `window.__city.debug.coinTier(plotId, tier, trend,
+{fresh, logo})` injects a mock record on that plot at the next poll (a mock launched project when the plot has none),
+`coinTier(plotId, null)` removes it, `__city.debug.show(plotId)` opens its sheet.
+
 Fee configuration belongs to the verified launch flow. Apartment possession alone confers no fee entitlement. Present the exact beneficiary wallets and enforceable split before signing; updates depend on the launch platform’s actual rules. The earlier 80/20 discussion is still a proposal.
 
 ## Reference reviewed
