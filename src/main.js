@@ -297,7 +297,7 @@ const CAMERA={pitch:40,yaw:36,distance:168};
 function aimCamera(target){const p=THREE.MathUtils.degToRad(CAMERA.pitch),y=THREE.MathUtils.degToRad(CAMERA.yaw),d=CAMERA.distance;
   controls.target.copy(target);camera.position.set(target.x+d*Math.cos(p)*Math.sin(y),target.y+d*Math.sin(p),target.z+d*Math.cos(p)*Math.cos(y));}
 // 2026-10-10: the overview target sits north of the city centre, so Fuji (foot on the ground) clears the header.
-const OVERVIEW_TARGET=new THREE.Vector3(-16,8,-30);
+const OVERVIEW_TARGET=new THREE.Vector3(-38,8,-59);   // north of centre: the north edge + Fuji in frame, the south edge off it
 // The view never leaves the city (owner 2026-10-10): the orbit target stays inside CITY_EXTENT + VIEW_PAD, and the
 // camera moves with it so the pitch and the zoom are untouched. Runs after controls.update() every frame, so drags,
 // tweens, follows and tours all obey it.

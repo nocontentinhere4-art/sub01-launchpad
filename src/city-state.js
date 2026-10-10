@@ -35,7 +35,7 @@ export const SKYLINE_Z=CITY_EXTENT.minZ+.5;         // −101  [−71]  north sk
 export const SKYLINE_X=CITY_EXTENT.minX+1.5;        // −100  [−71]  west skyline edge
 export const FUJI_AT={x:-58.3,z:-118};              //       [−60.5, −131]  foot on the ground inside the north skyline band (the towers hide it, like from Tokyo), same camera line (yaw 36°) as before
 // Overview camera (main.js resetView) for the bigger map, and the zoom-out floor it needs.
-export const OVERVIEW_ZOOM={desktop:.14,mobile:.065,min:.05};
+export const OVERVIEW_ZOOM={desktop:.2,mobile:.093,min:.05};   // 2026-10-10: tighter, so no ground past the blocks shows; main.js clamps the pan and the zoom floor
 export const cityPlots=districts.flatMap((d,di)=>Array.from({length:6},(_,i)=>({
  id:`${d.id}-${i+1}`,district:d.id,districtName:d.name,name:`${d.name.split(' /')[0]} ${String(i+1).padStart(2,'0')}`,
  x:d.x+[-8,0,8][i%3],z:d.z+(i<3?-6:6),height:di<8?3+((di*3+i*7)%6):di<24?5+((di*3+i*7)%12):3+((di*3+i*7)%8),
