@@ -48,7 +48,7 @@ export function createDiary(ctx){
     el('div',{className:'tx'},el('small',{textContent:`${e.time} · ${e.label}`}),el('p',{textContent:e.text}),
      e.pct!==null?el('span',{className:'diary-score',title:`build score ${e.score}`},el('i',{style:`width:${e.pct}%`}),el('em',{textContent:String(e.score)})):null)))):
     el('p',{className:'diary-empty',textContent:nav.isToday?'Nothing written yet today.':'Nothing happened that day.'})),
-   el('p',{className:'fine diary-note',textContent:typeof page.note==='string'?page.note:'SUB-01 is a model, not a conscious being.'}));
+   el('p',{className:'fine diary-note',textContent:typeof page.note==='string'?page.note:'Generated from the vote ledger and the build log; numbers are copied exactly.'}));
  }
  function open(date){ctx.openDialog('diary-backdrop');return show(date||ctx.today());}
  return {open,show,get date(){return current;}};

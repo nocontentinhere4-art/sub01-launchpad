@@ -46,8 +46,8 @@ test('ema, ledger, leaderboard and disclosure rows carry only public fields',()=
  assert.equal(l.build,.2);assert.deepEqual(l.lit,['reward']);assert.equal(l.title,null);assert.equal(l.hash.length,10);
  assert.equal(verifyText({ok:true,from:1,to:2,checked:2}).ok,true);assert.match(verifyText({ok:false,broken_at:2}).text,/#2/);assert.equal(verifyText(null).ok,null);
  assert.deepEqual(boardRows({top:[{name:'Yui',points:10,wallet:'X'}]}),[{rank:1,name:'Yui',points:10}]);
- const d=disclosureRows({system:'SUB-01',not_conscious:true,datasets:[],operator:null,ai_act:'Art. 50 disclosure'});
- assert.deepEqual(d.map(r=>r.label),['System','Conscious?','Datasets','Operator','EU AI Act']);assert.equal(d.find(r=>r.label==='Datasets').value,'Not listed yet');
+ const d=disclosureRows({system:'SUB-01',nature:'AI dev driven by a model of real human brain activity',datasets:[],operator:null,ai_act:'Art. 50 disclosure'});
+ assert.deepEqual(d.map(r=>r.label),['System','What it is','Datasets','Operator','EU AI Act']);assert.equal(d.find(r=>r.label==='Datasets').value,'Not listed yet');
  assert.match(CHEER_LINE,/do not influence/);
 });
 test('the wallet prompt explains the three new actions',()=>{

@@ -91,7 +91,7 @@ export function verifyText(r){
 export const boardRows=b=>(Array.isArray(b?.top)?b.top:[]).filter(x=>x&&str(x.name)).slice(0,20).map((x,i)=>({rank:i+1,name:x.name,points:Math.max(0,Number(x.points)||0)}));
 export function disclosureRows(d){
  if(!d||typeof d!=='object')return [];
- const rows=[['System',d.system],['What it is',d.nature],['Conscious?',d.not_conscious===true?'No. SUB-01 is a model, not a conscious being.':null],
+ const rows=[['System',d.system],['What it is',d.nature],
   ['Datasets',Array.isArray(d.datasets)&&d.datasets.length?d.datasets.join(', '):'Not listed yet'],['How it decides',d.decision],['Human gate',d.human_gate],
   ['Operator',d.operator||'Not named yet'],['EU AI Act',d.ai_act],['Updated',d.updated_at]];
  return rows.filter(([,v])=>typeof v==='string'&&v.trim()).map(([k,v])=>({label:k,value:v}));
@@ -217,7 +217,7 @@ export function createRituals(ctx){
   const body=$('about-body');body.replaceChildren(el('p',{className:'fine',textContent:'Loading…'}));ctx.openDialog('about-backdrop');
   let d=null;try{d=await ctx.getJSON('/api/disclosure');}catch{}
   const rows=disclosureRows(d);
-  body.replaceChildren(rows.length?el('dl',{className:'about-list'},...rows.flatMap(r=>[el('dt',{textContent:r.label}),el('dd',{textContent:r.value})])):el('p',{className:'fine',textContent:'The disclosure is not reachable right now. SUB-01 is an AI system, not a conscious being; every publication and transaction is approved by a human.'}),
+  body.replaceChildren(rows.length?el('dl',{className:'about-list'},...rows.flatMap(r=>[el('dt',{textContent:r.label}),el('dd',{textContent:r.value})])):el('p',{className:'fine',textContent:'The disclosure is not reachable right now. SUB-01 is an AI dev driven by a model of real human brain activity; every publication and transaction is approved by a human.'}),
    el('div',{className:'about-privacy'},el('b',{textContent:'Privacy'}),el('p',{textContent:ctx.telemetryLine?.()||''})),
    el('button',{type:'button',className:'link-button',textContent:'See the vote ledger →',onclick:openLedger}));
  }
