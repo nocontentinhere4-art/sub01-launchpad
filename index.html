@@ -269,6 +269,22 @@
         </div>
       </section>
     </div>
+    <div class="dialog-backdrop" id="account-backdrop" hidden>
+      <section class="idea-card sheet-card more-card" role="dialog" aria-modal="true" aria-labelledby="account-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow" id="account-eyebrow">YOUR ACCOUNT · アカウント</span><h2 id="account-title">Hi, <em id="account-name">there.</em></h2>
+        <div class="sheet-body more-list" id="account-body">
+          <div class="more-row" id="account-home"><span class="more-k"><b>My home</b><small class="more-v" id="account-address">Your apartment in the city</small></span>
+            <button class="icon-button" id="account-home-button" type="button" aria-label="Go to my home"><svg class="i" aria-hidden="true"><use href="#i-home"/></svg></button></div>
+          <div class="more-row" id="account-edit"><span class="more-k"><b>My character</b><small class="more-v">Look, traits, address</small></span>
+            <button class="icon-button" id="account-edit-button" type="button" aria-label="Edit my character"><svg class="i" aria-hidden="true"><use href="#i-user"/></svg></button></div>
+          <div class="more-row" id="account-wallet"><span class="more-k"><b>Wallet</b><small class="more-v" id="account-wallet-text">—</small></span></div>
+          <div class="more-row" id="account-signout"><span class="more-k"><b>Sign out</b><small class="more-v">Your room and character stay saved to your wallet</small></span>
+            <button class="icon-button" id="signout-button" type="button" aria-label="Sign out"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+        </div>
+      </section>
+    </div>
     <div class="dialog-backdrop" id="shrine-backdrop" hidden>
       <section class="idea-card sheet-card shrine-card" role="dialog" aria-modal="true" aria-labelledby="shrine-title">
         <span class="grabber" aria-hidden="true"></span>

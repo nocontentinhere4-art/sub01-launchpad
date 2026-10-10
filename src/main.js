@@ -446,7 +446,13 @@ $('takeover-button').onclick=async()=>{
  const reason=prompt('Why should the community take over this project? (shown publicly)\n\nA takeover changes who manages the project. It never changes who receives creator fees: they were fixed on-chain at launch.');
  if(!reason)return;try{const r=await api(`/api/projects/${encodeURIComponent(b.slug)}/takeover`,{method:'POST',body:{reason}});notify(r?.notice||'Takeover proposed. The founder decides.');loadRoles(b);}catch(err){notify(err.message);}
 };
-$('account-button').onclick=()=>{if(!me?.user){openSignIn();return;}if(!resident()){openCreator();return;}const home=frontOf(resident().plotId);if(home){follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(home.x,2,home.z),zoom:camera.zoom,endZoom:mobile?.8:1.3,elapsed:0};}showPlace({id:resident().plotId});};
+// The name chip opens the account sheet (owner 2026-10-10: a sign-out option): my home, my character, wallet, sign out.
+function goHome(){const r=resident();if(!r)return;const home=frontOf(r.plotId);if(home){follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(home.x,2,home.z),zoom:camera.zoom,endZoom:mobile?.8:1.3,elapsed:0};}showPlace({id:r.plotId});}
+function openAccount(){const r=resident();$('account-name').textContent=(r?.name||'there')+'.';$('account-address').textContent=r?(cityPlots.find(p=>p.id===r.plotId)?.name||r.plotId):'No character yet';$('account-wallet-text').textContent=short(me.user.wallet,6);$('account-home').hidden=!r;$('account-edit').querySelector('b').textContent=r?'My character':'Create your character';openDialog('account-backdrop');}
+$('account-button').onclick=()=>{if(!me?.user){openSignIn();return;}openAccount();};
+$('account-home-button').onclick=()=>{closeDialog();goHome();};
+$('account-edit-button').onclick=()=>{closeDialog();openCreator();};
+$('signout-button').onclick=async()=>{const b=$('signout-button');b.disabled=true;try{stopExplore();await signOut();await refreshMe();await pollWorld();closeDialog();notify('Signed out. See you in the city.');}catch(err){notify(describeError(err));}finally{b.disabled=false;}};
 $('signin-close').onclick=$('resident-close').onclick=closeDialog;
 $('idea-button').onclick=()=>openBuildForm();
 $('city-tour').onclick=()=>{cityTour={index:0,elapsed:0};nextCityView();};
