@@ -899,6 +899,13 @@ function deepLink(k,arg){
 }
 function applyHash(){let h='';try{h=decodeURIComponent(location.hash.slice(1));}catch{return;}if(!h)return;const [k,...rest]=h.split('/');history.replaceState(null,'',location.pathname+location.search);deepLink(k,rest.join('/'));}
 addEventListener('hashchange',applyHash);
+// Stale tab guard (2026-10-11): the city is one page and a tab left open never saw a new deploy (the owner launched
+// coins from a bundle without the dev buy field). Every minute the served index is compared with this bundle; a new
+// one reloads the page when nothing is open, or says so once while a dialog, a room or the PC is in use.
+{const mine=document.querySelector('script[type=module][src*="/assets/index-"]')?.getAttribute('src')||'';
+ if(mine){let warned=false;setInterval(async()=>{try{const h=await (await fetch('/',{cache:'no-store',credentials:'same-origin'})).text();const m=h.match(/assets\/index-[^"']+\.js/);if(!m||mine.includes(m[0]))return;
+   const busy=currentDialog||roomView||document.querySelector('.pc-window')||explorer;
+   if(!busy)location.reload();else if(!warned){warned=true;notify('A new version of the city is live. Reload the page when you are done here.');}}catch{}},60000);}}
 function focusFromUrl(){const q=new URLSearchParams(location.search),id=q.get('focus');if(!id)return;q.delete('focus');history.replaceState(null,'',location.pathname+(q.size?'?'+q:'')+location.hash);
   if(cityPlots.some(p=>p.id===id))focusPlot(id);}
 // ---------- Chat: the city's live line, speech bubbles over heads, talking to SUB-01 (chat.js) ----------
