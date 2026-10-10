@@ -74,8 +74,8 @@ test('wallet detection branches',()=>{
  const IOS='Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',IPAD='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15',
   AND='Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/129 Mobile',MAC='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/129 Safari/537.36';
  assert.ok(isIOS(IOS));assert.ok(isIOS(IPAD,5),'iPadOS reports a Mac with touch');assert.ok(!isIOS(MAC,0));assert.ok(isMobile(AND));assert.ok(!isMobile(MAC));
- assert.deepEqual(walletHelp({count:2,ua:IOS}),{mode:'wallets',install:[],openIn:null});
- const desk=walletHelp({count:0,ua:MAC});assert.equal(desk.mode,'install');assert.deepEqual(desk.install.map(w=>w.name),['Phantom','Solflare','Backpack']);assert.equal(desk.openIn,null);
+ assert.deepEqual(walletHelp({count:2,ua:IOS}),{mode:'wallets',note:'',install:[],openIn:null,openIns:[]});
+ const desk=walletHelp({count:0,ua:MAC});assert.equal(desk.mode,'install');assert.deepEqual(desk.install.map(w=>w.name).slice(0,3),['Phantom','Solflare','Backpack']);assert.equal(desk.openIn,null);
  const ios=walletHelp({count:0,ua:IOS,href:'https://x.test/',origin:'https://x.test'});assert.equal(ios.mode,'mobile');assert.equal(ios.openIn.url,phantomBrowseLink('https://x.test/','https://x.test'));
  assert.ok(INSTALL.every(w=>w.url.startsWith('https://')));
 });

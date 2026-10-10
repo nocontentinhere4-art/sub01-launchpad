@@ -19,7 +19,7 @@ import {createCrowdGPU,crowdPixels,crowdClose} from './crowd-gpu.js';
 import {renderLookFields,readLook,isUnlocked} from './creator.js';
 import {loadCharacter,HEIGHT} from './characters.js';
 import {api,short,ApiError} from './api.js';
-import {listWallets,onWallets,signIn,signOut} from './wallet.js';
+import {listWallets,onWallets,signIn,signOut,scanWallets,walletHelp,describeError} from './wallet.js';
 import {worldBuildings,sub01Goal,planRoute,frontOf,HOME_DESK} from './world-sync.js';
 import {buildHeroHome} from './hero-home.js';
 import {createCity} from './city.js';
@@ -393,10 +393,19 @@ async function openBuildForm(plot){
  $('plot-address').value=(plot&&free.some(p=>p.id===plot.id)?plot:free.find(p=>p.vacant)||free[0]).id;
  if(!$('idea-wallet').value)$('idea-wallet').value=me.user.wallet;$('form-error').textContent='';openDialog('idea-backdrop');
 }
+// The wallet list redraws on every detection change (wallet.js rescans on open, on load and for 4 s after); while a
+// sign-in is pending the buttons are disabled and the list keeps still, and a failure prints the wallet's own words.
+let walletsUnsub=null;
 function openSignIn(next){
- const draw=()=>{const list=listWallets();$('wallet-list').replaceChildren(...(list.length?list.map(w=>{const b=document.createElement('button');b.className='wallet-option';if(w.icon){const i=document.createElement('img');i.src=w.icon;i.alt='';b.append(i);}b.append(document.createTextNode(w.name));
-  b.onclick=async()=>{$('signin-error').textContent='';try{await signIn(w.name);await refreshMe();closeDialog();notify('Signed in.');next?.();}catch(err){$('signin-error').textContent=err.message;}};return b;}):[Object.assign(document.createElement('p'),{className:'fine',textContent:'No Solana wallet found in this browser. Install Phantom, Solflare or Backpack, then reload.'})]));};
- draw();onWallets(draw);openDialog('signin-backdrop');
+ let busy=false,dirty=false;const err=$('signin-error');err.textContent='';
+ const draw=()=>{if(busy){dirty=true;return;}dirty=false;const list=listWallets(),nav=navigator;
+  const help=walletHelp({count:list.length,ua:nav.userAgent,touch:nav.maxTouchPoints,href:location.href,origin:location.origin});
+  $('wallet-list').replaceChildren(...(list.length?list.map(w=>{const b=document.createElement('button');b.type='button';b.className='wallet-option';if(w.icon){const i=document.createElement('img');i.src=w.icon;i.alt='';b.append(i);}const label=document.createTextNode(w.name);b.append(label);
+   b.onclick=async()=>{if(busy)return;busy=true;err.textContent='';const all=[...$('wallet-list').querySelectorAll('.wallet-option')];all.forEach(x=>x.disabled=true);b.classList.add('is-busy');label.nodeValue=`Opening ${w.name}… approve the sign-in message there`;
+    try{await signIn(w.name);await refreshMe();closeDialog();notify('Signed in.');next?.();}catch(e){err.textContent=describeError(e);}
+    finally{busy=false;label.nodeValue=w.name;b.classList.remove('is-busy');all.forEach(x=>x.disabled=false);if(dirty)draw();}};return b;})
+   :[Object.assign(document.createElement('p'),{className:'fine wallet-note'+(help.mode==='scanning'?' is-scanning':''),textContent:help.note})]));};
+ scanWallets();draw();walletsUnsub?.();walletsUnsub=onWallets(draw);openDialog('signin-backdrop');
 }
 const IDEA_STATUS={submitted:'In his mailbox',evaluating:'SUB-01 is thinking',selected:'He will build it',declined:'He passed',generating:'Being built',preview_ready:'Ready for your review',approved:'Approved by you',launch_prepared:'Launch ready',awaiting_signature:'Waiting for your signature',confirming:'Confirming on-chain',launched:'Launched',failed:'Stopped: needs attention',cancelled:'Cancelled'};
 let knownStatus=null;
