@@ -84,7 +84,10 @@ export const stepIndex=id=>Math.max(0,STEP_IDS.indexOf(id));
 // GET /api/projects/:slug ({initialBuyLamports, maxInitialBuyLamports, locked, editable}), PUT …/launch/options
 // {initialBuySol}; 409 intent_exists while a transaction exists (cancel it first); a change after the configuration was
 // prepared makes the server prepare it again (approved → launch_prepared), so the stepper shows "preparing" for a moment.
-export const DEV_BUY_MAX_SOL=5,DEV_BUY_STEP=0.01;
+export const DEV_BUY_MAX_SOL=5,DEV_BUY_MIN_SOL=0.001,DEV_BUY_STEP=0.01;
+/** Where the field goes: on the open step while the author can still change it (approve, clearance wait, launch), and
+ *  on the launch step read-only once a transaction exists; never on the live step or while the review card is open. */
+export const showDevBuyOn=(dev,stepId,reviewing=false)=>!!dev&&stepId!=='live'&&stepId!=='site'&&(dev.editable||stepId==='launch')&&!(stepId==='launch'&&reviewing);
 const DEV_BUY_STATES=new Set(['preview_ready','approved','launch_prepared','awaiting_signature','confirming']);   // from the approve step on (the owner never saw it inside step 4)
 /** devBuyModel(view) -> null (not the owner's, or not at the launch step) | {sol, text, max, step, locked, editable, note, lockNote, reprepares} */
 export function devBuyModel(view){
@@ -104,6 +107,7 @@ export function parseDevBuy(value,max=DEV_BUY_MAX_SOL){
  if(!Number.isFinite(s)||s<0)return {error:'Enter an amount of SOL, 0 or more.'};
  const sol=Math.round(s*1e9)/1e9;
  if(sol>max)return {error:`At most ${max} SOL.`};
+ if(sol>0&&sol<DEV_BUY_MIN_SOL)return {error:`At least ${DEV_BUY_MIN_SOL} SOL, or 0 for no buy.`};
  return {sol};
 }
 

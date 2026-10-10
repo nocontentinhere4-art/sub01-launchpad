@@ -155,7 +155,7 @@ test('profileKit: logo + header files and bio/site texts for the owner; nothing 
 });
 
 // ---------------------------------------------------------------- the dev buy (desk-flows.js devBuyModel/parseDevBuy, desk.js renderDevBuy)
-import {devBuyModel,parseDevBuy,renderDevBuy} from '../src/desk.js';
+import {devBuyModel,parseDevBuy,renderDevBuy,showDevBuyOn} from '../src/desk.js';
 const OPTS={initialBuyLamports:0,maxInitialBuyLamports:5e9,locked:false,editable:true};
 test('devBuyModel: owner from the approve step on; cap from the server (never above 5); locked while a transaction exists',()=>{
  assert.equal(devBuyModel(null),null);assert.equal(devBuyModel(view('preview_ready',{launchOptions:OPTS}))?.editable,true,'settable from the approve step (preview_ready) on');assert.equal(devBuyModel(view('generating',{launchOptions:OPTS})),null,'not while SUB-01 builds');
@@ -167,6 +167,7 @@ test('devBuyModel: owner from the approve step on; cap from the server (never ab
  const c=devBuyModel(view('confirming',{launchOptions:OPTS}));assert.equal(c.locked,true);assert.match(c.lockNote,/in flight/);
  assert.equal(devBuyModel(view('launched',{launchOptions:OPTS})),null);
  assert.deepEqual(parseDevBuy(''),{sol:0});assert.deepEqual(parseDevBuy('0,5'),{sol:0.5});assert.deepEqual(parseDevBuy(0.123456789123),{sol:0.123456789});
+ assert.match(parseDevBuy('0.0005').error,/At least 0.001 SOL, or 0 for no buy/);assert.deepEqual(parseDevBuy('0.001'),{sol:0.001});
  assert.match(parseDevBuy('-1').error,/0 or more/);assert.match(parseDevBuy('abc').error,/amount of SOL/);assert.match(parseDevBuy('5.01').error,/At most 5 SOL/);assert.match(parseDevBuy(3,2).error,/At most 2 SOL/);
 });
 test('reviewModel: the dev buy is its own row, in the total and in the plain-words lines; the ATA program is green',()=>{
@@ -200,4 +201,10 @@ test('renderDevBuy: the field carries min/max/step/value, is disabled with the r
   const locked=renderDevBuy(devBuyModel(view('awaiting_signature',{launchOptions:{...OPTS,initialBuyLamports:1e7,locked:true,editable:false}})),{});
   assert.equal(locked.className,'pc-devbuy is-locked');assert.equal(locked.find('input').disabled,true);assert.equal(locked.find('button').disabled,true);assert.match(locked.children[1].textContent,/0\.01 SOL · Cancel the transaction to change it\./);
  }finally{delete globalThis.document;}
+});
+test('showDevBuyOn: on the open step while editable (approve, clearance wait, launch); read-only on launch once a transaction exists; never on live or under the review card',()=>{
+ const ed={editable:true,locked:false},ro={editable:false,locked:true};
+ assert.deepEqual(['site','approve','clear','launch','live'].map(id=>showDevBuyOn(ed,id)),[false,true,true,true,false]);
+ assert.deepEqual(['approve','clear','launch','live'].map(id=>showDevBuyOn(ro,id)),[false,false,true,false]);
+ assert.equal(showDevBuyOn(ed,'launch',true),false,'the review card carries the row');assert.equal(showDevBuyOn(null,'approve'),false);
 });

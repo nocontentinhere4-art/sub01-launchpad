@@ -3,8 +3,8 @@ import {icon,tile} from './icons.js';
 import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
 import {verdictModel,renderVerdict} from './verdict.js';
-import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy} from './desk-flows.js';
-export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy} from './desk-flows.js';
+import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn} from './desk-flows.js';
+export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
 // the Computer overlay: the project's site, its X account, the launch stepper and (owner only) the ideas in flight.
@@ -261,11 +261,11 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    const open=s.state==='current'||s.state==='blocked'||(s.id==='live'&&m.live);
    if(!open){if(s.id==='site'&&s.action)main.append(el('div',{className:'pc-step-acts'},el('button',{className:'pc-link',type:'button',textContent:s.action.label,onclick:()=>show('site')})));continue;}
    if(s.id==='approve'&&m.split.rows.length)main.append(splitBox(m.split,m.approve?.statement));
-   // 2026-10-10 the owner: the dev buy must be settable before approving, not only inside step 4
-   if(s.id==='approve'){const dev=devBuyModel(view);if(dev)main.append(renderDevBuy(dev,{onSave:async sol=>{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/options`,{method:'PUT',body:{initialBuySol:sol}});await refresh();}}));}
-   // the dev buy sits above "Prepare the transaction"; while the review card is open its row is on the card instead
-   const dev=s.id==='launch'&&!flight?.tx?devBuyModel(view):null;
-   if(dev)main.append(renderDevBuy(dev,{onSave:async sol=>{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/options`,{method:'PUT',body:{initialBuySol:sol}});await refresh();}}));
+   // 2026-10-10 the owner: the dev buy must be settable before approving, not only inside step 4. It goes on whichever
+   // step is open while it can still change (approve, the clearance wait, launch); on the launch step it stays, read-only,
+   // once a transaction exists; while the review card is open its row is on the card instead (showDevBuyOn).
+   const dev=devBuyModel(view);
+   if(showDevBuyOn(dev,s.id,!!flight?.tx))main.append(renderDevBuy(dev,{onSave:async sol=>{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/options`,{method:'PUT',body:{initialBuySol:sol}});await refresh();}}));
    if(s.id==='launch'&&flight?.tx)main.append(reviewCard(root,view,m,flight,refresh));
    else if(s.id==='launch'&&(m.phase==='preparing'||m.phase==='confirming')){main.append(el('div',{className:'pc-wait'},el('i',{className:'pulse'}),el('span',{textContent:m.phase==='confirming'?`Signed · ${short(view.intent?.tx_signature||'',6)||'broadcast'} · waiting for the network…`:'The configuration is prepared by a job; this updates by itself.'})));
     later(3000,()=>{if(tab==='launch')refresh();});}
