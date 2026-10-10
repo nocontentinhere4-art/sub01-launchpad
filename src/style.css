@@ -50,10 +50,15 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 #world{position:fixed;inset:0;background:linear-gradient(#C9D8E2,#EFE6D6);transition:none}
 .is-night #world{background:linear-gradient(#0D1726,#2A3550 80%,#4A3F57)}
 #world canvas{display:block;touch-action:none}
-/* Legibility scrim for the h1 and the HUD edges. Do not drop it: white type over the cream city fails without it. */
+/* Legibility scrim: thin bands at the HUD edges on the element itself, and the big top-left shade for the h1 on
+   ::before, which fades with the headline (.intro-gone, owner 2026-10-10: "the shadow under the title must go too"). */
 .hud-scrim{position:fixed;inset:0;z-index:1;pointer-events:none;
- background:radial-gradient(60% 75% at 0% 10%,rgba(12,10,8,.88),rgba(12,10,8,.74) 45%,rgba(12,10,8,.3) 70%,transparent 85%),linear-gradient(180deg,rgba(12,10,8,.55),transparent 120px),linear-gradient(0deg,rgba(12,10,8,.45),transparent 140px)}
-.is-night .hud-scrim{background:radial-gradient(70% 60% at 0% 0%,rgba(5,8,20,.72),rgba(5,8,20,.3) 45%,transparent 70%),radial-gradient(40% 40% at 100% 100%,rgba(251,117,43,.10),transparent 70%),linear-gradient(180deg,rgba(5,8,20,.6),transparent 120px),linear-gradient(0deg,rgba(5,8,20,.5),transparent 140px)}
+ background:linear-gradient(180deg,rgba(12,10,8,.55),transparent 120px),linear-gradient(0deg,rgba(12,10,8,.45),transparent 140px)}
+.hud-scrim::before{content:"";position:absolute;inset:0;transition:opacity 1.4s ease;
+ background:radial-gradient(60% 75% at 0% 10%,rgba(12,10,8,.88),rgba(12,10,8,.74) 45%,rgba(12,10,8,.3) 70%,transparent 85%)}
+.is-night .hud-scrim{background:radial-gradient(40% 40% at 100% 100%,rgba(251,117,43,.10),transparent 70%),linear-gradient(180deg,rgba(5,8,20,.6),transparent 120px),linear-gradient(0deg,rgba(5,8,20,.5),transparent 140px)}
+.is-night .hud-scrim::before{background:radial-gradient(70% 60% at 0% 0%,rgba(5,8,20,.72),rgba(5,8,20,.3) 45%,transparent 70%)}
+.intro-gone .hud-scrim::before{opacity:0}
 .is-close .hud-scrim{opacity:.55}
 .in-room .hud-scrim{display:none}
 #labels{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:2}
@@ -561,8 +566,10 @@ h1 em{filter:drop-shadow(0 6px 24px rgba(251,117,43,.35))}
  .account-chip .nm,.account-chip .chev,#idea-button .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
  #idea-button{--h:40px;width:40px;padding:0;justify-content:center}
  #idea-button .arw{width:auto;height:auto;background:none;color:var(--on-accent)}
- .hud-scrim{background:linear-gradient(180deg,rgba(12,10,8,.88) 0,rgba(12,10,8,.7) 230px,rgba(12,10,8,.2) 330px,transparent 400px),linear-gradient(0deg,rgba(12,10,8,.5),transparent 300px)}
- .is-night .hud-scrim{background:linear-gradient(180deg,rgba(5,8,20,.85) 0,rgba(5,8,20,.6) 230px,transparent 380px),linear-gradient(0deg,rgba(5,8,20,.5),transparent 300px)}
+ .hud-scrim{background:linear-gradient(180deg,rgba(12,10,8,.6),transparent 110px),linear-gradient(0deg,rgba(12,10,8,.5),transparent 300px)}
+ .hud-scrim::before{background:linear-gradient(180deg,rgba(12,10,8,.88) 0,rgba(12,10,8,.7) 230px,rgba(12,10,8,.2) 330px,transparent 400px)}
+ .is-night .hud-scrim{background:linear-gradient(180deg,rgba(5,8,20,.65),transparent 110px),linear-gradient(0deg,rgba(5,8,20,.5),transparent 300px)}
+ .is-night .hud-scrim::before{background:linear-gradient(180deg,rgba(5,8,20,.85) 0,rgba(5,8,20,.6) 230px,transparent 380px)}
  .intro{top:calc(70px + var(--safe-t));left:14px}
  .intro .eyebrow{height:26px;padding:0 10px;font-size:10px;letter-spacing:.1em}
  h1{font-size:54px;margin-top:14px;gap:12px}

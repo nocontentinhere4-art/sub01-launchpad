@@ -331,9 +331,11 @@ export function stylePlan(buildings=[]){
 // squashed in depth) at FUJI_AT (city-state.js), its base low behind the skyline, and it shrinks a little as the camera
 // zooms in, so it still reads from the district views that see the north-west horizon. Two draw calls: the opaque body +
 // ridge, and the transparent haze + cloud. Colours follow the shared night amount (day → dusk → night silhouette).
-const FUJI_AT=CS.FUJI_AT??{x:-60.5,z:-131},FUJI_K=CS.OVERVIEW_ZOOM?.desktop?.19/CS.OVERVIEW_ZOOM.desktop:1;
-export const FUJI={x:FUJI_AT.x,z:FUJI_AT.z,height:30*FUJI_K,baseY:-17,squash:.15,view:{yaw:36,pitch:40},
- overviewZoom:CS.OVERVIEW_ZOOM?.desktop??.19,segments:48,rings:18,slopeBase:10,slopeTop:31,crater:.04,snow:.3,
+// FUJI_K: the mountain was sized for the .14 overview of the 7×7 city; it keeps that size whatever the overview zoom is now.
+const FUJI_AT=CS.FUJI_AT??{x:-60.5,z:-131},FUJI_K=.19/.14;
+export const FUJI={x:FUJI_AT.x,z:FUJI_AT.z,height:34*FUJI_K,base:{sy:.4*16.5/.19*FUJI_K,target:[0,8,-7]},squash:.15,view:{yaw:36,pitch:40},
+ overviewZoom:.3,   // full size up to the home view (main.js clamps the zoom floor near .29), then the first-version shrink
+segments:48,rings:18,slopeBase:10,slopeTop:31,crater:.04,snow:.3,
  day:'#8FA2B6',snowDay:'#F3F1EA',dusk:'#6C6F93',snowDusk:'#F2C9B5',night:'#1E2840',snowNight:'#36425F',
  ridge:{day:'#7A8C9C',dusk:'#4E5076',night:'#141C30',height:.3,width:1.55},maxTriangles:3000,renderOrder:-5};
 // Slope (degrees) at height fraction f: rises from slopeBase at the foot to slopeTop at the rim (a concave profile).
@@ -470,9 +472,8 @@ export function addTokyoStyle(parent,buildings=[]){
  const C=h=>new THREE.Color(h),fu={uFN:nightShared,uFSnow:{value:1-FUJI.snow},uFDay:{value:C(FUJI.day)},uFDusk:{value:C(FUJI.dusk)},uFNight:{value:C(FUJI.night)},
   uFSDay:{value:C(FUJI.snowDay)},uFSDusk:{value:C(FUJI.snowDusk)},uFSNight:{value:C(FUJI.snowNight)},uFRDay:{value:C(FUJI.ridge.day)},uFRDusk:{value:C(FUJI.ridge.dusk)},uFRNight:{value:C(FUJI.ridge.night)}};
  const FU='uniform float uFN,uFSnow;uniform vec3 uFDay,uFDusk,uFNight,uFSDay,uFSDusk,uFSNight,uFRDay,uFRDusk,uFRNight;\nvec3 fuji3(vec3 a,vec3 b,vec3 c){return uFN<.5?mix(a,b,uFN*2.):mix(b,c,uFN*2.-1.);}\n';
- // Fuji's foot sits on the buildings' base line (owner 2026-10-10: "a livello palazzi"): in this orthographic view a
- // ground point 16.5 further north reads 13 units higher on screen, so the foot ring is anchored at y = FUJI.baseY (−17)
- // behind the north skyline, which puts it on the same screen line as the ground at the city's north edge. It is a backdrop. The body is drawn right after the ground (renderOrder −5 vs −10)
+ // Fuji is the first-version backdrop again (owner 2026-10-10): its anchor sits far below the city's ground plane
+ // (FUJI.base.sy below the old overview's screen centre), so the visible mountain rises from behind the north edge. The body is drawn right after the ground (renderOrder −5 vs −10)
  // with no depth test (the foot would z-fight the plane) but writing its depth, so everything in the city still draws
  // over it and the haze still tests against it. Without a depth test the body cannot sort itself: the fragment shader
  // drops the back half (it always faces the camera, so the front half is sin(angle) > 0 and never overlaps itself in a
@@ -503,12 +504,11 @@ export function addTokyoStyle(parent,buildings=[]){
  gl_FragColor=vec4(mix(hz,cl,vCloud),vA*mix(1.,.8-.55*uFN,vCloud));`);};
  hazeMat.customProgramCacheKey=()=>'tokyo-fuji-haze-w4b';
  const mountain=new THREE.Mesh(fgeo,fujiMat),haze=new THREE.Mesh(hgeo,hazeMat);mountain.name='fuji';haze.name='fuji haze';mountain.renderOrder=FUJI.renderOrder;
- // Base anchor: the foot ring on the ground at FUJI_AT.
- const fp=THREE.MathUtils.degToRad(FUJI.view.pitch),fy=THREE.MathUtils.degToRad(FUJI.view.yaw),up=new THREE.Vector3(-Math.sin(fp)*Math.sin(fy),Math.cos(fp),-Math.sin(fp)*Math.cos(fy));
- const anchor=new THREE.Vector3(FUJI.x,FUJI.baseY,FUJI.z),FM=new THREE.Matrix4(),fr=new THREE.Vector3(),fu2=new THREE.Vector3(),fb=new THREE.Vector3();
- // Faces the camera every frame (it is radially symmetric), squashed in depth. Constant size (owner 2026-10-10): the
- // old zoom shrink made it slide against the skyline while zooming.
- const face=(m,camera)=>{const s=1;camera.matrixWorld.extractBasis(fr,fu2,fb);
+ // Base anchor: at FUJI_AT, low enough that the base sits FUJI.base.sy below screen centre in the first overview (0,8,−7).
+ const fp=THREE.MathUtils.degToRad(FUJI.view.pitch),fy=THREE.MathUtils.degToRad(FUJI.view.yaw),up=new THREE.Vector3(-Math.sin(fp)*Math.sin(fy),Math.cos(fp),-Math.sin(fp)*Math.cos(fy)),T0=FUJI.base.target;
+ const anchor=new THREE.Vector3(FUJI.x,T0[1]+(FUJI.base.sy-(FUJI.x-T0[0])*up.x-(FUJI.z-T0[2])*up.z)/up.y,FUJI.z),FM=new THREE.Matrix4(),fr=new THREE.Vector3(),fu2=new THREE.Vector3(),fb=new THREE.Vector3();
+ // Faces the camera every frame (it is radially symmetric), squashed in depth, a bit smaller when zoomed in.
+ const face=(m,camera)=>{const s=Math.min(1,Math.max(.42,Math.pow(FUJI.overviewZoom/Math.max(1e-3,camera.zoom||1),.6)));camera.matrixWorld.extractBasis(fr,fu2,fb);
   FM.makeBasis(fr.multiplyScalar(s),fu2.multiplyScalar(s),fb.multiplyScalar(s*FUJI.squash)).setPosition(anchor);m.matrixWorld.multiplyMatrices(m.parent.matrixWorld,FM);};
  for(const m of [mountain,haze]){m.matrixAutoUpdate=false;m.frustumCulled=false;m.raycast=()=>{};m.onBeforeRender=(r,sc,camera)=>face(m,camera);root.add(m);}
  mountain.matrixWorld.makeBasis(new THREE.Vector3(1,0,0),up,new THREE.Vector3().crossVectors(new THREE.Vector3(1,0,0),up)).setPosition(anchor);
