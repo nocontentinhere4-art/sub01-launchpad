@@ -211,7 +211,8 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   const e=epoch;load(p.slug).then(view=>{if(!alive(e)||tab!=='launch')return;drawLaunch(root,view);});
   return [launchHead(p),root];
  }
- const launchHead=p=>headRow(p,el('span',{className:'pc-head-links'},ext(p.pagePath,'Launch page ↗'),model.mine&&p.officePath?ext(p.officePath,'Open office ↗'):null));
+ // 2026-10-10 the owner: no links to the old launchpad/office pages; the coin's own site is the only outside link.
+ const launchHead=p=>headRow(p,el('span',{className:'pc-head-links'},p.siteUrl?ext(p.siteUrl,'Coin site ↗'):null));
  // The desk loaded the stage once with the room; the stepper's fresh view keeps the head chip (and the screen card) current.
  function syncStage(m){if(!m.status||m.status===cur.stage)return;cur.stage=m.status;cur.stageLabel=STAGE_LABELS[m.status]||m.status.replace(/_/g,' ');cur.launched=m.status==='launched';if(m.live?.mint)cur.mint=m.live.mint;
   const old=body.querySelector('[data-head]');if(old&&tab==='launch')old.replaceWith(launchHead(cur));}

@@ -306,7 +306,7 @@ function showPlace(p) {
   renderOnchain(project&&b.phase==='open'?b:null);
   $('detail-description').textContent=p.description;$('detail-state').textContent=p.status;
   const vacant=!b&&!p.ideaId&&cityPlots.some(l=>l.id===p.id),noLogo=project&&p.mine&&!b.private&&!b.logoUrl;$('detail-icon').replaceChildren(tile(vacant?{empty:true,label:'Your logo here'}:tileSpec(p),'lg'));$('detail-tile-cap').hidden=!(vacant||noLogo);$('detail-tile-cap').textContent=noLogo?'Your coin logo goes here':'Your logo here';
-  visitWalk(p);cta($('visit-button'),p.ideaId?'Open the idea ↗':b?.type==='apartment'?(p.mine?'Enter your room →':'Visit '+b.name+'\'s room →'):project?(b.slug?(p.mine?'Open your office ↗':'Open project page ↗'):'Watch the site →'):cityPlots.some(l=>l.id===p.id)?'Drop an idea here →':'Visit this place →');
+  visitWalk(p);cta($('visit-button'),p.ideaId?'Open it on your PC →':b?.type==='apartment'?(p.mine?'Enter your room →':'Visit '+b.name+'\'s room →'):project?(p.mine?'Open it on your PC →':b.launched&&b.slug?'Open the coin site ↗':'Watch the site →'):cityPlots.some(l=>l.id===p.id)?'Drop an idea here →':'Visit this place →');
   openDialog('detail-backdrop');
 }
 // ON-CHAIN (coin-tier.js, CITY-API.md "Coin stats"): the launched coin's numbers with their source and age. Honest data:
@@ -522,8 +522,10 @@ document.addEventListener('keydown',e=>{
 $('visit-button').onclick=()=>{
  const p=selectedPlace,b=p?.building;closeDialog();
  if(b?.type==='apartment'){stopExplore();roomPlot=p.id;openRoom({plotId:p.id,mine:p.mine,me,onEdit:()=>openCreator()});return;}
- if(p.ideaId){open(p.slug?`/projects/${encodeURIComponent(p.slug)}/review`:`/ideas/${encodeURIComponent(p.ideaId)}`,'_blank','noopener');return;}
- if(b?.type==='project'){if(b.slug)open(`/projects/${encodeURIComponent(b.slug)}${p.mine?'/review':''}`,'_blank','noopener');else focusPlace(p);return;}
+ // 2026-10-10 the owner: the old launchpad/office pages are gone. Your own idea or project → your room's PC (Launch tab);
+ // someone else's launched project → its own site; otherwise just go there.
+ if(p.ideaId||(b?.type==='project'&&p.mine)){deepLink('room','pc');return;}
+ if(b?.type==='project'){const site=typeof b.siteUrl==='string'&&/^https?:\/\//.test(b.siteUrl)?b.siteUrl:null;if(site)open(site,'_blank','noopener');else focusPlace(p);return;}
  if(cityPlots.some(c=>c.id===p.id)){openBuildForm(p);return;}
  focusPlace(p);
 };
@@ -883,6 +885,20 @@ setInterval(tickRituals,3e4);
 telemetry=startTelemetry(()=>({phone,gpu:GPU,level:governor.level,ema:governor.ema,contextLost:glLosses>0}));
 window.__city.rituals={get calendar(){return calendar;},get rituals(){return rituals;},get diary(){return diary;},get photo(){return photo;},get telemetry(){return telemetry;},get shrines(){return shrinePicks.spots;},get buff(){return myBuff;}};
 // Share pages (/p/<slug>, /r/<plotId>) land on /?focus=<plotId>: that plot's card opens once the world is in.
+// Deep links: the server sends the old launchpad URLs here (/submit → #idea, /projects/x → #project/x, /projects/x/review → #room/pc,
+// /me → #account, /how and /fees → #about, /token → #token, /ideas/<id> → #idea/<id>). The hash is consumed once.
+function deepLink(k,arg){
+ const toRoom=pc=>{const r=resident();if(!r){openSignIn(()=>deepLink('room',arg));return;}closeDialog();stopExplore();roomPlot=r.plotId;openRoom({plotId:r.plotId,mine:true,me,onEdit:()=>openCreator()});
+  if(pc)setTimeout(()=>document.querySelector('.room-pc-btn')?.click(),700);};
+ if(k==='room'){toRoom(arg==='pc');return;}
+ if(k==='idea'){const i=arg&&(me?.ideas||[]).find(x=>String(x.id)===String(arg));if(i)toRoom(true);else openBuildForm();return;}
+ if(k==='project'){const b=cityBuildings.find(b=>b.slug===arg);const plot=b&&cityPlots.find(p=>p.id===b.plotId);if(plot){focusPlot(plot.id);showPlace(placeFor(plot));}else notify('That project is not on the map.');return;}
+ if(k==='account'){if(me?.user)openAccount();else openSignIn();return;}
+ if(k==='about'){rituals.openAbout();return;}
+ if(k==='token'){const t=lookOptions?.sub01;notify(t?.mint?`SUBZERONE ($${t.ticker||'SUB-01'}) · CA ${t.mint} · tap the CA chip by the logo to copy it`:'SUBZERONE token: see the CA chip by the logo');}
+}
+function applyHash(){let h='';try{h=decodeURIComponent(location.hash.slice(1));}catch{return;}if(!h)return;const [k,...rest]=h.split('/');history.replaceState(null,'',location.pathname+location.search);deepLink(k,rest.join('/'));}
+addEventListener('hashchange',applyHash);
 function focusFromUrl(){const q=new URLSearchParams(location.search),id=q.get('focus');if(!id)return;q.delete('focus');history.replaceState(null,'',location.pathname+(q.size?'?'+q:'')+location.hash);
   if(cityPlots.some(p=>p.id===id))focusPlot(id);}
 // ---------- Chat: the city's live line, speech bubbles over heads, talking to SUB-01 (chat.js) ----------
@@ -945,7 +961,7 @@ async function initialize(){try{
   const first=Promise.all([refreshMe(),pollWorld()]).catch(err=>console.warn('[city] first poll',err?.message||err));
   await Promise.race([first,new Promise(r=>setTimeout(r,2500))]);
   first.then(()=>{pollLoop(pollWorld,()=>nextPollDelay(POLL.world,worldFails));pollLoop(()=>me?.user&&serverUp?refreshMe():null,()=>POLL.me);});
-  first.then(()=>{focusFromUrl();calendar.refresh().then(tickRituals);rituals.loadEma();pollLoop(()=>calendar.refresh().then(tickRituals),()=>6e4);pollLoop(()=>rituals.loadEma(),()=>12e4);});
+  first.then(()=>{focusFromUrl();applyHash();calendar.refresh().then(tickRituals);rituals.loadEma();pollLoop(()=>calendar.refresh().then(tickRituals),()=>6e4);pollLoop(()=>rituals.loadEma(),()=>12e4);});
   first.then(()=>{window.__city.guest=guest;return guest.boot();}).catch(err=>console.warn('[city] guest',err?.message||err)); // guest:
   $('loading').classList.add('is-ready');
   // Browser-visible diagnostics are limited to rendering; no wallet or account data.
