@@ -180,6 +180,8 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stro
 .brand-name small{font:500 10.5px/1 var(--f-mono);letter-spacing:.16em;color:var(--ink-2)}
 .preview-badge{display:inline-flex;align-items:center;gap:9px;height:30px;padding:0 13px;border-radius:var(--r-pill);font:500 11px/1 var(--f-mono);letter-spacing:.13em;color:var(--ink-2);white-space:nowrap}
 .preview-badge i,.live-dot,.dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--accent);box-shadow:0 0 0 3px rgba(251,117,43,.22)}
+/* Owner 2026-10-10: no green LIVE dot (live is the default and obvious); the badge only appears when the server is offline. */
+.preview-badge:not(.is-offline){display:none}
 .preview-badge:not(.is-offline) i{background:var(--ok);box-shadow:0 0 0 3px rgba(74,222,154,.2)}
 .preview-badge.is-offline i{background:var(--ink-3);box-shadow:none}
 .account-chip{display:inline-flex;align-items:center;gap:9px;height:46px;max-width:220px;padding:0 18px 0 15px;border-radius:var(--r-pill);font:600 13.5px/1 var(--f-ui);color:var(--ink);
