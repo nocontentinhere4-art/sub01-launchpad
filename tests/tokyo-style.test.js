@@ -65,7 +65,7 @@ test('props never clip into buildings or utility poles, and nothing small stands
 
 test('street layer density and rules: 25–90 small props a district, cones only at construction, trees only on boulevards',()=>{
  const counts=Object.values(plan.counts);assert.equal(counts.length,districts.length);
- for(const [id,n] of Object.entries(plan.counts))assert.ok(n>=25&&n<=90,`${id}: ${n}`);
+ for(const [id,n] of Object.entries(plan.counts))assert.ok(n>=(id==='shiba'?15:25)&&n<=90,`${id}: ${n}`);   // Shiba: most of its street front is the tower park (owner 2026-10-10)
  assert.ok(counts.reduce((a,b)=>a+b)/counts.length>=38,'average ≥ 38');
  assert.equal(plan.props.filter(p=>p.role==='cone').length,0,'no cones without construction');
  const site=[{plotId:'shinjuku-2',type:'project',color:'orange',phase:'scaffold'}],withSite=stylePlan(site);

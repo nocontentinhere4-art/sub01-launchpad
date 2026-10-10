@@ -401,7 +401,7 @@ $('idea-button').onclick=()=>openBuildForm();
 $('city-tour').onclick=()=>{cityTour={index:0,elapsed:0};nextCityView();};
 // Canal and metro from city-state.js (wave 4A); the station sits 26 route units west of centre, stretched to the city.
 const METRO_Z=CS.METRO_Z??78,CE=CS.CITY_EXTENT,STATION_X=CE?(CE.minX+CE.maxX)/2-26*(CE.maxX-CE.minX)/145:-26;
-const cityViews=[{x:-29,z:-28,y:24,zoom:.5,text:'Tokyo Tower / Shiba'},{x:29,z:2,y:4,zoom:.72,text:'Shibuya / Neon crossing'},{x:55,z:-58,y:16,zoom:.48,text:'Broadcast tower / Skyline'},{x:canalLayout().x,z:2,y:1,zoom:.56,text:'Waterfront / Bridges'},{x:STATION_X,z:METRO_Z,y:4,zoom:.56,text:'Metro / City in motion'}];
+const cityViews=[{x:tower.x,z:tower.z,y:24,zoom:.5,text:'Tokyo Tower / Shiba'},{x:29,z:2,y:4,zoom:.72,text:'Shibuya / Neon crossing'},{x:CS.TRANSMITTER.x,z:CS.TRANSMITTER.z,y:16,zoom:.48,text:'Broadcast tower / Skyline'},{x:canalLayout().x,z:2,y:1,zoom:.56,text:'Waterfront / Bridges'},{x:STATION_X,z:METRO_Z,y:4,zoom:.56,text:'Metro / City in motion'}];
 function nextCityView(){const v=cityViews[cityTour.index];follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(v.x,v.y,v.z),zoom:camera.zoom,endZoom:mobile?v.zoom*.55:v.zoom,elapsed:0};$('activity-text').textContent=v.text;}
 
 $('district-select').onchange=()=>{cityTour=null;renderList();const d=districts.find(d=>d.id===$('district-select').value);if(d){follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(d.x,2,d.z),zoom:camera.zoom,endZoom:mobile?.36:.72,elapsed:0};}else resetView();};

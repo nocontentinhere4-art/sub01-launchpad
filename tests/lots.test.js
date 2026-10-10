@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET,isRing3,builtHeight,CATEGORY,TOWER_PARKS,TOWER_PITCH,PARK_KINDS} from '../src/lots.js';
-import {cityPlots,districts,buildingColors,RESERVED_PLOTS,tower} from '../src/city-state.js';
+import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET,isRing3,builtHeight,CATEGORY,TOWER_PARKS,TOWER_PITCH,TOWER_PARK,TRANSMITTER_YARD,PARK_KINDS} from '../src/lots.js';
+import {cityPlots,districts,buildingColors,RESERVED_PLOTS,RESERVED_KIND,tower,ROAD_Z} from '../src/city-state.js';
+import {TOWER} from '../src/tokyo-tower.js';
 import {frontOf} from '../src/world-sync.js';
 import {createCity} from '../src/city.js';
 
@@ -34,9 +35,9 @@ test('lots: every plot is covered; vacant plots are T8 spots; the user takes the
 });
 test('lots: density per district stays in the brief range; roofs carry 1–5 off-centre items (2+ above two floors), no rails',()=>{
  const L=cityLayout([]);
- for(const d of districts){const lots=L.lots.filter(l=>l.district===d.id);assert.ok(lots.length>=(d.id==='shiba'?6:12)&&lots.length<=26,`${d.id} ${lots.length}`);   // Shiba: two plots and their gaps are the tower park
+ for(const d of districts){const lots=L.lots.filter(l=>l.district===d.id);assert.ok(lots.length>=(d.id==='shiba'?4:12)&&lots.length<=26,`${d.id} ${lots.length}`);   // Shiba: three plots, their gaps and the north interior are the tower park
   assert.equal(L.spots.filter(s=>s.district===d.id&&s.kind==='coin-parking'&&!s.plotId).length,1);
-  const houses=lots.filter(l=>l.role==='interior').length;assert.ok(houses>=3&&houses<=12,`${houses} interior houses`);}
+  const houses=lots.filter(l=>l.role==='interior').length;assert.ok(houses>=(d.id==='shiba'?2:3)&&houses<=12,`${d.id} ${houses} interior houses`);}
  for(const l of L.lots)if(l.type!=='T5'){assert.ok(l.roofItems.length>=(l.floors<=2?1:2)&&l.roofItems.length<=5,l.id);
   for(const it of l.roofItems){assert.notEqual(it.kind,'rail');assert.ok(Math.hypot(it.u,it.v)>.2||l.width<2.2,`${l.id} ${it.kind} centred`);}}
 });
@@ -113,23 +114,33 @@ test('lots: builtHeight follows the construction phase',()=>{
  assert.equal(builtHeight(lot,{phase:'scaffold',progress:.65}),lot.height);assert.equal(builtHeight(lot,{phase:'scaffold',progress:0}),1.2);assert.equal(builtHeight(null,{}),0);
 });
 
-// Owner 2026-10-10: the tower park. shiba-2 and shiba-5 are reserved (never an address), always a park spot whatever is
-// saved on them, with the gaps beside them open; the pitch south of the tower keeps the interior houses off it.
-test('lots: reserved plots are park spots with open gaps, ignore building records, and the tower pitch is clear',()=>{
- assert.deepEqual(RESERVED_PLOTS,['shiba-2','shiba-5']);
- for(const id of RESERVED_PLOTS){const p=cityPlots.find(c=>c.id===id);assert.equal(p.reserved,true);assert.equal(p.x,tower.x);assert.equal(Math.abs(p.z-tower.z),6);}
+// Owner 2026-10-10: the landmarks' own ground. shiba-2, shiba-3 and shiba-5 (the tower park and its pitch), nakano-2
+// (the transmitter compound, nakano-3) and shibuya-3 (the Shibuya plaza) are reserved (never an address), always a park spot
+// carrying their reservedKind whatever is saved on them, with the gaps beside them open; the interior houses stay off
+// the tower park, the pitch and the compound.
+test('lots: reserved plots are park spots with their kind and open gaps, ignore building records; the landmark grounds are clear',()=>{
+ assert.deepEqual(RESERVED_PLOTS,['shiba-2','shiba-3','shiba-5','nakano-3','shibuya-3']);
+ assert.deepEqual(RESERVED_PLOTS.map(id=>cityPlots.find(c=>c.id===id)).map(p=>[p.reserved,p.reservedKind,p.x,p.z]),
+  [[true,'tower-park',-29,-34],[true,'tower-park',-21,-34],[true,'tower-park',-29,-22],[true,'transmitter',66,-64],[true,'plaza',37,-4]]);
  const L=cityLayout([]),park=L.spots.filter(s=>s.reserved);
- assert.equal(park.length,6,'two plots and the four gaps beside them');assert.ok(park.every(s=>s.kind==='park'&&s.district==='shiba'));
- assert.deepEqual(park.filter(s=>s.plotId).map(s=>s.plotId).sort(),['shiba-2','shiba-5']);
- const xs=park.map(s=>[s.x-s.width/2,s.x+s.width/2]);assert.ok(xs.every(([a,b])=>a>=tower.x-5.11&&b<=tower.x+5.11),'the park is 10.2 wide');
+ assert.equal(park.length,11,'five plots and the six gaps beside them (nakano-3 and shibuya-3 end their rows)');assert.ok(park.every(s=>s.kind==='park'&&RESERVED_KIND[s.plotId||RESERVED_PLOTS.find(id=>cityPlots.find(c=>c.id===id).district===s.district)]===s.reservedKind));
+ assert.deepEqual(park.filter(s=>s.plotId).map(s=>s.plotId).sort(),[...RESERVED_PLOTS].sort());
+ // the tower park: from Deon's wall (shiba-1) to the end of the row, lot line to the back lane; the tower and its legs inside
+ assert.deepEqual([TOWER_PARK.x0,TOWER_PARK.x1,TOWER_PARK.z0,TOWER_PARK.z1],[-34.1,-18.1,-41.5,-31.3]);
+ const north=park.filter(s=>s.district==='shiba'&&s.z<-28);assert.ok(north.every(s=>s.x-s.width/2>=TOWER_PARK.x0-1e-9&&s.x+s.width/2<=TOWER_PARK.x1+1e-9),'the street front of the park');
+ const leg=TOWER.feet+Math.max(TOWER.leg,.475);assert.ok(tower.x-leg>TOWER_PARK.x0&&tower.x+leg<TOWER_PARK.x1&&tower.z-leg>TOWER_PARK.z0-.5&&tower.z+leg<TOWER_PARK.z1,'the legs stand inside the park');
+ assert.ok(tower.z+leg<ROAD_Z[2]-3.25&&Math.abs(tower.z-ROAD_Z[2])>3.25+leg,'off the Shiba street');
  // a saved building on a reserved plot changes nothing
- const strip=L=>JSON.stringify(L.spots.filter(s=>s.district==='shiba'))+JSON.stringify(L.lots.filter(l=>l.district==='shiba').map(({building,...l})=>l));
- const a=strip(cityLayout([]));assert.equal(strip(cityLayout([{plotId:'shiba-2',type:'project',color:'mint'}])),a);assert.equal(subLotsOf('shiba-5',[{plotId:'shiba-5',type:'apartment',color:'sand'}]).user,null);
- assert.ok(L.sides.filter(s=>s.district==='shiba').every(s=>s.fill>=.85),'the street-fill rule still holds with the park excluded');
- // the pitch: south of the tower, no lot (house or street lot) overlaps it
- assert.ok(TOWER_PITCH.z>tower.z+6&&TOWER_PITCH.x===tower.x);
- for(const l of L.lots)assert.ok(Math.abs(l.x-TOWER_PITCH.x)>=TOWER_PITCH.w/2+l.width/2||Math.abs(l.z-TOWER_PITCH.z)>=TOWER_PITCH.d/2+l.depth/2,`${l.id} overlaps the pitch`);
- assert.ok(L.lots.filter(l=>l.district==='shiba'&&l.role==='interior').length>=3);
+ const strip=(L,d)=>JSON.stringify(L.spots.filter(s=>s.district===d))+JSON.stringify(L.lots.filter(l=>l.district===d).map(({building,...l})=>l));
+ for(const [id,d] of [['shiba-2','shiba'],['nakano-3','nakano'],['shibuya-3','shibuya']]){assert.equal(strip(cityLayout([{plotId:id,type:'project',color:'mint'}]),d),strip(cityLayout([]),d),id);assert.equal(subLotsOf(id,[{plotId:id,type:'apartment',color:'sand'}]).user,null);}
+ assert.ok(L.sides.filter(s=>['shiba','nakano','shibuya'].includes(s.district)).every(s=>s.fill>=.85),'the street-fill rule still holds with the reserved plots excluded');
+ // the pitch stays on shiba-5 across the street, fixed to the plot (not to the tower); no lot overlaps it, the park or the yard
+ assert.deepEqual(TOWER_PITCH,{x:-29,z:-19.05,w:8.4,d:5.4});assert.deepEqual([TRANSMITTER_YARD.x0,TRANSMITTER_YARD.x1,TRANSMITTER_YARD.z0,TRANSMITTER_YARD.z1],[63.1,68.9,-71.5,-61.3]);
+ const inBox=(l,b)=>l.x+l.width/2>b.x0+.01&&l.x-l.width/2<b.x1-.01&&l.z+l.depth/2>b.z0+.01&&l.z-l.depth/2<b.z1-.01;
+ for(const l of L.lots){assert.ok(Math.abs(l.x-TOWER_PITCH.x)>=TOWER_PITCH.w/2+l.width/2||Math.abs(l.z-TOWER_PITCH.z)>=TOWER_PITCH.d/2+l.depth/2,`${l.id} overlaps the pitch`);
+  assert.ok(!inBox(l,TOWER_PARK)&&!inBox(l,TRANSMITTER_YARD),`${l.id} stands on a landmark's ground`);}
+ assert.ok(L.lots.filter(l=>l.district==='shiba'&&l.role==='interior').length>=2&&L.lots.filter(l=>l.district==='nakano'&&l.role==='interior').length>=3);
+ assert.ok(L.lots.some(l=>l.plotId==='shiba-1')&&L.lots.some(l=>l.plotId==='nakano-2')&&L.lots.some(l=>l.plotId==='shibuya-2'),'the neighbours keep their buildings');
 });
 test('lots: ring-3 parks vary deterministically into pitches, courts and playgrounds',()=>{
  const L=cityLayout([]),open=L.spots.filter(s=>s.plotId&&isRing3(s.district)&&PARK_KINDS.has(s.kind)),by=k=>open.filter(s=>s.kind===k).length;

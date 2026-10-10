@@ -2,26 +2,23 @@ import * as THREE from 'three';
 // Tokyo Tower (wave 5A, owner reference owner-tokyo-tower-aerial.webp; brief 3.11). Pure plan + one builder.
 // Proportions of the real 333 m tower, scaled to 50 units (≈ 2× the tallest slab, 23.6): main observatory centred at
 // 0.45 H (150 m), top deck at 0.75 H (250 m), the antenna mast above 0.81 H. Four legs splayed on a concave curve that
-// is nearly vertical above the main deck; their feet stand 4.65 off the axis (owner 2026-10-10: the plots either side of
-// the street, shiba-2 and shiba-5, are the tower park now, so the base spans the lawn like the real 80 m one; the park
-// is 10.2 wide, so 4.65 keeps the legs' outer chords clear of the neighbours' walls at ±5.1).
+// is nearly vertical above the main deck; their feet stand 4.65 off the axis (owner 2026-10-10: the tower stands in its
+// own park, the north half of the Shiba block (lots.js TOWER_PARK, 16 × 10.2), so the base spans the lawn like the real
+// 80 m one; 4.65 + the leg keeps the four feet inside the park, the front pair on the paver forecourt).
 // Lattice: each leg is a 4-chord column with X-braced faces and a ring girder every panel; between the legs a bottom
 // arch, girders and X-bracing on the outer faces; above the deck one 4-chord shaft. Members are flat ribbons (2
 // triangles, in their face plane, double-sided) in ONE instanced batch, ≈ 1.25k instances / 2.5k triangles; the decks,
 // mast and footings are a few dozen boxes for city.js's tower box batch.
 // Colour: International Orange and white in HORIZONTAL bands (TOWER.bands, by world height), white at the main deck
 // and around the top deck; at night the orange glows warm (per-instance nightLight), the white a little.
-// FootTown: a 4-storey light-grey podium straddling the street on pilotis (the road and sidewalks pass under it); the
-// legs come down through its roof corners.
+// (The FootTown podium over the street is gone: owner 2026-10-10, nothing stands on a road; the park is its setting.)
 export const TOWER={height:50,feet:4.65,leg:.42,legTop:.3,panels:14,shaftPanel:1.3,
  deck:{y0:21.4,y1:23.6,half:2.05},top:{y0:37.1,y1:38,half:.95},shaftDeck:1.35,shaftTop:.62,mastBase:40.5,
- footTown:{half:2.35,y0:3,storey:2.3,floors:3,parapet:.45,color:'#CDCFCA'},
  orange:'#F05A28',white:'#F4F1EA',glowOrange:'#FF7A36',glowWhite:'#FFE2B8',
  // [y0, y1, 'O'|'W'] from the feet to the tip; alternate, white at the main deck (20.6–24.6) and the top deck (34.4–38.8).
  bands:[[0,5.6,'O'],[5.6,7.3,'W'],[7.3,12.4,'O'],[12.4,14,'W'],[14,20.6,'O'],[20.6,24.6,'W'],[24.6,28.4,'O'],[28.4,30,'W'],
   [30,34.4,'O'],[34.4,38.8,'W'],[38.8,42,'O'],[42,43.6,'W'],[43.6,46.4,'O'],[46.4,50,'W']]};
 export const bandAt=y=>{for(const [a,b,c] of TOWER.bands)if(y>=a&&y<b)return c;return 'W';};
-export const footTownTop=()=>{const f=TOWER.footTown;return f.y0+f.floors*f.storey+f.parapet;};
 const lerp=(a,b,t)=>a+(b-a)*t;
 // Leg centre distance from the axis and leg half-size at height y (legs: feet → deck).
 export function legAt(y){const T=TOWER,yd=T.deck.y0,t=Math.min(1,Math.max(0,y/yd)),h=lerp(T.leg,T.legTop,t);

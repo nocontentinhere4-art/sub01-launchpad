@@ -106,13 +106,16 @@ export function boulevardTrees(){
    const h=hash(bx,zz,18);out.push({species:'ginkgo',x:x2,y:.2,z:zz,ry:h*6.283,s:.52+.14*hash(bx,zz,19),hue:h});}}
  return out;
 }
-// The tower park (owner 2026-10-10, after the aerial photo): dense dark camphor clumps on the lawn north of the tower
-// and flanking the pitch south of it, two zelkovas by the cross path; nothing on the pitch, the paths or the legs.
-// [dx, dz, scale, species?] from the tower's axis (city-state.js tower).
-export const TOWER_CLUMPS=[[-4.3,-8.1,1.05],[-2.4,-8.3,.95],[0,-8.4,1.0],[2.4,-8.2,.95],[4.3,-8.0,1.05],[-4.5,-6.3,.8],[4.5,-6.2,.8],
- [-2.2,-5.7,.85,'zelkova'],[2.2,-5.75,.85,'zelkova'],[-4.9,8.0,.75],[4.9,8.1,.75],[-4.9,11.2,.7],[4.9,11.1,.7]];
+// The tower park (owner 2026-10-10: the tower stands in the north half of the Shiba block, lots.js TOWER_PARK): dark
+// camphor clumps along the west strip beside the gravel path and the temple hall, on the back lawn between the legs
+// and on the small east and front lawns, two zelkovas behind the forecourt; four more camphors flank the pitch across
+// the street. World [x, z, scale, species?]: nothing on the paths, the forecourt, the hall, the lamps or the four feet
+// (footings at tower ± 4.65 ± .475), and no crown crossing a leg face (x −29.9 / −18.9, z −41.9 / −31.7) above y 2.4.
+export const TOWER_TREES=[[-33.2,-34.4,.7],[-33.2,-35.6,.6],[-31.0,-37.9,.65],[-27.8,-35.2,.7,'zelkova'],[-21.0,-35.2,.7,'zelkova'],
+ [-26.9,-39.7,.85],[-25.2,-40.6,.6],[-21.5,-39.3,.7],[-19.1,-33.6,.55],[-18.5,-37.0,.5,'zelkova'],
+ [-33.9,-20.0,.75],[-24.1,-19.9,.75],[-33.9,-16.8,.7],[-24.1,-16.9,.7]];
 export function towerParkTrees(){
- const out=[];for(const [dx,dz,k,sp] of TOWER_CLUMPS){const x=CS.tower.x+dx,z=CS.tower.z+dz,h=hash(x,z,63);
+ const out=[];for(const [x,z,k,sp] of TOWER_TREES){const h=hash(x,z,63);
   out.push({species:sp||'grove',x,y:BASE_Y,z,ry:h*6.283,s:k*(.92+.16*hash(x,z,64)),hue:h});}
  return out;
 }
@@ -128,7 +131,10 @@ export function canalTrees(){
 export function greenPlan(buildings=[],{extra=[],mobile=false}={}){
  const layout=cityLayout(buildings),trees=[...boulevardTrees(),...canalTrees(),...towerParkTrees(),...extra.map(t=>({hue:hash(t.x,t.z,31),ry:hash(t.x,t.z,32)*6.283,s:1,y:.2,...t}))];
  const boxes=[],detail=[],B=(list,x,y,z,w,h,d,color,ry=0)=>list.push({x,y,z,w,h,d,color,ry});
- for(const s of layout.spots){if(s.reserved||(s.kind!=='shrine'&&!PARK_KINDS.has(s.kind)))continue;const fz=s.front==='+z'?1:-1,P=(u,v)=>[s.x+u,s.frontZ+fz*v];
+ for(const s of layout.spots){if(s.kind!=='shrine'&&!PARK_KINDS.has(s.kind))continue;const fz=s.front==='+z'?1:-1,P=(u,v)=>[s.x+u,s.frontZ+fz*v];
+  if(s.reserved){   // a landmark's ground: the tower park plants above, the plaza gets four small zelkovas at its corners, the rest nothing
+   if(s.reservedKind==='plaza'&&s.plotId)for(const [u,v] of [[-2.3,-1.0],[2.3,-1.0],[-2.3,-4.6],[2.3,-4.6]]){const [x,z]=P(u,v),h=hash(x,z,67);trees.push({species:'zelkova',x,y:BASE_Y,z,ry:h*6.283,s:.62+.1*hash(x,z,68),hue:h});}
+   continue;}
   if(s.kind!=='shrine'&&s.kind!=='park'){   // a pitch, court or playground: one or two small groves at the street corners, nothing inside
    const n=1+(hash(s.x,s.z,61)<.5?1:0),first=hash(s.x,s.z,62)<.5?-1:1;
    for(let i=0;i<n;i++){const side=i?-first:first,[x,z]=P(side*(s.width/2-.3),-.3),h=hash(x,z,65);trees.push({species:'ginkgo',x,y:BASE_Y,z,ry:h*6.283,s:.6+.15*hash(x,z,66),hue:h});}}

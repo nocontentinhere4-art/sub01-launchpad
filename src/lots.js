@@ -36,13 +36,14 @@
 //
 // Spot (open ground, from cityLayout().spots): { id, plotId|null, district, kind:'alley'|'vending'|'parking'|
 //    'coin-parking'|'shrine'|'park'|'pitch'|'court'|'playground', x, z, width, depth, front, frontZ, bays?, cars?,
-//    reserved? }   vacant plots → T8 coin parking or shrine; in the third ring mostly a pocket park or shrine, and
-//    (owner 2026-10-10 "something to vary things") some parks are a futsal pitch, a tennis/basketball court or a
-//    playground instead (PARK_KINDS; hashed per plot). Reserved plots (city-state RESERVED_PLOTS, the tower park) are
-//    always a park spot, with the gaps beside them open lawn too (reserved:true, no plotId on the gap ones).
+//    reserved?, reservedKind? }   vacant plots → T8 coin parking or shrine; in the third ring mostly a pocket park or
+//    shrine, and (owner 2026-10-10 "something to vary things") some parks are a futsal pitch, a tennis/basketball court
+//    or a playground instead (PARK_KINDS; hashed per plot). Reserved plots (city-state RESERVED_PLOTS: the tower park,
+//    the transmitter compound, the Shibuya plaza) are always a park spot carrying their reservedKind, with the gaps
+//    beside them open ground of the same kind (reserved:true, no plotId on the gap ones); city.js draws the setting.
 //
 // frontFace(plotId) → '+z'|'-z'.  subLotsOf(plotId,buildings) → {front, lots, spots, user} for that plot.
-import {cityPlots,districts,buildingColors,ROAD_Z,OUTER_DISTRICTS,outerPlots,tower} from './city-state.js';
+import {cityPlots,districts,buildingColors,ROAD_Z,OUTER_DISTRICTS,outerPlots} from './city-state.js';
 const plotsOf=d=>(d.ghost?outerPlots:cityPlots).filter(p=>p.district===d.id);
 const OUTER_SET=new Set(OUTER_DISTRICTS.map(d=>d.id));
 
@@ -154,12 +155,27 @@ export function skin5a(lot){
 
 // Wave 5A: the vacant plot beside Tokyo Tower is a small park (city-green.js plants its trees).
 export const TOWER_PARKS=['shiba-6'];
+// The landmarks' own ground (owner 2026-10-10 "no structure in the middle of a street"; city-state RESERVED_KIND).
+// Boxes in world units, lot line to back-lane edge; lots.js keeps the interior houses off them, city.js draws them.
+const plotAt=id=>cityPlots.find(p=>p.id===id),districtOf=p=>districts.find(d=>d.id===p.district);
+const backHalf=(p,extra=0)=>{const d=districtOf(p),s=p.z<d.z?-1:1;return s<0?{z0:d.z-13.5,z1:d.z-LOT_LINE,s}:{z0:d.z+LOT_LINE,z1:d.z+13.5,s};};   // lane edge at ±(15 − 1.5)
+// The tower park: shiba-2 and shiba-3 (and the gaps beside them) from Deon's east wall (shiba-1, −34.1) to the end of
+// the row at the boulevard side, lot line to the back lane under the expressway. Tokyo Tower (city-state tower) stands
+// in it with its legs clear of the edges; the lawn across the street (shiba-5 and its gaps) holds the floodlit pitch.
+const P2=plotAt('shiba-2'),P3=plotAt('shiba-3'),P5=plotAt('shiba-5');
+export const TOWER_PARK={district:P2.district,x0:P2.x-5.1,x1:P3.x+2.9,...backHalf(P2)};
 // The tower park's floodlit football pitch (owner 2026-10-10, after the aerial photo: a green pitch with white lines
-// just south of the tower): on the reserved south plot and the block interior behind it, long axis along the street.
-// lots.js keeps the interior houses off it; city.js draws it, city-green.js plants only around it.
-export const TOWER_PITCH={x:tower.x,z:tower.z+8.95,w:8.4,d:5.4};
-const TOWER_DISTRICT=districts.find(d=>d.x===tower.x&&d.z===tower.z)?.id;
-const onPitch=(d,s,x,width)=>d.id===TOWER_DISTRICT&&s>0&&Math.abs(x-TOWER_PITCH.x)<TOWER_PITCH.w/2+width/2+.5;
+// across the street from the tower): on the reserved south plot and the block interior behind it, long axis along
+// the street. city.js draws it, city-green.js plants only around it. Fixed to the plot, not to the tower.
+export const TOWER_PITCH={x:P5.x,z:P5.z+2.95,w:8.4,d:5.4};
+const TOWER_DISTRICT=P5.district;
+// The broadcast tower's transmitter compound: nakano-3 and the interior behind it, up to the back lane.
+const PT=plotAt('nakano-3');
+export const TRANSMITTER_YARD={district:PT.district,x0:PT.x-2.9,x1:PT.x+2.9,...backHalf(PT)};
+// Interior slots (the houses facing the back lanes) never stand on the pitch, in the tower park or in the compound.
+const INTERIOR_KEEP=[TOWER_PARK,TRANSMITTER_YARD];
+const onPitch=(d,s,x,width)=>d.id===TOWER_DISTRICT&&s>0&&Math.abs(x-TOWER_PITCH.x)<TOWER_PITCH.w/2+width/2+.5
+ ||INTERIOR_KEEP.some(b=>b.district===d.id&&b.s===s&&x+width/2>b.x0-.3&&x-width/2<b.x1+.3);
 // Open-ground kinds a vacant plot can take besides parking (city-green plants inside a park, only around the others).
 export const PARK_KINDS=new Set(['park','pitch','court','playground']);
 const parkKind=id=>{const v=rng(id+':spot-kind')();return v<.5?'park':v<.68?'pitch':v<.84?'court':'playground';};
@@ -177,7 +193,7 @@ function sideElements(d,s,buildings){
  const el=[];
  plots.forEach((p,k)=>{
   const b=p.reserved?null:buildings.find(b=>b.plotId===p.id),r=rng(p.id+':split');   // a building record on a reserved plot is ignored
-  if(p.reserved)el.push({kind:'spot',spot:'park',plotId:p.id,x:p.x,width:5.8,vacant:true,reserved:true,cars:[]});
+  if(p.reserved)el.push({kind:'spot',spot:'park',plotId:p.id,x:p.x,width:5.8,vacant:true,reserved:true,reservedKind:p.reservedKind,cars:[]});
   else if(p.vacant&&!b){const x=r(),kind=TOWER_PARKS.includes(p.id)?'park':shrinePlot(d,buildings)===p.id?'shrine':isRing3(d.id)?(x<.72?parkKind(p.id):'coin-parking'):'coin-parking';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
   else{
    let split=pick(r,SPLITS).slice();
@@ -193,7 +209,7 @@ function sideElements(d,s,buildings){
   const next=plots[k+1];if(!next)return;
   const g0=p.x+2.9,g1=next.x-2.9,gr=rng(`${d.id}:${s}:gap${k}`),roll=gr();
   // The gaps beside a reserved plot are open lawn too (excluded from the street-fill rule like a vacant plot).
-  if(p.reserved||next.reserved){el.push({kind:'spot',spot:'park',x:(g0+g1)/2,width:g1-g0,vacant:true,reserved:true,cars:[]});return;}
+  if(p.reserved||next.reserved){el.push({kind:'spot',spot:'park',x:(g0+g1)/2,width:g1-g0,vacant:true,reserved:true,reservedKind:(p.reserved?p:next).reservedKind,cars:[]});return;}
   if(roll<.6){const w=between(gr,1.6,2.0),x0=g0+.1+(g1-g0-.2-w)*gr();el.push({kind:'building',role:'filler',x:x0+w/2,width:w,seed:`${d.id}:${s}:gap${k}`,gap:'pencil'});}
   else if(roll<.85){const left=gr()<.5,pw=1.2;
    const px=left?g0+.1+pw/2:g1-.1-pw/2,ax=left?g1-.1-.35:g0+.1+.35;
@@ -248,9 +264,10 @@ function layoutDistrict(d,buildings,out){
    const c=blds.filter(e=>!e.user&&e.width>=3.5).sort((a,b)=>(b.type==='T3')-(a.type==='T3')||b.width-a.width)[0];
    if(c){if(c.type!=='T3')c.type='T6';c.shopForce='konbini';}
   }
-  // One slab per district, on the far row (behind the street from the camera) and never on a user's plot.
-  if(s<0){const taken=new Set(blds.filter(e=>e.user).map(e=>e.plotId));
-   const c=blds.filter(e=>!e.user&&e.role==='sub'&&e.width>=2.5&&!taken.has(e.plotId)&&!e.shopForce);
+  // One slab per district, on the far row (behind the street from the camera) and never on a user's plot. Shiba's far
+  // row is one plot beside the tower park (owner 2026-10-10): when the konbini took the only wide lot, it is the slab too.
+  if(s<0){const taken=new Set(blds.filter(e=>e.user).map(e=>e.plotId)),ok=e=>!e.user&&e.role==='sub'&&e.width>=2.5&&!taken.has(e.plotId);
+   let c=blds.filter(e=>ok(e)&&!e.shopForce);if(!c.length)c=blds.filter(e=>ok(e)&&e.type==='T3');
    if(c.length){const e=c[Math.floor(dr()*c.length)],w=e.width+JOINT;e.slab=true;
     e.type=cls==='high'?(w>4.05?'T7':'T1'):cls==='mid'&&w>4.05&&category==='office'?'T7':w>=3.8?'T3':'T1';}}
   // Floors: base from the plot's height plus a hashed ±2, then no two touching neighbours alike.
@@ -311,7 +328,7 @@ function layoutDistrict(d,buildings,out){
   for(const e of el)if(e.kind==='spot'){
    const depth=e.vacant?5.4:e.spot==='alley'?4.6:4.8,frontZ=lotLine,z=frontZ-fz*depth/2;
    out.spots.push({id:`${d.id}:${s}:${e.spot}:${e.x.toFixed(2)}`,plotId:e.plotId||null,district:d.id,kind:e.spot,x:e.x,z,width:e.width,depth,front,frontZ,
-    cars:e.cars||[],machines:e.machines||0,acSide:e.acSide||0,pole:!!e.pole,bays:e.spot==='coin-parking'?3:e.spot==='parking'?1:0,...(e.reserved?{reserved:true}:{})});
+    cars:e.cars||[],machines:e.machines||0,acSide:e.acSide||0,pole:!!e.pole,bays:e.spot==='coin-parking'?3:e.spot==='parking'?1:0,...(e.reserved?{reserved:true,reservedKind:e.reservedKind}:{})});
   }
   out.sides.push({district:d.id,front,fill:streetFill(el,d),sequence:el.filter(e=>e.kind==='building').map(e=>e.lot)});
  }

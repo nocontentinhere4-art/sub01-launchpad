@@ -6,11 +6,11 @@ import {addCityCrowd} from './city-crowd.js';
 import {addCityTraffic} from './city-traffic.js';
 import {addTokyoStyle} from './tokyo-style.js';
 import {facadeCode as fc,facadeAttribute,facadeDetail,prismGeometry,arcGeometry,withFacade} from './facades.js';
-import {TOWER,towerPlan,towerRibbons,footTownTop} from './tokyo-tower.js';
-import {cityPlots,districts,tower,plotView,BOULEVARD_X,ROAD_Z,CITY_EXTENT,OUTER_DISTRICTS,OUTER_EXTENT,OUTER_BOULEVARD_X} from './city-state.js';
+import {TOWER,towerPlan,towerRibbons} from './tokyo-tower.js';
+import {cityPlots,districts,tower,TRANSMITTER,SHIBUYA_TOWER,plotView,BOULEVARD_X,ROAD_Z,CITY_EXTENT,OUTER_DISTRICTS,OUTER_EXTENT,OUTER_BOULEVARD_X} from './city-state.js';
 const ALL_BOULEVARDS=[...BOULEVARD_X,...OUTER_BOULEVARD_X];
-import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial,isRing3,builtHeight,TOWER_PITCH} from './lots.js';
-import {boulevardFurniture} from './city-street.js';
+import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial,isRing3,builtHeight,TOWER_PITCH,TOWER_PARK,TRANSMITTER_YARD} from './lots.js';
+import {boulevardFurniture,LIGHT} from './city-street.js';
 const wallMaterial=params=>(T.wallMaterial||T.toon)(params);
 // Night multipliers are plain 0–1 factors (brief 3.9: walls ×#6F7D99, ground ×#55617A), not sRGB colours.
 const factor=hex=>new THREE.Color().setHex(parseInt(hex.slice(1),16),THREE.LinearSRGBColorSpace);
@@ -35,11 +35,14 @@ function nightLit(material){
 function shaped(x,y,z,pre,rot,post){const m=new THREE.Matrix4().makeScale(...pre);m.premultiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rot)));m.premultiply(new THREE.Matrix4().makeScale(...post));return m.premultiply(new THREE.Matrix4().makeTranslation(x,y,z));}
 // 2700 K homes, office white, a few cool stairwells, the rest dark (brief 3.9 night).
 const bandLight=(r,home)=>{const x=r();return x<.1?'#D8E6F0':x<(home?.48:.6)?(home?'#FFC27A':'#FFE6B8'):null;};
-// The tower park (owner 2026-10-10, after the aerial photo): the Shiba street band under FootTown is a paved plaza
-// (x ±8), the reserved plots either side (shiba-2, shiba-5, lots.js) and the gaps beside them are lawn 10.2 wide, with
-// a paver pad under each of the four feet, gravel paths, benches, tree clumps (city-green.js) and the floodlit pitch south
-// of the tower (lots.js TOWER_PITCH). TOWER_PARK is the keep-out box for manholes and the like.
-const TOWER_PARK={x0:tower.x-8,x1:tower.x+8,z0:tower.z-9,z1:tower.z+12.2},LAWN_HALF=5.1,PLAZA_Z=3.3;
+// The landmarks' settings (owner 2026-10-10 "no structure in the middle of a street; give each its own place"):
+// the tower park (lots.js TOWER_PARK: lawn, a raised paver forecourt with a step and low walls on the street, pads under
+// the back feet, gravel paths, benches, lamps, the temple hall in the back-west corner; trees from city-green.js), the
+// pitch lawn across the street (TOWER_PITCH on shiba-5), the transmitter compound (TRANSMITTER_YARD) and the Shibuya
+// plaza (shibuya-3). drawSpot() routes a reserved spot by its reservedKind. KEEP_OUT boxes keep manholes and the like out.
+const PITCH_LAWN={x0:TOWER_PITCH.x-5.1,x1:TOWER_PITCH.x+5.1,z0:TOWER_PITCH.z-5.65,z1:TOWER_PITCH.z+3.25};
+const KEEP_OUT=[TOWER_PARK,PITCH_LAWN,TRANSMITTER_YARD];
+const FORECOURT={w:8.6,d:2.2,step:.6};
 const KEYS=['roads','marks','walls','windows','roofs','prisms','awnings'];
 
 export function createCity(scene,interactive,showPlace,buildings,options={}){
@@ -89,10 +92,10 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    // interior houses of both rows face each other (lots.js INNER); white edge lines, no centre line.
    if(d.z+15<E.maxZ-1){const lz=d.z+15;add('roads',(x0+x1)/2,.15,lz,x1-x0,.06,3,'#6E7372',{fac:ASPH});
     for(const s of [-1,1])add('marks',(x0+x1)/2,.1835,lz+s*1.4,x1-x0,.004,.1,'#DCDAD2',{fac:F_PAINT});}
-   // Manholes: two per district street, hashed along it, clear of the zebras and the tower plaza.
+   // Manholes: two per district street, hashed along it, clear of the zebras and the landmark grounds.
    const rm=rng(d.id+':manholes');
    for(let i=0;i<2;i++){const x=d.x+(rm()-.5)*20,z=d.z+(rm()<.5?-1:1)*(.55+rm()*.4);
-    if(Math.abs(x-d.x)<3.4&&[-29,29].includes(d.x)||x>TOWER_PARK.x0&&x<TOWER_PARK.x1&&z>TOWER_PARK.z0&&z<TOWER_PARK.z1)continue;
+    if(Math.abs(x-d.x)<3.4&&[-29,29].includes(d.x)||KEEP_OUT.some(b=>x>b.x0&&x<b.x1&&z>b.z0&&z<b.z1))continue;
     add('marks',x,.1945,z,.62,.01,.62,'#7A7F7C',{fac:F_MANHOLE});}
   }
   // Japanese zebras: bars only, 0.45 wide with 0.45 gaps (worn paint); a ◇ six units before each approach.
@@ -100,13 +103,11 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    if(commercial)for(const s of [-1,1])for(const dx of [-1.6,1.6])add('marks',cx+dx,.247,d.z+s*2.55,.6,.012,.6,'#E2B53A');
    for(const dir of [-1,1]){const x=cx-dir*6,z=d.z+dir*.75;add('marks',0,0,0,0,0,0,'#ECEAE2',{m:shaped(x,.197,z,[.62,.01,.62],[0,Math.PI/4,0],[2.4,1,1])});add('marks',0,0,0,0,0,0,'#7A7F7C',{m:shaped(x,.199,z,[.42,.01,.42],[0,Math.PI/4,0],[2.4,1,1]),fac:fc('asphalt')});}};
   for(const d of districts){const c=isCommercial(d.id);
-   if([-29,29].includes(d.x)&&[-28,2,32].includes(d.z)&&!(d.x===tower.x&&d.z===tower.z))zebra(d.x,d,c);
+   if([-29,29].includes(d.x)&&[-28,2,32].includes(d.z))zebra(d.x,d,c);   // Shiba's mid-block zebra is back: the tower left the street
    for(const bx of ALL_BOULEVARDS)if(Math.abs(bx-d.x)<15)zebra(bx+Math.sign(d.x-bx)*3.2,d,c);}
   // Boulevards run the whole built area (city-state.js CITY_EXTENT: z −101.5…105.5 for the 7×7 city); asphalt along z.
   for(const x of ALL_BOULEVARDS){add('roads',x,.17,(BLVD_Z0+BLVD_Z1)/2,2.6,.05,BLVD_Z1-BLVD_Z0,'#646B6C',{fac:fc('asphalt',{swap:true})});for(let z=BLVD_Z0+5.5;z<=BLVD_Z1-5.5;z+=6)if(!ROWS.some(r=>Math.abs(z-r)<3.6))add('marks',x,.198,z,.08,.01,.8,'#E6E4DC',{fac:F_PAINT});
    for(let z=BLVD_Z0+7.5;z<=BLVD_Z1-5.5;z+=12){add('marks',x+.6,.199,z,.6,.01,.6,'#646B6C',{fac:F_MANHOLE});}}
-  // The tower plaza: pavers over the Shiba street band under FootTown, the whole width of the park.
-  add('marks',tower.x,.1985,tower.z,TOWER_PARK.x1-TOWER_PARK.x0,.006,2*PLAZA_Z,'#B9B4A8',{fac:fc('pavers')});
   boulevards();
  }
  // Boulevard furniture (city-street.js boulevardFurniture; owner 2026-10-10 "fill the empty strips between the streets"):
@@ -151,18 +152,73 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    const hx=s>0?low:h;add('walls',cx+s*w/2,BASE_Y+hx/2,cz,.05,hx,d,color);}
   fine(()=>{const n=Math.max(2,Math.round(w/2.1));for(let i=0;i<=n;i++)for(const s of [-1,1]){const hh=s>0?low:h;add('walls',cx-w/2+w*i/n,BASE_Y+hh/2,cz+s*d/2,.08,hh+.05,.08,tint(color,-.25));}});
  }
- // The tower park proper (ground() already paved the street band): lawns, the paver apron under the legs, gravel paths,
- // benches and the floodlit pitch. Trees come from city-green.js (towerParkTrees).
+ // Shared small furniture: a wooden bench (face: +1 looks toward +z), a park lamp post with a warm pool (joins the
+ // existing light-pool batch through `pools`), a stone lantern (tōrō).
+ const bench=(bx,bz,face,ry=0)=>{const w={fac:fc('wood')},c=Math.cos(ry),sn=Math.sin(ry);add('walls',bx,BASE_Y+.42,bz,1.3,.07,.42,'#9A7A60',{...w,ry});add('walls',bx-sn*face*.19,BASE_Y+.68,bz-c*face*.19,1.3,.36,.06,'#9A7A60',{...w,ry});
+  fine(()=>{for(const e of [-1,1])add('walls',bx+c*e*.55,BASE_Y+.2,bz-sn*e*.55,.06,.4,.38,'#5B6466',{ry});});};
+ const lamp=(lx,lz,color=LIGHT.led,r=2.3,strength=.45,h=3.4)=>{add('walls',lx,BASE_Y+h/2,lz,.1,h,.1,'#5B6466');add('windows',lx,BASE_Y+h+.12,lz,.34,.26,.34,'#E8E6DE',{light:color,glow:.9});pools.push([lx,lz,color,r,strength]);};
+ const toro=(tx,tz)=>fine(()=>{const g='#9C998F',o={fac:fc('concrete')};add('walls',tx,BASE_Y+.1,tz,.5,.2,.5,g,o);add('walls',tx,BASE_Y+.6,tz,.18,.8,.18,g,o);add('walls',tx,BASE_Y+1.15,tz,.4,.3,.4,'#7C8A80',o);add('walls',tx,BASE_Y+1.4,tz,.55,.1,.55,g,o);add('walls',tx,BASE_Y+1.55,tz,.14,.2,.14,g,o);});
+ // The tower park (owner 2026-10-10): the whole north half of the Shiba block is lawn; a raised paver forecourt faces the
+ // street under the front legs, one step up from the road edge, low walls along the lawn's street edge either side;
+ // paver pads under the back feet; a gravel path from the forecourt to the temple hall in the back-west corner (Zojoji
+ // sits beside the real tower), benches and lamps along it; the floodlit pitch on its own lawn across the street.
+ // Trees come from city-green.js (towerParkTrees).
  function towerPark(){
-  const x=tower.x,z=tower.z,y=BASE_Y,lawn='#7E9A63',gravel='#C9C3B4',G={fac:fc('membrane')},wood={fac:fc('wood')};
-  add('roofs',x,y+.03,(TOWER_PARK.z0+z-PLAZA_Z)/2,2*LAWN_HALF,.06,z-PLAZA_Z-TOWER_PARK.z0,lawn);          // north lawn
-  add('roofs',x,y+.03,(z+PLAZA_Z+TOWER_PARK.z1)/2,2*LAWN_HALF,.06,TOWER_PARK.z1-z-PLAZA_Z,lawn);          // south lawn, to the back lane
-  for(const a of [-1,1])for(const b of [-1,1])add('marks',x+a*TOWER.feet,.1995,z+b*TOWER.feet,1.9,.006,1.9,'#B9B4A8',{fac:fc('pavers')});   // a paver pad under each foot
-  add('roofs',x,y+.065,z-7.1,1.1,.02,3.2,gravel,G);add('roofs',x,y+.065,z-6.6,2*LAWN_HALF-.6,.02,1.0,gravel,G);   // north path and cross path
-  add('roofs',x,y+.065,z+5.9,2*LAWN_HALF-.4,.02,.9,gravel,G);                                              // promenade between the legs and the pitch
-  const bench=(bx,bz,face)=>{add('walls',bx,y+.42,bz,1.3,.07,.42,'#9A7A60',wood);add('walls',bx,y+.68,bz-face*.19,1.3,.36,.06,'#9A7A60',wood);fine(()=>{for(const e of [-1,1])add('walls',bx+e*.55,y+.2,bz,.06,.4,.38,'#5B6466');});};
-  for(const e of [-1,1]){bench(x+e*3.4,z-7.35,1);bench(x+e*2.2,z+5.3,-1);}
+  const P=TOWER_PARK,x=tower.x,z=tower.z,y=BASE_Y,lawn='#7E9A63',gravel='#C9C3B4',paver='#B9B4A8',stone='#9C998F',G={fac:fc('membrane')},PV={fac:fc('pavers')},C={fac:fc('concrete')};
+  add('roofs',(P.x0+P.x1)/2,y+.03,(P.z0+P.z1)/2,P.x1-P.x0,.06,P.z1-P.z0,lawn);
+  // Forecourt: terrace (top at y + .32) behind a step (top at y + .22) along the lot line; low walls on the lawn's edge.
+  const F=FORECOURT,fz=P.z1-F.step-F.d/2;
+  add('roofs',x,y+.16,fz,F.w,.32,F.d,'#C4BBAA',PV);add('roofs',x,y+.11,P.z1-F.step/2,F.w,.22,F.step,'#ADA79B',PV);
+  fine(()=>{for(const e of [-1,1]){add('walls',x+e*(F.w/2-.04),y+.33,fz,.08,.04,F.d,'#8E8A80');add('walls',x+e*(F.w/2-.04),y+.23,P.z1-F.step/2,.08,.04,F.step,'#8E8A80');}
+   add('walls',x,y+.33,fz-F.d/2+.04,F.w,.04,.08,'#8E8A80');add('walls',x,y+.33,fz+F.d/2-.04,F.w,.04,.08,'#8E8A80');add('walls',x,y+.23,P.z1-.04,F.w,.04,.08,'#8E8A80');});   // dark nosing on the terrace and step edges
+  for(const [a,b] of [[P.x0+.1,x-F.w/2-.1],[x+F.w/2+.1,P.x1-.1]])add('walls',(a+b)/2,y+.22,P.z1-.18,b-a,.44,.3,stone,C);
+  for(const b of [-1,1])add('marks',x+b*TOWER.feet,.1995,z-TOWER.feet,1.6,.006,1.6,paver,PV);   // pads under the back feet (the front pair stands on the terrace)
+  // Gravel path: west along the forecourt's back edge, then north along the west strip to the hall's steps; benches on
+  // the west lawn, beside the path and on the back lawn between the legs; lamps at the wall ends, the path and the back.
+  const HALL={x:P.x0+1.7,z:P.z0+1.9,w:3.0,d:2.6},px=HALL.x,pathZ=fz-F.d/2-.5;
+  add('roofs',(px-.45+x-F.w/2)/2,y+.065,pathZ,x-F.w/2-px+.45,.02,.9,gravel,G);
+  add('roofs',px,y+.065,(pathZ+.45+HALL.z+HALL.d/2)/2,.9,.02,HALL.z+HALL.d/2-pathZ-.45,gravel,G);
+  bench(P.x0+1.0,P.z1-1.5,1);bench(px+1.3,pathZ-.9,-1,Math.PI/2);bench(x+1.5,P.z0+1.6,1);
+  lamp(P.x0+.6,P.z1-.7);lamp(P.x1-.6,P.z1-.7);lamp(px-1.0,pathZ-1.1);lamp(P.x1-.5,P.z0+1.4);
+  // The hall: stone plinth, a wooden body open to the path (a dark veranda under the eave), a tiled gable roof with
+  // wall-coloured gable ends and a ridge cap (two kawara prisms, as the T5 houses), stone lanterns before its steps.
+  const hx=HALL.x,hz=HALL.z,hw=HALL.w,hd=HALL.d,eave=2.5,H=3.9,wood='#6B5443',wo={fac:fc('wood')};
+  add('walls',hx,y+.15,hz,hw+.3,.3,hd+.4,stone,C);add('walls',hx,y+.3+eave/2,hz,hw,eave,hd,wood,wo);
+  add('walls',hx,y+.3+1.05,hz+hd/2+.03,hw-.5,1.9,.06,'#2B2B2B');add('walls',hx,y+.3+1.6,hz+hd/2+.08,hw-1.4,.5,.04,'#D9CDB4',{fac:fc('plaster')});
+  fine(()=>{for(const e of [-1,0,1])add('walls',hx+e*(hw/2-.1),y+.3+eave/2,hz+hd/2+.1,.18,eave,.18,'#4A3A2E',wo);add('walls',hx,y+.3+.06,hz+hd/2+.75,hw-.2,.12,1.0,'#4A3A2E',wo);});
+  const half=(hd+.8)/2,rise=H-eave+.1,yc=y+.3+eave-.05+rise/2,len=hw+.6;
+  for(const sd of [-1,1]){add('prisms',hx,yc,hz+sd*half/2,len,rise,half,'#4E5864',{ry:sd>0?0:Math.PI,fac:fc('kawara',{noEdge:true})});
+   fine(()=>add('prisms',hx,y+.3+eave+(H-eave)/2-.04,hz+sd*hd/4,len-.6,H-eave,hd/2,wood,{ry:sd>0?0:Math.PI,fac:NOEDGE('wood')}));}
+  fine(()=>add('roofs',hx,y+.3+eave-.05+rise+.03,hz,len,.1,.2,'#3A414A'));
+  for(const e of [-1,1])toro(hx+e*1.1,hz+hd/2+1.25);
+  // The pitch lawn across the street (shiba-5 and the gaps beside it, lot line to the back lane) and the pitch itself.
+  const L=PITCH_LAWN;add('roofs',(L.x0+L.x1)/2,y+.03,(L.z0+L.z1)/2,L.x1-L.x0,.06,L.z1-L.z0,lawn);
   pitchAt(TOWER_PITCH.x,TOWER_PITCH.z,TOWER_PITCH.w,TOWER_PITCH.d,{gate:-1,fence:2.0,pool:5.2});
+ }
+ // The transmitter compound (owner 2026-10-10): the stepped broadcast tower (city-life.js draws it at
+ // city-state TRANSMITTER) in a fenced gravel yard on nakano-3 and the interior behind it: a concrete base, an
+ // equipment hut with a dish, a chain fence with its gate to the street, two sodium lamps. On nakano-3, the row's
+ // boulevard-side plot, so the yard is in view from the south-east camera (a neighbour to the east would hide it).
+ function transmitter(){
+  const B=TRANSMITTER_YARD,T=TRANSMITTER,y=BASE_Y,cx=(B.x0+B.x1)/2,cz=(B.z0+B.z1)/2,w=B.x1-B.x0,d=B.z1-B.z0,C={fac:fc('concrete')};
+  add('roofs',cx,y+.03,cz,w,.06,d,'#C9C3B4',{fac:fc('membrane')});
+  add('walls',T.x,y+.15,T.z,3.9,.3,3.9,'#A9A79D',C);add('walls',T.x,y+.36,T.z,3.2,.12,3.2,'#8E8C84',C);
+  const hx=B.x0+1.45,hz=B.z1-2.2;add('walls',hx,y+1.2,hz,2.2,2.4,1.7,'#B4B1A7',C);add('roofs',hx,y+2.43,hz,2.3,.06,1.8,'#6E7774');
+  add('walls',hx+.5,y+1.0,hz+.88,.8,1.9,.04,'#4F5658',{fac:F_DOOR});add('windows',hx-.5,y+1.6,hz+.88,.6,.5,.04,GLASS_LOW,{light:'#D8E6F0',glow:.6});
+  fine(()=>{add('roofs',hx-.6,y+2.76,hz-.3,.06,.6,.06,'#9A9D98');add('roofs',hx-.6,y+3.2,hz-.22,.72,.72,.05,'#E8E6E0',{rx:-.55,ry:.6,order:'YXZ'});
+   add('walls',B.x1-1.0,y+.55,B.z0+1.3,1.2,1.1,.7,'#8E9392',{fac:fc('metal')});});
+  fenceAround(cx,cz,w-.3,d-.3,1.8,1,'#8E9392');
+  lamp(B.x0+.45,B.z1-.6,LIGHT.sodium,2.6,.5,4.4);lamp(B.x1-.45,B.z0+.6,LIGHT.sodium,2.6,.5,4.4);
+ }
+ // The Shibuya plaza (owner 2026-10-10): the teal feature tower (city-life.js, city-state SHIBUYA_TOWER) on a paved plot
+ // with a darker diamond under it, a ring bench around its base, lamps at the back corners; the edge toward the boulevard
+ // sidewalk stays open (no kerb, no fence). The four zelkovas come from city-green.js.
+ function plaza(s){
+  const T=SHIBUYA_TOWER,fz=s.front==='+z'?1:-1,y=BASE_Y,cz=s.frontZ-fz*s.depth/2,PV={fac:fc('pavers')};
+  add('roofs',s.x,y+.02,cz,s.width,.04,s.depth,'#B9B4A8',PV);add('roofs',T.x,y+.045,T.z,3.4,.01,3.4,'#9C998F',{...PV,ry:Math.PI/4});
+  for(let k=0;k<8;k++){const a=k*Math.PI/4+Math.PI/8,r=2.45,bx=T.x+Math.cos(a)*r,bz=T.z+Math.sin(a)*r,ry=a+Math.PI/2;
+   add('walls',bx,y+.42,bz,1.6,.08,.42,'#9A7A60',{ry,fac:fc('wood')});fine(()=>add('walls',bx,y+.2,bz,1.4,.36,.08,'#5B6466',{ry}));}
+  lamp(s.x-s.width/2+.35,cz);lamp(s.x+s.width/2-.35,cz);
  }
 
  // ---------- Buildings ----------
@@ -294,7 +350,11 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  function drawSpot(s){
   const fz=s.front==='+z'?1:-1,y0=BASE_Y,F=(key,u,y,v,w,h,d,c,o)=>add(key,s.x+u,y0+y,s.frontZ+fz*v,w,h,d,c,o),r=rng(s.id+':spot');
   const car=(u,v)=>{const c=CARS[Math.floor(r()*CARS.length)];F('walls',u,.45,v,.95,.55,1.9,c);F('walls',u,.9,v-.1,.85,.42,1.0,tint(c,-.12));};
-  if(s.reserved)return;   // the tower park: towerPark() draws it as one piece
+  if(s.reserved){   // a landmark's ground (city-state RESERVED_KIND): its setting is drawn as one piece, the gaps beside it as open ground
+   if(s.reservedKind==='tower-park')return;                       // towerPark()
+   if(!s.plotId)F('roofs',0,.03,-s.depth/2,s.width,.06,s.depth,s.reservedKind==='plaza'?'#B9B4A8':'#7E9A63',s.reservedKind==='plaza'?{fac:fc('pavers')}:undefined);
+   else if(s.reservedKind==='transmitter')transmitter();else if(s.reservedKind==='plaza')plaza(s);
+   return;}
   if(s.kind==='alley'){F('roofs',0,.01,-s.depth/2,s.width,.02,s.depth,'#8E8C84',{fac:fc('concrete')});if(s.pole)F('walls',0,3.5,-.35,.16,7,.16,'#B7B4AA');fine(()=>F('walls',s.acSide*(s.width/2-.17),2.2,-s.depth*.45,.3,.6,.8,AC,{fac:F_FAN_X}));}
   else if(s.kind==='vending'){F('roofs',0,.01,-s.depth/2,s.width,.02,s.depth,'#A6A398',{fac:fc('concrete')});const n=s.machines||2;for(let i=0;i<n;i++){const u=(i-(n-1)/2)*.95,c=['#EDEDE8','#C63B34','#2E6FB0'][Math.floor(r()*3)];F('walls',u,.875,-.4,.9,1.75,.65,c);F('windows',u,1.25,-.06,.7,.35,.04,'#CFE3EA',{light:'#EAF4FF'});}pools.push([s.x,s.frontZ+fz*.5,'#EAF4FF',1.6,.45]);F('walls',(n/2)*.95+.1,.4,-.4,.35,.8,.45,'#7D8B8E');}
   else if(s.kind==='parking'||s.kind==='coin-parking'){
@@ -358,23 +418,13 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   if(!grey){const mx=-w/2+.4,mz=back-1.2,top=full+4;F('walls',mx,top/2,mz,.4,top,.4,'#f2b84b');F('walls',mx+2.6,top,mz,8,.3,.3,'#f2b84b');F('walls',mx-1.6,top-.4,mz,1.4,.8,.8,'#8E9290');F('walls',mx+5,top-1.6,mz,.04,3,.04,'#46525a');}
   return h;
  }
- // FootTown (wave 5A): a 4-storey light-grey podium over the Shiba street on four pilotis; the road and the sidewalk
- // lines pass under it, the tower legs come down through its roof corners.
- function footTown(){const f=TOWER.footTown,x=tower.x,z=tower.z,h=f.floors*f.storey+f.parapet,yb=BASE_Y+f.y0;
-  for(const a of [-1,1])for(const b of [-1,1])add('walls',x+a*(f.half-.2),BASE_Y+f.y0/2,z+b*(f.half-.2),.36,f.y0,.36,tint(f.color,-.12),{fac:fc('concrete')});
-  add('walls',x,yb+h/2,z,2*f.half,h,2*f.half,f.color,{fac:fc('concrete')});add('walls',x,yb+.1,z,2*f.half+.12,.2,2*f.half+.12,tint(f.color,.15));
-  add('roofs',x,yb+h+.015,z,2*f.half-.3,.03,2*f.half-.3,'#8B8F87',{fac:F_ROOF});
-  for(let k=0;k<f.floors;k++){const y=yb+k*f.storey+1.25;for(const s of [-1,1]){
-   add('windows',x,y,z+s*(f.half+.02),2*f.half-.4,1.1,.05,GLASS_LOW,{light:'#FFE6B8',glow:.8});add('windows',x+s*(f.half+.02),y,z,.05,1.1,2*f.half-.4,GLASS_LOW,{light:'#FFE6B8',glow:.8});}}
- }
-
  let renderGroups=[],style,life,currentNight=false,pools=[],showDetail=true;
  const applyPools=()=>{if(!life?.addLightPool)return;style?.bindLife?.(life);life.clearLightPools('konbini');for(const [x,z,c,r,s] of pools)life.addLightPool(x,z,c,r,{group:'konbini',strength:s});};const heights=new Map(),counts={};
  const picks=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial({visible:false}),cityPlots.length);
  picks.userData.cityPlot=true;root.add(picks);interactive.push(picks);
  const setPick=(i,x,z,w,h,d)=>{dummy.position.set(x,BASE_Y+h/2,z);dummy.rotation.set(0,0,0);dummy.scale.set(w,h,d);dummy.updateMatrix();picks.setMatrixAt(i,dummy.matrix);};
  function redraw(next){buildings=next;for(const g of renderGroups){root.remove(g);g.dispose();g.geometry.dispose();}renderGroups=[];
-  batches=Object.fromEntries(KEYS.map(k=>[k,[]]));details=Object.fromEntries(KEYS.map(k=>[k,[]]));heights.clear();pools=[];ground();footTown();towerPark();
+  batches=Object.fromEntries(KEYS.map(k=>[k,[]]));details=Object.fromEntries(KEYS.map(k=>[k,[]]));heights.clear();pools=[];ground();towerPark();
   const layout=cityLayout(buildings),userPlots=new Set(layout.lots.filter(l=>l.user).map(l=>l.plotId));
   for(const lot of layout.lots){
    const b=lot.user?buildings.find(x=>x.plotId===lot.plotId):null;
@@ -408,7 +458,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   // Quality hook (quality.js via main.js): forwarded to city-life.js (steam, critters, blimp).
   setQuality(q){life.setQuality?.(q);},get life(){return life;},
   heightOf:plotId=>plotId==='tower'?TOWER.height:heights.get(plotId)??null,
-  stats:()=>({...counts,tower:plan.boxes.length,towerMembers:plan.members.length,footTown:footTownTop(),drawCalls:renderGroups.length+2,
+  stats:()=>({...counts,tower:plan.boxes.length,towerMembers:plan.members.length,drawCalls:renderGroups.length+2,
    instances:renderGroups.reduce((n,g)=>n+g.count,0)+plan.boxes.length,detail:showDetail}),
   // Overview LOD (main.js, camera.zoom < 0.3): hide AC units, small roof items, side pipes and road marks; fade the
   // facade atlas (facades.js facadeDetail, shared with every wallMaterial).

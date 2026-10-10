@@ -281,6 +281,8 @@ export function addCityLife(parent){
   if(g.x>canal.x0&&g.x<canal.x1)smear(g.x,g.z+1.5,EXPRESSWAY.sodium,.3);}
  // ---------- Tokyo Skytree (landmarks.js): one mesh in the north skyline; aviation lights join the night windows ----------
  const skytree=addSkytree(root);for(const l of skytree.lights)item(windows,l.x,l.y,l.z,.5,.5,.5,'#FF3A2A');
+ // The broadcast tower's red aviation light (its compound is city.js's; the tower itself is merged below).
+ item(windows,CS.TRANSMITTER.x,CS.TRANSMITTER.height+.35,CS.TRANSMITTER.z,.34,.34,.34,'#FF5A4A');
  const solidCore=solid.length,windowsCore=windows.length;solid.push(...solidDetail);windows.push(...windowsDetail);
  const solidMesh=batch(solid,mat);solidMesh.castShadow=true;solidMesh.receiveShadow=true;
  const skyMat=new THREE.MeshBasicMaterial({vertexColors:true,toneMapped:false}),skyMesh=batch(skyItems,skyMat,skyGeo);skyMesh.name='skyline';
@@ -400,13 +402,14 @@ export function addCityLife(parent){
    else if(it.role==='lampF'||it.role==='lampB'){const lead=(it.role==='lampF')===(dirs[it.train]>=0);c.set(lead?(currentNight?'#FFF6DA':'#E8E6DE'):(currentNight?'#FF4A3A':'#9aa3a8'));}
    else if(currentNight)c.multiply(dimBody);
    trainMesh.setColorAt(i,c);});trainMesh.instanceColor.needsUpdate=true;}
- // A slim, stepped broadcast tower adds a second silhouette.
- const towerMat=toon({vertexColors:true,roughness:.5}),towerParts=[],ringParts=[];
- for(const [r,h,y] of [[1.3,21,10.5],[.75,12,27],[.3,9,37.5]])towerParts.push(piece(new THREE.CylinderGeometry(r*.65,r,h,8),55,y,-58,'#809cad'));
- for(const y of [21,31])ringParts.push(piece(new THREE.CylinderGeometry(2,2,.65,12),55,y,-58,'#78c7d1'));
- // Light bands on Shibuya's feature tower.
- towerParts.push(piece(new THREE.CylinderGeometry(1.5,1.8,12,12),42,6,1,'#285b68'));
- for(const y of [3,7,11])ringParts.push(piece(new THREE.CylinderGeometry(1.83,1.83,.2,12),42,y,1,y===7?'#fb974c':'#63d3db'));
+ // A slim, stepped broadcast tower adds a second silhouette: in its transmitter compound (city-state TRANSMITTER,
+ // nakano-3 and the interior behind it; owner 2026-10-10: it stood on the Nakano street), a wider base on the yard's slab.
+ const towerMat=toon({vertexColors:true,roughness:.5}),towerParts=[],ringParts=[],TX=CS.TRANSMITTER,ST=CS.SHIBUYA_TOWER;
+ for(const [r,h,y] of [[1.55,21,10.5],[.85,12,27],[.34,9,37.5]])towerParts.push(piece(new THREE.CylinderGeometry(r*.65,r,h,8),TX.x,y,TX.z,'#809cad'));
+ for(const y of [21,31])ringParts.push(piece(new THREE.CylinderGeometry(2,2,.65,12),TX.x,y,TX.z,'#78c7d1'));
+ // Light bands on Shibuya's feature tower, on its plaza (city-state SHIBUYA_TOWER, shibuya-3; it stood in the junction).
+ towerParts.push(piece(new THREE.CylinderGeometry(1.5,1.8,12,12),ST.x,6,ST.z,'#285b68'));
+ for(const y of [3,7,11])ringParts.push(piece(new THREE.CylinderGeometry(1.83,1.83,.2,12),ST.x,y,ST.z,y===7?'#fb974c':'#63d3db'));
  merged(towerParts,towerMat,'towers');merged(ringParts,new THREE.MeshBasicMaterial({vertexColors:true}),'tower rings');
  // The Shibuya screen (6.3 × 3.15: tokyo-style.js finds it by that size and re-places it on its roof) and the other
  // neon districts' hero billboards (one instanced overlay) cycle through the public projects (city-screens.js).

@@ -1,5 +1,5 @@
 import {planRoute,frontOf} from './world-sync.js';
-import {cityPlots,districts,ROAD_Z,BOULEVARD_X,CITY_EXTENT as E,CANAL_X,METRO_Z} from './city-state.js';
+import {cityPlots,districts,ROAD_Z,BOULEVARD_X,CITY_EXTENT as E,CANAL_X,METRO_Z,tower,TRANSMITTER} from './city-state.js';
 import {RIVER,riverEdges} from './landmarks.js';
 // The z = 2 bridge over the river (wave 5C, city-life canalLayout): deck y 0.93 from x 101 to 124 (water centre ± half + 1.5),
 // 0.8 ramps at each end; the walk ends just past the east bank (x1 + 1).
@@ -34,12 +34,12 @@ export function exploreRoute(from,to){
 }
 // Fixed landmarks: where to stand, which way to face, a one-line toast, emotes to try (first unlocked one wins).
 export const LANDMARKS=[
- {id:'tower',kind:'landmark',name:'Tokyo Tower',text:'Tokyo Tower — Shiba. 333 m in real life.',x:-23.8,z:-28,yaw:-Math.PI/2,emotes:['selfie','wave']},
+ {id:'tower',kind:'landmark',name:'Tokyo Tower',text:'Tokyo Tower — Shiba. 333 m in real life.',x:tower.x,z:ROAD_Z[2]-.4,yaw:Math.PI,emotes:['selfie','wave']},   // on the Shiba street before the park's forecourt, looking up
  {id:'shibuya',kind:'landmark',name:'Shibuya crossing',text:'Shibuya crossing — the scramble, every light at once.',x:29,z:2.4,yaw:0,emotes:['dance','celebrate']},
  {id:'canal',kind:'landmark',name:'Nakameguro canal',text:'Nakameguro canal — cherry trees along the water.',x:CANAL_X-1,z:2,yaw:0,emotes:['sit','think']},
  {id:'metro',kind:'landmark',name:'Metro station',text:'Metro station — the elevated line along the south edge.',x:-25,z:METRO_Z-3,yaw:0,emotes:['think','wave']},
  {id:'lanterns',kind:'landmark',name:'Roppongi lanterns',text:'Roppongi lantern street.',x:-31,z:2.4,yaw:0,emotes:['karaoke','dance']},
- {id:'broadcast',kind:'landmark',name:'Broadcast tower',text:'Broadcast tower — the second skyline needle.',x:51.5,z:-58,yaw:Math.PI/2,emotes:['selfie','think']},
+ {id:'broadcast',kind:'landmark',name:'Broadcast tower',text:'Broadcast tower — the second skyline needle.',x:TRANSMITTER.x,z:ROAD_Z[1]-.4,yaw:Math.PI,emotes:['selfie','think']},   // on the Nakano street at the compound gate
  // Third ring (wave 4A): the two sub-centres and an old-town street.
  {id:'kichijoji',kind:'landmark',name:'Kichijoji',text:'Kichijoji — the west side sub-centre, all arcades and live houses.',x:87,z:-58,yaw:0,emotes:['dance','wave']},
  {id:'gotanda',kind:'landmark',name:'Gotanda',text:'Gotanda — offices by day, izakaya by night.',x:-87,z:32,yaw:0,emotes:['karaoke','think']},

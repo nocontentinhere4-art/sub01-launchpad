@@ -47,17 +47,34 @@ export const SKYLINE_X=OUTER_EXTENT.minX+1.5;       // −129   west skyline edg
 export const FUJI_AT={x:-67,z:-161};                // no mountain any more (owner 2026-10-10); this line only fixes the north skyline gap at x ≈ −46 (the expressway's exit)
 // Overview camera (main.js resetView) for the bigger map, and the zoom-out floor it needs.
 export const OVERVIEW_ZOOM={desktop:.2,mobile:.093,min:.05};   // 2026-10-10: tighter, so no ground past the blocks shows; main.js clamps the pan and the zoom floor
-// Reserved plots (owner 2026-10-10): the two Shiba plots either side of Tokyo Tower are its park (lawn, trees, the
-// floodlit pitch). They keep their ids and positions (288 ids, nothing renumbered) but are never offered, listed,
-// counted, picked or labelled; the server refuses claims on them too (world.js RESERVED_PLOTS).
-export const RESERVED_PLOTS=['shiba-2','shiba-5'];
-export const cityPlots=districts.flatMap((d,di)=>Array.from({length:6},(_,i)=>{const id=`${d.id}-${i+1}`,reserved=RESERVED_PLOTS.includes(id);return {
+// Reserved plots (owner 2026-10-10, "no structure may stand in the middle of a street"): every landmark has its own
+// place off the roads, with a setting around it. shiba-2 and shiba-3 are the Tokyo Tower park's street front (the
+// north half of the Shiba block, lots.js TOWER_PARK), shiba-5 the floodlit pitch across the street; nakano-2 is the
+// broadcast tower's transmitter compound (the row's boulevard-side plot, so the yard shows from the south-east camera);
+// shibuya-3 the plaza of the Shibuya feature tower. They keep their ids and
+// positions (288 ids, nothing renumbered) but are never offered, listed, counted, picked or labelled; the server
+// refuses claims on them too (world.js RESERVED_PLOTS). reservedKind tells lots.js / city.js which setting to draw.
+export const RESERVED_KIND={'shiba-2':'tower-park','shiba-3':'tower-park','shiba-5':'tower-park','nakano-3':'transmitter','shibuya-3':'plaza'};
+export const RESERVED_PLOTS=Object.keys(RESERVED_KIND);
+const RESERVED_TEXT={
+ 'tower-park':{kind:'TOKYO / TOWER PARK',status:'Tower park',description:'Part of the Tokyo Tower park: lawn, camphor trees, the temple hall and the floodlit pitch across the street. Not an address.'},
+ transmitter:{kind:'TOKYO / TRANSMITTER',status:'Transmitter site',description:'The fenced compound of the broadcast tower: gravel yard, equipment hut, sodium lamps. Not an address.'},
+ plaza:{kind:'TOKYO / PLAZA',status:'Tower plaza',description:'The plaza of the Shibuya feature tower: pavers, a ring bench, four zelkovas. Not an address.'}};
+export const cityPlots=districts.flatMap((d,di)=>Array.from({length:6},(_,i)=>{const id=`${d.id}-${i+1}`,rk=RESERVED_KIND[id],reserved=!!rk,rt=RESERVED_TEXT[rk];return {
  id,district:d.id,districtName:d.name,name:`${d.name.split(' /')[0]} ${String(i+1).padStart(2,'0')}`,
  x:d.x+[-8,0,8][i%3],z:d.z+(i<3?-6:6),height:di<8?3+((di*3+i*7)%6):di<24?5+((di*3+i*7)%12):3+((di*3+i*7)%8),
- vacant:i===5,...(reserved?{reserved:true}:{}),color:d.color,symbol:reserved?'♣':i===5?'+':'▥',kind:reserved?'TOKYO / TOWER PARK':'TOKYO / AVAILABLE SPACE',status:reserved?'Tower park':i===5?'Open lot':'Available building',
- description:reserved?'Part of the Tokyo Tower park: lawn, trees and the floodlit pitch under the tower. Not an address.':'Choose this address for an apartment, studio or project. Customize it in the local city preview. No purchase, global ownership or token launch.'
+ vacant:i===5,...(reserved?{reserved:true,reservedKind:rk}:{}),color:d.color,symbol:reserved?'♣':i===5?'+':'▥',kind:reserved?rt.kind:'TOKYO / AVAILABLE SPACE',status:reserved?rt.status:i===5?'Open lot':'Available building',
+ description:reserved?rt.description:'Choose this address for an apartment, studio or project. Customize it in the local city preview. No purchase, global ownership or token launch.'
 };}));
-export const tower={id:'tower',name:'Tokyo Tower',x:-29,z:-28,height:32,color:'#f2773a',symbol:'△',kind:'TOKYO / LANDMARK',status:'City landmark',description:'The center of Shiba. An original, stylized Tokyo Tower made from lightweight shared geometry. This city is inspired by Tokyo, not an accurate map.'};
+const plotAt=id=>cityPlots.find(p=>p.id===id);
+// Tokyo Tower stands in its park, off the Shiba street: the north half of the block between Deon's wall (shiba-1, x −34.1)
+// and the boulevard end of the row, a little east of the park's centre so the temple hall fits in the back-west corner.
+// Its legs (±(feet+leg) = ±5.07, tokyo-tower.js) stay inside the park, the front feet on the paver forecourt.
+export const tower={id:'tower',name:'Tokyo Tower',x:-24.4,z:-36.8,height:32,color:'#f2773a',symbol:'△',kind:'TOKYO / LANDMARK',status:'City landmark',description:'In its park in Shiba. An original, stylized Tokyo Tower made from lightweight shared geometry. This city is inspired by Tokyo, not an accurate map.'};
+// The two smaller towers (city-life.js draws them): the stepped broadcast tower in its transmitter compound behind
+// nakano-3 (the plot and the block interior up to the back lane), the Shibuya feature tower on its plaza on shibuya-3.
+export const TRANSMITTER={plotId:'nakano-3',x:plotAt('nakano-3').x,z:plotAt('nakano-3').z-3.2,height:42};
+export const SHIBUYA_TOWER={plotId:'shibuya-3',x:plotAt('shibuya-3').x,z:plotAt('shibuya-3').z,height:12};
 export const buildingColors={orange:'#f4864e',mint:'#80a897',violet:'#a19bc4',sand:'#d4bf91'};
 export function createBuilding(plotId,name,idea,ticker,type,color,existing=[],id=crypto.randomUUID()){
  if(!cityPlots.some(p=>p.id===plotId&&!p.reserved))throw new Error('Choose an available city address.');
