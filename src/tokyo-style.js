@@ -332,7 +332,7 @@ export function stylePlan(buildings=[]){
 // zooms in, so it still reads from the district views that see the north-west horizon. Two draw calls: the opaque body +
 // ridge, and the transparent haze + cloud. Colours follow the shared night amount (day → dusk → night silhouette).
 const FUJI_AT=CS.FUJI_AT??{x:-60.5,z:-131},FUJI_K=CS.OVERVIEW_ZOOM?.desktop?.19/CS.OVERVIEW_ZOOM.desktop:1;
-export const FUJI={x:FUJI_AT.x,z:FUJI_AT.z,height:21*FUJI_K,baseY:0,squash:.15,view:{yaw:36,pitch:40},
+export const FUJI={x:FUJI_AT.x,z:FUJI_AT.z,height:30*FUJI_K,baseY:0,squash:.15,view:{yaw:36,pitch:40},
  overviewZoom:CS.OVERVIEW_ZOOM?.desktop??.19,segments:48,rings:18,slopeBase:10,slopeTop:31,crater:.04,snow:.3,
  day:'#8FA2B6',snowDay:'#F3F1EA',dusk:'#6C6F93',snowDusk:'#F2C9B5',night:'#1E2840',snowNight:'#36425F',
  ridge:{day:'#7A8C9C',dusk:'#4E5076',night:'#141C30',height:.3,width:1.55},maxTriangles:3000,renderOrder:-5};

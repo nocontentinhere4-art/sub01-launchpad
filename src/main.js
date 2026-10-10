@@ -5,7 +5,6 @@ import {createWeather,createAmbience,weatherAt,LEVELS,nextMode,approach,atmosphe
 import {crossingState} from './city-crowd.js';
 import {trainPosition,setCityWorld,setCityFocus,canalLayout} from './city-life.js';
 import {riverHole} from './landmarks.js';
-import {addOutskirts,OUTSKIRTS} from './outskirts.js';
 import {setTrafficQuality} from './city-traffic.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -82,7 +81,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 2);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
 const OVERVIEW = CS.OVERVIEW_ZOOM ?? { desktop: .19, mobile: .09, min: .07 };
-controls.minZoom = OVERVIEW.min; controls.maxZoom = 2.8;
+controls.minZoom = mobile?OVERVIEW.mobile:OVERVIEW.desktop; controls.maxZoom = 2.8;   // 2026-10-10: never further out than the overview
 controls.minPolarAngle = .3; controls.maxPolarAngle = 1.1;
 controls.enablePan = true;
 controls.addEventListener('start', () => { cityTour=null;follow = false; cameraTween = null; followObj=null; });
@@ -149,10 +148,10 @@ let heroHome=null;
 // over CITY_EXTENT + the suburbs at y = −0.02 with a hole for the river (landmarks.js riverHole, water at −1.05). One
 // geometry, vertex colours, one draw call; the city's ground night tint (#55617A) in-shader. renderOrder −10: the ground
 // is drawn first, so Fuji (tokyo-style.js, a backdrop standing on this plane) paints over it at −5 before the city.
-let horizon=null,outskirts=null;
-// The plate reaches past the suburbs (outskirts.js), then a ring fades it into the fog colour (vertex aFade, mixed in
-// after lighting so it matches the horizon plane exactly): no plate edge, no step, whatever the fog distance is.
-const GROUND_PLANE={near:'#8E8E88',margin:OUTSKIRTS.gap+OUTSKIRTS.band+4,fadeRing:70,far_:600,y:-.02,farY:-.06,renderOrder:-10};
+let horizon=null;
+// Owner 2026-10-10: nothing outside the city. The plate stops just past the blocks and a ring fades it into the fog
+// colour (vertex aFade, mixed in after lighting so it matches the horizon plane exactly): no edge, no suburbs, mist.
+const GROUND_PLANE={near:'#8E8E88',margin:8,fadeRing:38,far_:600,y:-.02,farY:-.06,renderOrder:-10};
 function cityGround(){
   const E=CS.CITY_EXTENT,M=GROUND_PLANE.margin,x0=E.minX-M,x1=E.maxX+M,z0=E.minZ-M,z1=E.maxZ+M,F=GROUND_PLANE.far_,h=CS.CANAL_X==null?null:riverHole();
   const rects=[],R=(a,b,c,d,y,col)=>{if(b-a>.01&&d-c>.01)rects.push([a,b,c,d,y,col]);},Y=GROUND_PLANE.y,N=GROUND_PLANE.near;
@@ -177,7 +176,6 @@ function cityGround(){
   const mesh=new THREE.Mesh(g,m);mesh.name='city ground';mesh.renderOrder=GROUND_PLANE.renderOrder;mesh.receiveShadow=true;mesh.raycast=()=>{};mesh.frustumCulled=false;scene.add(mesh);
   // Horizon: a far plane in the fog colour (unlit, unfogged) under everything, so the ring's outer edge meets haze.
   horizon=new THREE.Mesh(new THREE.PlaneGeometry(F*2,F*2).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:scene.fog?.color||'#E6DFD2',fog:false}));horizon.position.y=GROUND_PLANE.farY;horizon.renderOrder=GROUND_PLANE.renderOrder-1;horizon.raycast=()=>{};horizon.frustumCulled=false;scene.add(horizon);
-  outskirts=addOutskirts(scene);
   return mesh;
 }
 function groundwork() {
@@ -298,8 +296,15 @@ function resize(){const w=innerWidth,h=innerHeight,aspect=w/h;const half=mobile?
 const CAMERA={pitch:40,yaw:36,distance:168};
 function aimCamera(target){const p=THREE.MathUtils.degToRad(CAMERA.pitch),y=THREE.MathUtils.degToRad(CAMERA.yaw),d=CAMERA.distance;
   controls.target.copy(target);camera.position.set(target.x+d*Math.cos(p)*Math.sin(y),target.y+d*Math.sin(p),target.z+d*Math.cos(p)*Math.cos(y));}
-// 2026-10-10: the overview target sits a touch north of the city centre, so Fuji (foot on the ground) clears the header.
-function resetView(){cityTour=null;follow=false;cameraTween=null;aimCamera(new THREE.Vector3(-9,8,-19));camera.zoom=mobile?OVERVIEW.mobile:OVERVIEW.desktop;camera.updateProjectionMatrix();controls.update();}
+// 2026-10-10: the overview target sits north of the city centre, so Fuji (foot on the ground) clears the header.
+const OVERVIEW_TARGET=new THREE.Vector3(-16,8,-30);
+// The view never leaves the city (owner 2026-10-10): the orbit target stays inside CITY_EXTENT + VIEW_PAD, and the
+// camera moves with it so the pitch and the zoom are untouched. Runs after controls.update() every frame, so drags,
+// tweens, follows and tours all obey it.
+const VIEW_PAD=10,_clampD=new THREE.Vector3();
+function clampToCity(){const E=CS.CITY_EXTENT,t=controls.target;_clampD.set(THREE.MathUtils.clamp(t.x,E.minX-VIEW_PAD,E.maxX+VIEW_PAD)-t.x,0,THREE.MathUtils.clamp(t.z,E.minZ-VIEW_PAD,E.maxZ+VIEW_PAD)-t.z);
+  if(_clampD.x||_clampD.z){t.add(_clampD);camera.position.add(_clampD);}}
+function resetView(){cityTour=null;follow=false;cameraTween=null;aimCamera(OVERVIEW_TARGET.clone());camera.zoom=mobile?OVERVIEW.mobile:OVERVIEW.desktop;camera.updateProjectionMatrix();controls.update();}
 
 // The mailbox needs a signed-in resident. Each step opens the next one.
 async function openBuildForm(plot){
@@ -395,7 +400,7 @@ $('idea-form').onsubmit=async e=>{
 };
 $('tour-button').onclick=meetDev;
 $('follow-button').onclick=()=>{if(!character)return;follow=!follow;if(follow){camera.zoom=1.7;camera.updateProjectionMatrix();}notify(follow?'Following SUB-01.':'Free camera.');};
-for(const [id,factor] of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{cityTour=null;camera.zoom=THREE.MathUtils.clamp(camera.zoom*factor,OVERVIEW.min,2.8);camera.updateProjectionMatrix();};
+for(const [id,factor] of [['zoom-in',1.2],['zoom-out',1/1.2]])$(id).onclick=()=>{cityTour=null;camera.zoom=THREE.MathUtils.clamp(camera.zoom*factor,controls.minZoom,2.8);camera.updateProjectionMatrix();};
 $('reset-view').onclick=resetView;
 function bubble(text,position,ms,extra=''){const element=Object.assign(document.createElement('div'),{className:'world-label visit-bubble'+extra,textContent:text});$('labels').append(element);const l={element,position};labels.push(l);
  setTimeout(()=>{element.remove();const i=labels.indexOf(l);if(i>=0)labels.splice(i,1);},ms);}
@@ -735,7 +740,7 @@ function animate(now){
   if(cityTour){cityTour.elapsed+=dt;if(cityTour.elapsed>5){cityTour.elapsed=0;cityTour.index++;if(cityTour.index>=cityViews.length){cityTour=null;resetView();$('activity-text').textContent='Your idea. Your city. Choose an address.';}else nextCityView();}}
   // Overview LOD: below zoom 0.3 the city skips AC units, small roof items, side pipes and road marks.
   cityRenderer?.setDetail(camera.zoom>=.3&&Q.detail);cityGreen?.setDetail(camera.zoom>=.3&&Q.detail);   // quality level 0 keeps the overview LOD even up close
-  fuses.weather.run(weatherFrame,now,dt,seconds);controls.update();updateSunAndFog();if(!fuses.crowd.off)fuses.crowd.run(crowdEnd,now);setCityFocus(cityEvents.visitor?.position||character?.position||null);renderer.render(scene,camera);renderedAt=now;booted=true;
+  fuses.weather.run(weatherFrame,now,dt,seconds);controls.update();clampToCity();updateSunAndFog();if(!fuses.crowd.off)fuses.crowd.run(crowdEnd,now);setCityFocus(cityEvents.visitor?.position||character?.position||null);renderer.render(scene,camera);renderedAt=now;booted=true;
   document.body.classList.toggle('is-close',camera.zoom>.42);
   chat?.frame(camera.zoom); // chat: before the labels are projected
   for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
