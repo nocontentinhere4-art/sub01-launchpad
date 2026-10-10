@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import {trafficLightPhase,vehicleState,addCityTraffic} from '../src/city-traffic.js';
 import {ROLE} from '../src/vehicles.js';
 import {crossingState} from '../src/city-crowd.js';
-import {addCityLife,expressPosition,EXPRESS,steamVents,glowPlan,glowBuffers,GLOW_BUDGET,setCityWorld} from '../src/city-life.js';
+import {addCityLife,expressPosition,EXPRESS,steamVents,glowPlan,glowBuffers,GLOW_BUDGET,setCityWorld,stationPlan} from '../src/city-life.js';
 import {critterPlan,critterBuffers,CRITTER_BUDGET,catSpots,PIGEON_FLOCKS,blimpState,blimpPoints,UI_ZONES,inQuad,bannerText,BLIMP} from '../src/city-sky.js';
 import {screenCards,screenAt,safeImageUrl,IDLE_CARD,SCREEN_PERIOD,MAX_CARDS} from '../src/city-screens.js';
 import {CATEGORY} from '../src/lots.js';
@@ -111,4 +111,28 @@ test('city life wires the world: cards, banner and critters update; every new ba
  for(const t of [0,9,12.3,23.9,90,777.7]){life.update(t);const m=new THREE.Matrix4();for(let i=0;i<life.trainMesh.count;i++){life.trainMesh.getMatrixAt(i,m);assert.ok(m.elements.every(Number.isFinite));}}
  setCityWorld(null);assert.equal(life.screen.cards.length,0);assert.equal(life.sky.banner,'SUBZERONE · TOKYO');assert.equal(life.stats().heroes,0);
  life.dispose();
+});
+
+test('metro station (owner 2026-10-10): a roofed side platform on piers, stair and street kiosk, clear of the trains, ≤ 600 boxes',()=>{
+ const SX=-36.4,trackZ=108,st=stationPlan({SX,trackZ}),all=[...st.solid,...st.detail];
+ assert.ok(all.length+st.windows.length<=600,`${all.length+st.windows.length} boxes`);assert.ok(all.length>=80,'a real station, not a slab');
+ for(const b of [...all,...st.windows]){assert.ok([b.x,b.y,b.z,b.w,b.h,b.d].every(Number.isFinite),JSON.stringify(b));assert.ok(b.y-b.h/2>=-1e-9,'nothing below ground');}
+ // The trains run at z trackZ ± 0.7 (cars 1.05 deep) between y 4.25 and 5.5: no station box reaches into that envelope.
+ const train={z0:trackZ-1.35,z1:trackZ+1.35,y0:4.0,y1:6.6};
+ for(const b of all){const zr=b.rx?Math.hypot(b.h,b.d)/2:b.ry?Math.hypot(b.w,b.d)/2:b.d/2,yr=b.rx?Math.hypot(b.h,b.d)/2:b.rz?Math.hypot(b.w,b.h)/2:b.h/2,z0=b.z-zr,z1=b.z+zr,y0=b.y-yr,y1=b.y+yr;
+  assert.ok(!(z0<train.z1&&z1>train.z0&&y0<train.y1&&y1>train.y0),`in the trains' way ${JSON.stringify(b)}`);}
+ // The platform's edge sits beside the track at y 4.8; piers reach the ground; the roof is thick and above the platform.
+ const platform=st.solid.find(b=>b.w===14&&b.h===.5);assert.ok(platform&&Math.abs(platform.z-platform.d/2-(trackZ+1.35))<1e-9&&Math.abs(platform.y+platform.h/2-4.8)<1e-9);
+ const piers=st.solid.filter(b=>b.h===4.3&&b.w===.6);assert.equal(piers.length,3);for(const p of piers)assert.ok(Math.abs(p.y-p.h/2)<1e-9,'pier on the ground');
+ const roof=st.solid.filter(b=>b.rx&&b.w===15);assert.equal(roof.length,2,'a gabled roof: two slopes');for(const r of roof)assert.ok(r.h>=.3&&r.y>7,'thick, above the platform');
+ assert.ok(st.solid.some(b=>b.w===13.6&&b.h===.02&&b.color==='#E3BE3C'),'the yellow tactile line');
+ // Six pillars (two boxes each), glass panels between them, the navy board lit at night with a green chip.
+ assert.equal(st.solid.filter(b=>b.ry!==undefined&&b.h===2.7).length,12);assert.equal(st.solid.filter(b=>b.color==='#A9C4CC'&&b.h===1.4).length,5);
+ assert.ok(st.solid.some(b=>b.color==='#1F3A5C'&&b.w===4.6),'name board');assert.ok(st.windows.some(b=>b.color==='#3E9B5C'),'line chip at night');
+ // The stair steps down from the platform to the street (its last tread ≈ sidewalk) and the kiosk stands beyond its foot.
+ const steps=st.solid.filter(b=>b.d===1.6&&b.color==='#B4B1A7');assert.equal(steps.length,10);const tops=steps.map(b=>b.y+b.h/2).sort((a,b)=>b-a);
+ assert.ok(tops[0]<4.8&&tops[0]>4.2&&tops.at(-1)<.3,`stair from ${tops[0]} to ${tops.at(-1)}`);
+ const foot=Math.max(...steps.map(b=>b.x+b.w/2)),kiosk=st.solid.filter(b=>b.color==='#D6D2C7'&&b.h===2.7&&b.ry===undefined);assert.ok(kiosk.length>=1&&kiosk.every(b=>b.x-b.w/2>=foot-1e-6),'kiosk beyond the stair foot');
+ assert.equal(st.detail.filter(b=>b.color==='#E8E4DA'&&b.h===1.0).length,3,'three ticket gates');
+ assert.ok(all.every(b=>b.color!=='#2b7886'&&b.color!=='#acb5a6'),'no saturated teal, no old green slab');
 });

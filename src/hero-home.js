@@ -10,8 +10,10 @@ import {facadeCode,facadeAttribute} from './facades.js';
 // example places + Orange Apartments rebuilt as hand-placed variants of the city's typed facades (lots.js / city.js).
 //
 // The house: a double-height office (fukinuke) on the east, a loft bedroom over the kitchen/living on the west reached by an
-// open stair; the back walls (north, west) are whole, the camera-side walls are cut at sill height with real frames,
-// and the pent roof survives only as its back stub and the eave over the balcony (a section, not a lid).
+// open stair; the back walls (north, west) are whole. Doll-house (owner 2026-10-10 "the workshop is buggy"): the pent
+// roof and the camera-side walls are whole while the city is looked at from outside; when the viewer looks inside
+// (roofOpen: zoom ≥ 1.1 with the view centred within 9 of the desk, or setRoof(false)) the `lid` pieces lift away in
+// 0.4 s and the house shows its section: walls cut at sill height with real frames, the loft slab's dark cut edge.
 //
 // Draw calls: walls · props · glass (nightLight) · Kenney furniture merged into ONE vertex-coloured mesh · sign atlas ·
 // monitor · glows (additive billboards: lamps, LEDs, bulbs). Pure plan + build; nothing here needs WebGL.
@@ -24,7 +26,7 @@ export const STAIR={x0:-6.4,x1:-5.6,zBottom:-1.95,zTop:-4.59};
 export const LANDING={x0:-6.4,x1:-5.6,z0:-6.9,z1:-4.59};
 export const LOT={x0:-9.63,x1:-2.3,z0:-7.3,z1:-.72};
 export const GATE={x:-4.5,z:-.8,half:.7};
-export const CHAIR={x:-4.5,z:-5.75,rot:Math.PI},BED={x:-8.75,z:-5.705,rot:0};
+export const CHAIR={x:-4.5,z:-5.75,rot:Math.PI},BED={x:-8.66,z:-5.6,rot:0};
 // Walker targets (world-sync.js HOME_DESK / HOME_BED): the chair, and the bedside upstairs.
 export const DESK_POINT={x:CHAIR.x,z:CHAIR.z},BED_POINT={x:-7.75,z:-5.4};
 const HUB={x:-4.5,z:-2.25},DOOR_OUT={x:-4.5,z:-1.2},GATE_OUT={x:-4.5,z:-.45};
@@ -64,6 +66,15 @@ export function mailboxFlag(world){
 }
 // House lights from the brain: 'home' (lamps on at night), 'away' (one lamp), 'asleep' (only the nightlight).
 export function lightsFor(state){return state==='asleep'?'asleep':state==='working'||state==='offline'?'away':'home';}
+// The doll-house rule: the roof (and the walls above the camera-side cuts) lift away when the viewer looks inside:
+// zoom ≥ 1.1 with the view centred (the controls target, or where the view ray meets y = 2) within 9 of the desk.
+// Following SUB-01 (main.js `follow`) zooms to ≥ 1.1 and centres on him, so a visit indoors opens it by the same rule.
+export const ROOF_RULE={zoom:1.1,radius:9,lift:3,seconds:.4};
+export function roofOpen(view){if(!view)return false;const t=view.target;
+ return (view.zoom||0)>=ROOF_RULE.zoom&&!!t&&Math.hypot(t.x-DESK_POINT.x,t.z-DESK_POINT.z)<=ROOF_RULE.radius;}
+// Where the camera looks: the host's controls target when it gives one, else the view ray's point on the plane y = 2.
+export function viewTarget(camera,given){if(given&&Number.isFinite(given.x))return {x:given.x,z:given.z};if(!camera?.position||!camera.getWorldDirection)return null;
+ const d=camera.getWorldDirection(_v);if(d.y>=-.01)return null;const k=(camera.position.y-2)/-d.y;return {x:camera.position.x+d.x*k,z:camera.position.z+d.z*k};}
 // What the monitor and the whiteboard show: the project he is on, else the most advanced public one, else nothing.
 export function deskProject(world){
  const plots=world?.plots||[],s=world?.sub01,card=x=>x&&{slug:String(x.slug||''),name:String(x.name||'Untitled project'),ticker:String(x.ticker||'').replace(/^\$/,''),stage:String(x.stage||''),stageLabel:String(x.stageLabel||x.stage||''),progress:Math.max(0,Math.min(1,Number(x.progress)||0)),launched:!!x.launched};
@@ -77,7 +88,7 @@ export function deskProject(world){
 // Furniture (Kenney room kit, room.js names): x,z centre, rot, y floor; `on` = sits on another piece's top.
 export const FURNITURE=[
  // Office (ground floor, east)
- {item:'desk',x:-4.5,z:-6.43,rot:0,y:F0,room:'office'},
+ {item:'desk',x:-4.5,z:-6.35,rot:0,y:F0,room:'office'},
  {item:'computerScreen',x:-4.5,z:-6.62,rot:0,y:F0,on:'desk',room:'office',screen:true},
  {item:'computerKeyboard',x:-4.5,z:-6.28,rot:0,y:F0,on:'desk',room:'office'},
  {item:'computerMouse',x:-4.02,z:-6.26,rot:0,y:F0,on:'desk',room:'office'},
@@ -86,22 +97,22 @@ export const FURNITURE=[
  {item:'chairDesk',x:CHAIR.x,z:CHAIR.z,rot:CHAIR.rot,y:F0,room:'office',tint:{carpet:'#E0612A',metalMedium:'#2B2F33'}},
  {item:'bookcaseOpen',x:-5.86,z:-6.5,rot:0,y:F0,room:'office'},
  {item:'books',x:-5.98,z:-6.5,rot:0,y:F0+.43,room:'office'},{item:'books',x:-5.72,z:-6.52,rot:0,y:F0+.86,room:'office'},{item:'books',x:-6.0,z:-6.5,rot:0,y:F0+1.29,room:'office'},
- {item:'rugRectangle',x:-4.6,z:-4.15,rot:Math.PI/2,y:F0,room:'office',tint:{carpet:'#4F6A8C',carpetDarker:'#3C5270'}},
+ {item:'rugRound',x:-4.6,z:-4.3,rot:0,y:F0,room:'office',tint:{carpet:'#6F7D8A',carpetDarker:'#5A6774'}},   // a small grey-blue rug (the old 3×2 blue rectangle read as a slab)
  {item:'speakerSmall',x:-3.55,z:-5.6,rot:-Math.PI/2,y:F0,room:'office'},
  // Kitchen / living (ground floor, west, under the loft)
- {item:'kitchenFridgeSmall',x:-8.98,z:-2.13,rot:Math.PI/2,y:F0,room:'living'},
+ {item:'kitchenFridgeSmall',x:-8.94,z:-2.13,rot:Math.PI/2,y:F0,room:'living'},
  {item:'kitchenCoffeeMachine',x:-8.92,z:-2.95,rot:Math.PI/2,y:F0+.9,room:'living'},
  {item:'kitchenMicrowave',x:-8.95,z:-3.6,rot:Math.PI/2,y:F0+.9,room:'living'},
  {item:'rugRound',x:-7.55,z:-3.1,rot:0,y:F0,room:'living',tint:{carpet:'#C9A34E',carpetDarker:'#9C7C34'}},
  {item:'tableCoffee',x:-7.55,z:-3.1,rot:Math.PI/2,y:F0,room:'living'},
  {item:'laptop',x:-7.5,z:-3.35,rot:Math.PI/2,y:F0,on:'tableCoffee',room:'living'},
- {item:'washer',x:-8.95,z:-6.3,rot:Math.PI/2,y:F0,room:'living'},
+ {item:'washer',x:-8.84,z:-6.3,rot:Math.PI/2,y:F0,room:'living'},
  {item:'cardboardBoxClosed',x:-7.9,z:-6.5,rot:.2,y:F0,room:'living'},{item:'cardboardBoxClosed',x:-7.35,z:-6.52,rot:-.1,y:F0,room:'living'},
  // Loft bedroom (first floor, west)
  {item:'bedSingle',x:BED.x,z:BED.z,rot:BED.rot,y:F1,room:'bedroom',tint:{carpet:'#5E7A93'}},
- {item:'cabinetBedDrawerTable',x:-7.95,z:-6.55,rot:0,y:F1,room:'bedroom'},
- {item:'lampRoundTable',x:-7.95,z:-6.58,rot:0,y:F1,on:'cabinetBedDrawerTable',room:'bedroom'},
- {item:'bookcaseOpenLow',x:-7.1,z:-6.55,rot:0,y:F1,room:'bedroom'},
+ {item:'cabinetBedDrawerTable',x:-7.8,z:-6.52,rot:0,y:F1,room:'bedroom'},
+ {item:'lampRoundTable',x:-7.8,z:-6.55,rot:0,y:F1,on:'cabinetBedDrawerTable',room:'bedroom'},
+ {item:'bookcaseOpenLow',x:-7.1,z:-6.48,rot:0,y:F1,room:'bedroom'},
  {item:'rugDoormat',x:-7.75,z:-4.9,rot:Math.PI/2,y:F1,room:'bedroom',tint:{carpet:'#E8DCC8',carpetDarker:'#CDBFA8'}},
  {item:'pottedPlant',x:-6.85,z:-1.12,rot:0,y:F1,room:'balcony'},
 ];
@@ -111,6 +122,18 @@ const _m=new THREE.Matrix4(),_q=new THREE.Quaternion(),_v=new THREE.Vector3(),_s
 // A thin box from a to b (cables, rails, pipes).
 function seg(a,b,t,color){const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),d=B.clone().sub(A),len=d.length();
  _q.setFromUnitVectors(_up,d.normalize());return {m:new THREE.Matrix4().compose(A.add(B).multiplyScalar(.5),_q.clone(),new THREE.Vector3(t,len,t)),color,x:(a[0]+b[0])/2,y:(a[1]+b[1])/2,z:(a[2]+b[2])/2};}
+// A bicycle as boxes (owner 2026-10-10: the old solid-slab bikes read as black panels): hollow hexagon wheels of six rim
+// segments, four frame tubes and a fork, a saddle and a handlebar. `along`: true = it points along x (wheels in the
+// x–y plane), false = along z. y: the ground it stands on. ~19 boxes.
+export function bicycle(P,x,z,y,along,color='#2B2B2B'){
+ const r=.3,t=.045,yc=y+r,rim='#3A3F42',pt=(u,v)=>along?[x+u,v,z]:[x,v,z+u];
+ for(const s of [-1,1])for(let k=0;k<6;k++){const f=k*Math.PI/3+Math.PI/6,a=r*.866*Math.cos(f),b=r*.866*Math.sin(f),ang=f+Math.PI/2,[cx,,cz]=pt(s*.46,0);
+  if(along)P.push({x:cx+a,y:yc+b,z:cz,w:r+t,h:t,d:.06,rz:ang,color:rim});else P.push({x:cx,y:yc+b,z:cz+a,w:.06,h:t,d:r+t,rx:-ang,color:rim});}
+ const bb=pt(-.08,yc-.02),seat=pt(-.22,yc+.5),head=pt(.28,yc+.48),headLo=pt(.3,yc+.12);
+ P.push(seg(bb,seat,.035,color),seg(bb,headLo,.035,color),seg(seat,head,.035,color),seg(pt(-.46,yc),pt(-.2,yc+.45),.03,color),seg(headLo,pt(.46,yc),.03,color));
+ const [sx,,sz]=pt(-.24,0),[hx,,hz]=pt(.32,0);
+ P.push(along?{x:sx,y:yc+.55,z:sz,w:.26,h:.05,d:.1,color:'#2B2B2B'}:{x:sx,y:yc+.55,z:sz,w:.1,h:.05,d:.26,color:'#2B2B2B'},along?{x:hx,y:yc+.56,z:hz,w:.04,h:.04,d:.42,color:'#5B6466'}:{x:hx,y:yc+.56,z:hz,w:.42,h:.04,d:.04,color:'#5B6466'});
+}
 // A box sloped about x (pent roofs): its top edge runs from (z0,yTop0) to (z1,yTop1).
 function slopeX(x0,x1,z0,y0,z1,y1,t,color){const a=Math.atan2(y0-y1,z1-z0),L=Math.hypot(z1-z0,y1-y0),cz=(z0+z1)/2,cy=(y0+y1)/2;
  return {x:(x0+x1)/2,y:cy-t/2*Math.cos(a),z:cz-t/2*Math.sin(a),w:x1-x0,h:t,d:L,rx:a,color};}
@@ -127,6 +150,7 @@ export function planHero(){
  const w=(...a)=>W.push(ext(...a)),p=(...a)=>P.push(ext(...a)),g=(o,...a)=>G.push(ext(...a,o));
  const sign=(region,cx,cy,cz,sw,sh,face,lit=false)=>S.push({region,x:cx,y:cy,z:cz,w:sw,h:sh,face,lit});
  const glow=(x,y,z,size,color,kind,o={})=>L.push({x,y,z,size,color,kind,...o});
+ const lid=o=>({...o,lid:1}),cut=o=>({...o,cut:1});   // doll-house pieces: on from outside / on only in the section
  // ----- ground: block base, street, sidewalks, the lane's edge lines, grates, a manhole
  p(-14,14,-.695,-.045,-11,15,C.block);p(-13.85,13.85,-.045,TOP,-10.85,14.85,C.concrete);
  p(-13.85,13.85,.1475,.1825,-.15,3.35,'#7A7F7C');p(-13.85,13.85,.1475,.2025,-.66,-.14,'#B4B1A7');p(-13.85,13.85,.1475,.2025,3.34,3.86,'#B4B1A7');
@@ -151,10 +175,7 @@ export function planHero(){
  [[-9.3,-.5],[-8.75,-.48],[-8.2,-.5],[-7.65,-.47],[-7.1,-.5],[-3.35,-.48],[-2.8,-.5]].forEach(([x,z],i)=>{const h=.22+.07*(i%3);
   p(x-.16,x+.16,.2025,.2025+h,z-.14,z+.14,['#9A7A60','#B9C6C4','#7D8B8E'][i%3]);P.push({...ext(x-.22,x+.22,.2025+h,.2025+h+.3,z-.2,z+.2,i%2?C.green:C.green2),ry:i*.7});P.push({...ext(x-.12,x+.16,.2025+h+.2,.2025+h+.42,z-.15,z+.1,'#7A955F'),ry:i*.3});});
  // A bicycle in the side passage mouth (along z), the AC outdoor units, a meter box, the cat on the wall.
- const bike=(bx,bz)=>{for(const dz of [-.46,.46])for(const r of [0,Math.PI/4])P.push({...ext(bx-.02,bx+.02,.3,.9,bz+dz-.3,bz+dz+.3,'#2B2B2B'),rx:r});
-  p(bx-.025,bx+.025,.78,.83,bz-.45,bz+.45,'#E0612A');p(bx-.025,bx+.025,.6,1.08,bz-.2,bz-.15,'#E0612A');p(bx-.06,bx+.06,1.08,1.12,bz-.29,bz-.11,'#2B2B2B');
-  p(bx-.025,bx+.025,.8,1.22,bz+.38,bz+.43,'#5B6466');p(bx-.25,bx+.25,1.2,1.24,bz+.38,bz+.43,'#5B6466');p(bx-.13,bx+.13,.92,1.08,bz+.5,bz+.74,'#7D8B8E');};
- bike(-2.8,-1.45);
+ bicycle(P,-2.8,-1.45,.3,false,'#E0612A');p(-2.93,-2.67,.92,1.08,-1.2,-.96,'#7D8B8E');   // SUB-01's bike, its basket
  const acUnit=(x0,x1,y0,z0,z1)=>{p(x0,x1,y0,y0+.55,z0,z1,C.ac);p(x0-.01,x1+.01,y0+.12,y0+.45,(z0+z1)/2-.18,(z0+z1)/2+.18,'#5B6466');p(x0,x1,y0+.55,y0+.58,z0,z1,'#CFCBC0');};
  acUnit(-3.1,-2.55,.3,-5.1,-4.3);p(-3.18,-3.08,.3,1.05,-4.75,-4.6,'#D9D3C3');
  acUnit(-3.1,-2.55,.3,-6.6,-5.8);p(-3.18,-3.08,.3,1.05,-6.25,-6.1,'#D9D3C3');
@@ -176,7 +197,8 @@ export function planHero(){
  for(const x of [H.x0,-7.9,-6.48])p(x,x+.08,F0+.95,F0+2.25,H.z1-.12,H.z1-.02,C.frame);
  p(H.x0,H.x1,F0+2.17,F0+2.27,H.z1-.14,H.z1,C.frame);
  for(const x of [-5.68,H.x1-.08])p(x,x+.08,F0,F0+2.25,H.z1-.12,H.z1-.02,C.frame);
- for(const [x0,x1,z] of [[-4.0,-3.26,-1.66],[-3.95,-3.22,-1.74]]){for(const [a,b,y0,y1] of [[x0,x1,F0+.03,F0+.08],[x0,x1,F0+2.1,F0+2.15],[x0,x0+.05,F0,F0+2.15],[x1-.05,x1,F0,F0+2.15]])p(a,b,y0,y1,z-.025,z+.025,C.frame);}
+ for(const [x0,x1,z] of [[-4.0,-3.26,-1.66],[-3.95,-3.22,-1.74]]){for(const [a,b,y0,y1] of [[x0,x1,F0+.03,F0+.08],[x0,x1,F0+2.1,F0+2.15],[x0,x0+.05,F0,F0+2.15],[x1-.05,x1,F0,F0+2.15]])p(a,b,y0,y1,z-.025,z+.025,C.frame);
+  g({light:'#FFC27A'},x0+.05,x1-.05,F0+.08,F0+2.1,z-.012,z+.012,GLASS_LOW);}   // the leaves carry glass (empty frames read as missing geometry)
  for(const [a,b,y0,y1] of [[-6.4,-5.68,F0+.03,F0+.08],[-6.4,-5.68,F0+1.05,F0+1.09]])p(a,b,y0,y1,H.z1-.09,H.z1-.05,C.frame);
  p(-5.3,-3.7,F0,F0+.01,H.z1-.12,H.z1,'#5B6466');   // door track
  // East (camera) side, cut at the sill: low wall, aluminium sill, three frame posts and the head.
@@ -214,12 +236,26 @@ export function planHero(){
  W.push(slopeX(H.x0-.45,H.x1+.4,H.z0-.45,roofY(H.z0-.45),-5.95,roofY(-5.95),.12,C.roof));
  W.push(slopeX(H.x0-.45,-6.3,-2.6,roofY(-2.6),-.65,roofY(-.65),.12,C.roof));
  P.push(slopeX(H.x1+.38,H.x1+.44,H.z0-.45,roofY(H.z0-.45)+.04,-5.95,roofY(-5.95)+.04,.22,C.fascia));
- P.push(slopeX(-6.32,-6.26,-2.6,roofY(-2.6)+.04,-.65,roofY(-.65)+.04,.22,C.fascia));
+ P.push(cut(slopeX(-6.32,-6.26,-2.6,roofY(-2.6)+.04,-.65,roofY(-.65)+.04,.22,C.fascia)));   // the eave's inner barge board: only in the section
  p(H.x0-.45,-6.3,roofY(-.65)-.2,roofY(-.65)-.08,-.67,-.57,C.pipe);
+ // ----- the lid (doll-house): the rest of the pent roof with its east barge board and gutter; the office's south wall
+ // above the door head with a high window; the east wall above the sill head (flat part + a sloped band under the
+ // roof), its glass behind the posts and a high window; the west block's window and balcony-door glass.
+ W.push(lid(slopeX(H.x0-.45,H.x1+.4,-5.95,roofY(-5.95),-2.6,roofY(-2.6),.12,C.roof)),lid(slopeX(-6.3,H.x1+.4,-2.6,roofY(-2.6),-.65,roofY(-.65),.12,C.roof)));
+ P.push(lid(slopeX(H.x1+.38,H.x1+.44,-5.95,roofY(-5.95)+.04,-.65,roofY(-.65)+.04,.22,C.fascia)),lid(ext(-6.3,H.x1+.4,roofY(-.65)-.2,roofY(-.65)-.08,-.67,-.57,C.pipe)));
+ {const top=roofY(H.z1)-.13;
+  W.push(lid(ext(-6.4,H.x1,F0+2.27,top,H.z1-.16,H.z1,C.ext)));
+  G.push(lid(ext(-5.5,-3.7,F0+3.3,F0+4.4,H.z1-.02,H.z1+.03,GLASS_LOW,{light:'#FFC27A'})));
+  for(const [a,b,c,d] of [[-5.55,-3.65,F0+3.25,F0+3.3],[-5.55,-3.65,F0+4.4,F0+4.45],[-5.55,-5.5,F0+3.3,F0+4.4],[-3.7,-3.65,F0+3.3,F0+4.4]])P.push(lid(ext(a,b,c,d,H.z1-.04,H.z1+.04,C.frame)));
+  G.push(lid(ext(H.x0+.08,-6.4,F0+.95,F0+2.17,H.z1-.08,H.z1-.05,GLASS_LOW,{light:'#FFE6B8'})),lid(ext(H.x0+.08,-6.4,F1+.08,F1+1.95,H.z1-.08,H.z1-.05,GLASS_LOW,{light:'#FFC27A'})));
+  W.push(lid(ext(H.x1-.16,H.x1,F0+2.27,top,H.z0+.16,H.z1-.16,C.ext)),lid(slopeX(H.x1-.15,H.x1-.01,H.z0,roofY(H.z0)-.13,H.z1-.16,roofY(H.z1-.16)-.13,.42,C.ext)));
+  W.push(lid(ext(H.x1-.16,H.x1,F0+1.05,F0+2.27,H.z0+.16,-6.04,C.ext)),lid(ext(H.x1-.16,H.x1,F0+1.05,F0+2.27,-2.46,H.z1-.16,C.ext)));
+  G.push(lid(ext(H.x1-.09,H.x1-.06,F0+1.05,F0+2.17,-6.0,-2.5,GLASS_LOW,{light:'#FFC27A'})),lid(ext(H.x1-.02,H.x1+.03,F0+3.3,F0+4.3,-5.6,-3.8,GLASS_LOW,{light:'#FFE6B8'})));
+  for(const [a,b,c,d] of [[F0+3.25,F0+3.3,-5.65,-3.75],[F0+4.3,F0+4.35,-5.65,-3.75],[F0+3.3,F0+4.3,-5.65,-5.6],[F0+3.3,F0+4.3,-3.8,-3.75]])P.push(lid(ext(H.x1-.04,H.x1+.04,a,b,c,d,C.frame)));}
  // ----- interior props: server rack, kitchen counter, cushions, whiteboard frame, clerestory window, cables
- {const x0=-3.78,x1=-3.32,z0=-6.74,z1=-6.14;p(x0,x1,F0,F0+1.25,z0,z1,'#2A2E33');for(let k=0;k<5;k++)p(x0+.03,x1-.03,F0+.12+k*.22,F0+.3+k*.22,z1,z1+.01,'#3A4046');
+ {const x0=-3.74,x1=-3.36,z0=-6.74,z1=-6.14;p(x0,x1,F0,F0+1.25,z0,z1,'#2A2E33');   // flush with the east wall's inner facefor(let k=0;k<5;k++)p(x0+.03,x1-.03,F0+.12+k*.22,F0+.3+k*.22,z1,z1+.01,'#3A4046');
   const leds=['#5BFF8A','#5BFF8A','#FFB347','#5BC8FF','#5BFF8A','#FF5B5B'];for(let k=0;k<12;k++)glow(x0+.08+(k%3)*.05,F0+.24+Math.floor(k/3)*.22+.04,z1+.015,.05,leds[k%leds.length],'led',{phase:k*1.7});
-  p(-4.0,-3.78,F0,F0+.01,-6.3,-6.26,'#22252a');}
+  p(-3.9,-3.74,F0,F0+.01,-6.3,-6.26,'#22252a');}
  p(-9.24,-8.64,F0,F0+.86,-4.0,-2.6,'#E8E4DA');p(-9.26,-8.6,F0+.86,F0+.9,-4.02,-2.58,'#7D8B8E');p(-9.1,-8.78,F0+.89,F0+.905,-3.3,-3.05,'#B9C0C8');
  p(-9.24,-8.94,F0+1.5,F0+2.1,-4.0,-2.6,'#E8E4DA');p(-8.95,-8.93,F0+1.55,F0+2.05,-3.32,-3.28,'#9C998F');
  for(const z of [-3.1]) for(const x of [-8.15,-6.95])p(x-.22,x+.22,F0,F0+.07,z-.22,z+.22,'#E0612A');
@@ -262,7 +298,7 @@ export function planHero(){
   const a=[x,7.5,z-.1],b=[H.x0-.05,EAVE-.2,-3.0],mid=[(a[0]+b[0])/2,(a[1]+b[1])/2-.3,(a[2]+b[2])/2];P.push(seg(a,mid,.022,'#2D3134'),seg(mid,b,.022,'#2D3134'));p(H.x0-.1,H.x0,EAVE-.35,EAVE-.15,-3.06,-2.94,'#5B6466');}
  // ----- house lights (dynamic glows; floor pools are added by build() from lightsFor())
  glow(-5.0,F0+.74+.5,-6.62,.9,'#FFD08A','desk');glow(-4.5,F0+.74+.32,-6.45,1.2,'#8FB8FF','monitor');
- glow(-7.95,F1+.51+.45,-6.58,.55,'#FFB870','nightstand');glow(-7.0,F1+.14,H.z0+.2,.22,'#FFB870','nightlight');
+ glow(-7.8,F1+.51+.45,-6.55,.55,'#FFB870','nightstand');glow(-7.0,F1+.14,H.z0+.2,.22,'#FFB870','nightlight');
  // ----- the example places and Orange Apartments (typed facades: ground 3.0, storeys 2.5, parapet 0.6)
  const ex=examples();W.push(...ex.W);P.push(...ex.P);G.push(...ex.G);S.push(...ex.S);L.push(...ex.L);pools.push(...ex.pools);
  const fl=fillers();W.push(...fl.W);P.push(...fl.P);G.push(...fl.G);L.push(...fl.L);pools.push(...fl.pools);
@@ -384,15 +420,18 @@ L.push({x:mx,y:TOP+H+4.25,z:mz,size:.5,color:'#FF3B3B',kind:'beacon'});
 // a second bike shed, a field behind the Workshop, a batting cage behind the parking; bike racks and planters in the
 // house/Workshop gap. All in the existing walls / props / glass batches; nothing touches the house, the mailbox, the
 // billboard, the picks or the walker. Night: the glass carries `light`, the lantern and the kōban lamp are glows.
-function fillers(){
+export function fillers(){
  const W=[],P=[],G=[],L=[],pools=[];
  const w=(...a)=>W.push(ext(...a)),p=(...a)=>P.push(ext(...a)),g=(o,...a)=>G.push(ext(...a,o));
  const glow=(x,y,z,size,color,kind,o={})=>L.push({x,y,z,size,color,kind,...o});
  const y=TOP,pad=(x0,x1,z0,z1,c)=>p(x0,x1,y,y+.045,z0,z1,c);
  const post=(x,z,h,c='#5B6466',t=.1)=>p(x-t/2,x+t/2,y,y+h,z-t/2,z+t/2,c);
- const bike=(x,z,along)=>along?p(x-.75,x+.75,y,y+.62,z-.04,z+.04,'#2B2B2B'):p(x-.04,x+.04,y,y+.62,z-.75,z+.75,'#2B2B2B');
- const shed=(x0,x1,z0,z1,n)=>{pad(x0,x1,z0,z1,'#A6A398');for(const x of [x0+.25,x1-.25])for(const z of [z0+.25,z1-.25])post(x,z,2.2,'#7E8789');p(x0,x1,y+2.2,y+2.26,z0,z1,'#B9C6C4');
-  p(x0+.3,x1-.3,y+.28,y+.33,(z0+z1)/2-.45,(z0+z1)/2-.4,'#8E9392');for(let i=0;i<n;i++)bike(x0+.5+i*(x1-x0-1)/(n-1),(z0+z1)/2,false);};
+ const BIKES=['#2B2B2B','#E0612A','#5E7A93','#2B2B2B','#C8452D','#3E7A5C'],bike=(x,z,along,i=0)=>bicycle(P,x,z,y,along,BIKES[i%BIKES.length]);
+ // A bike shed that reads as a shed (owner 2026-10-10: the flat slab on sticks read as a floating panel): a back wall,
+ // low side walls, a sloped zinc roof falling to the open front (+z) with a fascia, the rack bar and the bikes.
+ const shed=(x0,x1,z0,z1,n)=>{pad(x0,x1,z0,z1,'#A6A398');p(x0,x1,y,y+2.1,z0,z0+.12,'#C9C5BA');for(const x of [x0,x1-.12])p(x,x+.12,y,y+1.1,z0,z1,'#C9C5BA');
+  for(const x of [x0+.06,x1-.06])post(x,z1-.1,2.05,'#7E8789',.1);W.push(slopeX(x0-.1,x1+.1,z0-.1,y+2.35,z1+.15,y+2.0,.07,'#8E9392'));p(x0-.1,x1+.1,y+1.86,y+2.02,z1+.1,z1+.16,'#6E7774');
+  p(x0+.3,x1-.3,y+.28,y+.33,(z0+z1)/2-.45,(z0+z1)/2-.4,'#8E9392');for(let i=0;i<n;i++)bike(x0+.5+i*(x1-x0-1)/(n-1),(z0+z1)/2,false,i);};
  const tank=(x,z)=>{for(const a of [0,Math.PI/4])P.push({...ext(x-.48,x+.48,y,y+1.6,z-.48,z+.48,'#B9C6C4'),ry:a});};
  const planter=(x,z,i)=>{p(x-.3,x+.3,y,y+.4,z-.3,z+.3,['#9A7A60','#B9C6C4','#7D8B8E'][i%3]);P.push({...ext(x-.36,x+.36,y+.4,y+.72,z-.36,z+.36,i%2?C.green:C.green2),ry:i*.7});};
  // ----- south strip
@@ -413,7 +452,7 @@ function fillers(){
   W.push(slopeX(3.7,10.3,12.5,y+4.9,14.3,y+3.4,.14,C.roof),slopeX(3.7,10.3,10.7,y+3.4,12.5,y+4.9,.14,C.roof));p(3.7,10.3,y+4.86,y+4.96,12.4,12.6,'#3A414A');
   p(6.3,8.1,y+2.3,y+3.0,14.0,14.05,'#2F4F8A');g({light:'#FFC27A'},6.5,7.9,y+.1,y+2.2,14.0,14.04,GLASS_LOW);p(6.2,8.2,y+3.0,y+3.08,13.95,14.12,'#4A3A2E');
   p(9.4,10.1,y,y+10.0,11.0,11.7,'#9C998F');p(9.35,10.15,y+10.0,y+10.3,10.95,11.75,'#4F5658');
-  for(let i=0;i<4;i++)bike(4.5+i*.5,14.45,false);post(3.9,14.3,3.4);g({light:'#FF9E7A'},3.55,4.25,y+3.4,y+4.1,14.24,14.36,C.red);
+  for(let i=0;i<4;i++)bike(4.5+i*.6,14.4,false,i);post(3.9,14.3,3.4);g({light:'#FF9E7A'},3.55,4.25,y+3.4,y+4.1,14.24,14.36,C.red);
   pools.push([7.2,14.9,'#FFD9A0',2.4,.5,.21]);}
  // ----- east pad: the kōban on the corner, the apron behind it
  {const x0=11.3,x1=13.3,z0=4.5,z1=6.7,H=5.6;pad(10.6,13.85,4.4,14.6,'#B4B1A7');w(x0,x1,y,y+H,z0,z1,'#EAE6DD');p(x0+.1,x1-.1,y+H,y+H+.03,z0+.1,z1-.1,'#7C8A80');
@@ -429,7 +468,7 @@ function fillers(){
   [[-8.7,'#E8E4DA'],[-8.2,'#9DB4C8'],[-7.7,'#D9A5A0'],[-7.2,'#F2E6B8']].forEach(([x,c],i)=>P.push({...ext(x-.17,x+.17,y+1.37,y+1.87,-9.01,-8.99,c),ry:(i%2?.15:-.12)}));
   P.push({...ext(-7.2,-6.6,y,y+.6,-10.3,-9.7,'#5E7A4E'),ry:.4});}
  shed(-6.0,-2.4,-10.5,-7.8,5);
- {pad(-2.2,.4,-6.3,-.8,'#B4B1A7');p(-1.04,-.96,y+.28,y+.33,-5.8,-1.8,'#8E9392');for(let i=0;i<5;i++)bike(-1.0,-5.4+i*.8,true);planter(-1.7,-1.1,0);planter(-.1,-1.1,1);}
+ {pad(-2.2,.4,-6.3,-.8,'#C9C5BA');for(const z of [-5.8,-5.0,-4.2,-3.4,-2.6,-1.8])p(-1.9,-.1,y+.045,y+.05,z-.02,z+.02,'#ECEAE2');p(-1.04,-.96,y+.28,y+.33,-5.8,-1.8,'#8E9392');for(let i=0;i<5;i++)bike(-1.0,-5.4+i*.8,true,i);planter(-1.7,-1.1,0);planter(-.1,-1.1,1);}
  {pad(1.0,5.8,-10.5,-7.3,'#6B5443');[-9.9,-9.1,-8.3].forEach((z,i)=>{p(1.3,4.8,y+.04,y+.26,z-.21,z+.21,'#5A4634');p(1.4,4.7,y+.26,y+.54,z-.17,z+.17,['#7FA66B','#3E7A5C','#5E8F3E'][i]);});
   p(5.0,5.7,y,y+1.7,-10.4,-9.5,'#8E9392');p(4.94,5.76,y+1.7,y+1.76,-10.46,-9.44,'#6E7774');post(1.3,-7.6,.9,'#8E9392',.06);}
  {const x0=6.6,x1=13.4,z0=-10.5,z1=-6.1,H=5.5,net='#3E7A5C';pad(x0,x1,z0,z1,'#5F9C4C');
@@ -539,6 +578,13 @@ export async function buildHeroHome(scene,host){
  // The mailbox flag: two instances at the end of the props batch, re-posed when the flag goes up or down.
  const flagAt=plan.props.length;plan.props.push({x:0,y:0,z:0,w:.03,h:.24,d:.03,color:'#3E4447'},{x:0,y:0,z:0,w:.02,h:.1,d:.15,color:'#E5582B'});
  const walls=batch(plan.walls,wallsMat,{name:'hero walls',fac:true}),props=batch(plan.props,propsMat,{name:'hero props',fac:true}),glass=batch(plan.glass,glassMat,{name:'hero glass',lit:true,shadow:false});
+ // The lid (doll-house): the `lid` instances lift and shrink away as roofT goes 0 → 1, the `cut` ones grow in. Base poses
+ // are read back from the batches, so the pieces stay in their draw calls.
+ const lidParts=[];for(const [list,mesh] of [[plan.walls,walls],[plan.props,props],[plan.glass,glass]])list.forEach((b,i)=>{if(!b.lid&&!b.cut)return;
+  const m=new THREE.Matrix4();mesh.getMatrixAt(i,m);const pos=new THREE.Vector3(),q=new THREE.Quaternion(),sc=new THREE.Vector3();m.decompose(pos,q,sc);lidParts.push({mesh,i,pos,q,sc,cut:!!b.cut});});
+ let roofT=0,roofShown=-1,roofMode=null;   // roofMode: null = the rule, true = roof on, false = roof off
+ function poseLid(t){const e=t*t*(3-2*t);for(const l of lidParts){const k=l.cut?e:1-e;_v.copy(l.pos);if(!l.cut)_v.y+=ROOF_RULE.lift*e;_s.copy(l.sc).multiplyScalar(k);_m.compose(_v,l.q,_s);l.mesh.setMatrixAt(l.i,_m);}
+  for(const m of [walls,props,glass])m.instanceMatrix.needsUpdate=true;roofShown=t;}
  root.add(walls,props,glass);
  // Signs (atlas), glows (billboards).
  let atlas=null,atlasCanvas=null,boardKey=null;
@@ -581,7 +627,13 @@ export async function buildHeroHome(scene,host){
    else if(what==='desk'&&c){api.stand(c);c.root.position.set(DESK_POINT.x,F0,DESK_POINT.z);force=null;api.arrive(c,'desk');}else force=null;},
   stats(){let tris=0,calls=0;root.traverse(m=>{if(!m.isMesh||m.material?.visible===false)return;calls++;const g=m.geometry,t=(g.index?g.index.count:g.attributes.position.count)/3;tris+=m.isInstancedMesh?t*m.count:t;});return {calls,triangles:Math.round(tris),furniture:furn.geometry?furn.geometry.attributes.position.count/3:0};},
   mailbox:false,
+  // The roof: setRoof(true|false) forces it on / off, setRoof(null) returns to the rule; `roofOpen` is the current state.
+  setRoof(visible){roofMode=visible==null?null:!!visible;},roof(mode){api.setRoof(mode==='auto'||mode==null?null:mode==='closed');},
+  get roofOpen(){return roofT>.5;},get roofT(){return roofT;},dims:furn.dims,
   update(dt,seconds,camera){const world=host.getWorld?.(),n=night.value;
+   // The lid: toward 1 (open) while the viewer looks inside, back to 0 otherwise, 0.4 s each way.
+   {const open=roofMode!=null?!roofMode:roofOpen({zoom:camera?.zoom,target:viewTarget(camera,host.getTarget?.())});
+    roofT=Math.max(0,Math.min(1,roofT+(open?1:-1)*(dt||0)/ROOF_RULE.seconds));if(roofT!==roofShown)poseLid(roofT);}
    // Mailbox flag (smoothly up/down).
    const up=flagForce??mailboxFlag(world);api.mailbox=up;flagT+=((up?1:0)-flagT)*Math.min(1,dt*4);if(Math.abs(flagT-flagShown)>.002){flagShown=flagT;poseFlag(flagT);}
    // House lights.
@@ -609,7 +661,7 @@ export async function buildHeroHome(scene,host){
  function poseFlag(t){const a=-Math.PI/2*(1-t),q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),a);
   for(const [i,off,s] of [[flagAt,new THREE.Vector3(0,.12,0),[.03,.24,.03]],[flagAt+1,new THREE.Vector3(0,.2,.075),[.02,.1,.15]]]){fo.position.copy(off).applyQuaternion(q).add(pivot);fo.quaternion.copy(q);fo.scale.set(...s);fo.updateMatrix();props.setMatrixAt(i,fo.matrix);}
   props.instanceMatrix.needsUpdate=true;}
- poseFlag(0);
+ poseFlag(0);poseLid(0);
  if(typeof window!=='undefined')window.__heroHome=api;
  return api;
 }

@@ -160,6 +160,63 @@ void main(){vec2 p=vUv-.5;float a;
  else{float d=length(p)*2.;a=max(0.,1.-d);a*=a;}
  gl_FragColor=vec4(vCol,a*vA);}`;
 
+// ---------- The metro station (pure, tested): owner 2026-10-10 "the train station is buggy" (the old canopy was one flat
+// teal slab on two sticks). A small elevated side-platform station on the south (camera) side of the track: concrete
+// platform on its own piers, tactile line, parapet with glass panels between round-ish pillars, a shallow gabled slate
+// roof with fascias and the navy name board (lit at night in the windows batch), benches, a vending machine, waiting
+// figures; at the east end a stepped concrete stair under its own canopy down to a street-level entrance kiosk with
+// ticket gates, and a sign pole on the street. Everything joins the solid / windows batches (no new draw calls); the
+// trains' route and the track geometry are untouched. Returns {solid, detail (overview LOD hides it), windows}.
+export function stationPlan({SX,trackZ}){
+ const solid=[],solidDetail=[],windows=[],item=(list,x,y,z,w,h,d,color)=>list.push({x,y,z,w,h,d,color});
+ const PZ=trackZ+3,PT=4.8,CON='#B4B1A7',GREY='#9AA3A8',PALE='#D6D2C7',SLATE='#5F6A70',DARK='#3E4447',NAVY='#1F3A5C',GLASS='#A9C4CC',METAL='#5B6466';
+  const round=(list,x,y,z,s,h,color)=>{for(const ry of [0,Math.PI/4])list.push({x,y,z,w:s,h,d:s,ry,color});};
+  const board=(x,y,z,w,h,face)=>{   // navy board with a pale text strip by day, a lit strip + green line chip at night; face: +z or +x
+   const dz=face==='+z',o=k=>dz?{x,y,z:z+k,w,h,d:.02}:{x:x+k,y,z,w:.02,h,d:w};
+   item(solid,x,y,z,dz?w:.08,h,dz?.08:w,NAVY);solid.push({...o(.05),w:dz?w-.5:.02,d:dz?.02:w-.5,h:h-.2,color:'#E8EEF2'});
+   windows.push({...o(.06),w:dz?w-.9:.03,d:dz?.03:w-.9,h:h-.22,x:dz?x+.15:x+.06,z:dz?z+.06:z+.15,color:'#EAF4FF'},{...o(.06),w:dz?.32:.03,d:dz?.03:.32,h:.32,x:dz?x-w/2+.35:x+.06,z:dz?z+.06:z-w/2+.35,color:'#3E9B5C'});};
+  // Platform on three piers, a beam under its edge, white edge line and the yellow tactile line.
+  item(solid,SX,PT-.25,PZ,14,.5,3.3,CON);item(solid,SX,PT-.6,PZ,14,.22,3.0,GREY);
+  for(const x of [-5.5,0,5.5])item(solid,SX+x,PT-.5-2.15,PZ,.6,4.3,.6,'#9A9E98');
+  item(solid,SX,PT+.006,trackZ+1.5,14,.012,.12,'#E6E4DC');item(solid,SX,PT+.01,trackZ+1.85,13.6,.02,.3,'#E3BE3C');
+  // Parapet along the back edge, six round-ish pillars, glass panels between them, the roof with its fascias and plant.
+  item(solid,SX,PT+.45,PZ+1.45,14,.9,.12,GREY);item(solid,SX,PT+.92,PZ+1.45,14.1,.05,.18,'#CFCBC0');
+  const PX=[-6.6,-3.96,-1.32,1.32,3.96,6.6];for(const x of PX)round(solid,SX+x,PT+1.35,PZ+1.3,.26,2.7,PALE);
+  for(let k=0;k<PX.length-1;k++)item(solid,SX+(PX[k]+PX[k+1])/2,PT+1.65,PZ+1.45,2.3,1.4,.05,GLASS);
+  // A shallow gable (two sloped boxes meeting at a ridge, a flat plate read as a floating slab from 40°), ridge cap,
+  // eave fascia on the platform side, barge boards on the east gable, two roof units, the name board on the fascia.
+  const slope=(x,w,z0,y0,z1,y1,t,color)=>{const a=Math.atan2(y0-y1,z1-z0),L=Math.hypot(z1-z0,y1-y0);solid.push({x,y:(y0+y1)/2-t/2*Math.cos(a),z:(z0+z1)/2-t/2*Math.sin(a),w,h:t,d:L,rx:a,color});};
+  const RY=PT+3.35,EY=PT+2.75;slope(SX,15,PZ+.1,RY,PZ+2.15,EY,.3,SLATE);slope(SX,15,PZ-2.0,EY,PZ+.1,RY,.3,SLATE);
+  item(solid,SX,RY,PZ+.1,15.1,.1,.3,DARK);item(solid,SX,EY-.05,PZ+2.19,15.1,.3,.08,DARK);
+  slope(SX+7.53,.08,PZ+.1,RY+.02,PZ+2.15,EY+.02,.34,DARK);slope(SX+7.53,.08,PZ-2.0,EY+.02,PZ+.1,RY+.02,.34,DARK);
+  for(const x of [-4.2,2.8])item(solid,SX+x,RY+.05,PZ-.4,.9,.4,.7,'#B9C6C4');
+  board(SX,EY-.05,PZ+2.28,4.6,.6,'+z');
+  for(const x of [-3.5,3.5])board(SX+x,PT+1.95,PZ-.8,1.2,.34,'+z');   // hanging platform signs
+  item(windows,SX,PT+2.66,PZ,13,.06,.12,'#E8F1F6');   // strip lights under the roof
+  // Benches, a vending machine facing the platform's east end, five waiting figures.
+  for(const x of [-2.5,2.5]){const z=PZ+.9;item(solidDetail,SX+x,PT+.45,z,1.5,.08,.45,'#4E5A55');item(solidDetail,SX+x,PT+.8,z+.2,1.5,.5,.05,'#4E5A55');for(const e of [-1,1])item(solidDetail,SX+x+e*.6,PT+.22,z,.06,.45,.4,DARK);}
+  item(solid,SX-6.5,PT+.9,PZ+.4,.6,1.8,.8,'#EDEDE8');item(solid,SX-6.19,PT+1.0,PZ+.4,.02,1.0,.6,'#2F6FB5');item(windows,SX-6.18,PT+1.0,PZ+.4,.03,1.0,.6,'#EAF4FF');
+  [[-4.6,-.1,'#3E4447'],[-1.8,.5,'#5E7A93'],[.6,-.3,'#C8452D'],[1.1,.6,'#E8E4DA'],[4.4,.2,'#6B5443']].forEach(([x,dz,c],i)=>{const ry=i*1.3;solidDetail.push({x:SX+x,y:PT+.43,z:PZ+dz,w:.3,h:.85,d:.24,ry,color:c},{x:SX+x,y:PT+.96,z:PZ+dz,w:.2,h:.2,d:.2,ry,color:'#E8C4A0'});});
+  // Stepped stair down to the street at the east end (solid concrete steps, a parapet on the camera side, a canopy).
+  const S0=SX+7,RUN=4.2,RISE=PT-.25,N=10,ang=Math.atan2(RISE,RUN),L=Math.hypot(RUN,RISE);
+  for(let k=0;k<N;k++){const top=PT-RISE*(k+1)/N;item(solid,S0+RUN*(k+.5)/N,top/2,PZ+.5,RUN/N,top,1.6,CON);}
+  solid.push({x:S0+RUN/2,y:(PT+.25)/2+.75,z:PZ+1.33,w:L,h:.95,d:.12,rz:-ang,color:GREY},{x:S0+RUN/2,y:(PT+.25)/2+.75,z:PZ-.33,w:L,h:.95,d:.12,rz:-ang,color:GREY});
+  solid.push({x:S0+RUN/2,y:(PT+.25)/2+2.4,z:PZ+.5,w:L+.4,h:.12,d:2.0,rz:-ang,color:SLATE});
+  for(const k of [.15,.55,.95])for(const e of [-1,1])item(solid,S0+RUN*k,PT-RISE*k+1.2,PZ+.5+e*.85,.08,2.3,.08,METAL);
+  // Street-level entrance kiosk: pad, back and side walls, roof, an open front frame, three ticket gates, a machine, the board.
+  const KX=S0+RUN+1.4,KZ=PZ+.5,KW=2.8,KD=3.7,KH=2.7;
+  item(solid,KX,.26,KZ,KW+.3,.06,KD+.1,'#C9C5BA');item(solid,KX,.25+KH/2,KZ-KD/2+.08,KW,KH,.15,PALE);
+  item(solid,KX+KW/2-.08,.25+KH/2,KZ,.15,KH,KD,PALE);item(solid,KX-KW/2+.08,.25+KH-.35,KZ,.15,.7,KD,PALE);   // the west side opens onto the stair
+  item(solid,KX+KW/2+.01,1.5,KZ+.3,.04,1.3,1.8,GLASS);item(windows,KX+KW/2+.02,1.5,KZ+.3,.04,1.3,1.8,'#FFE6B8');
+  item(solid,KX,.25+KH+.07,KZ,KW+.4,.14,KD+.4,SLATE);item(solid,KX,.25+KH-.15,KZ+KD/2-.02,KW,.3,.08,DARK);
+  for(const x of [-1.2,0,1.2])item(solid,KX+x,.25+KH/2,KZ+KD/2-.04,.08,KH,.08,METAL);
+  for(const x of [-.9,-.3,.3])item(solidDetail,KX+x,.75,KZ+.6,.14,1.0,.8,'#E8E4DA');
+  item(solidDetail,KX+1.0,1.05,KZ-.9,.6,1.6,.5,'#2F6FB5');item(windows,KX+1.0,1.3,KZ-.64,.4,.5,.03,'#EAF4FF');
+  board(KX,.25+KH+.5,KZ+KD/2+.02,2.4,.56,'+z');
+  // Sign pole on the street beside the stair foot (the outer-ring house east of the kiosk would hide it there).
+  item(solid,KX-KW/2-1.0,1.75,KZ+KD/2+.3,.1,3.3,.1,METAL);board(KX-KW/2-1.0,3.0,KZ+KD/2+.3,1.1,.5,'+x');
+ return {solid,detail:solidDetail,windows};
+}
 // Infrastructure and distant skyline use shared meshes. No new external assets.
 export function addCityLife(parent){
  const root=new THREE.Group();parent.add(root);
@@ -242,12 +299,7 @@ export function addCityLife(parent){
  const RV=riverEdges();for(let x=OX-TL/2+3.5;x<=OX+TL/2-3.4;x+=8){const wet=x>RV.x0&&x<RV.x1,y0=wet?-1.25:0;item(solid,x,(y0+3.6)/2,trackZ,.7,3.6-y0,1,'#627f87');item(solid,x,3.55,expressZ+.9,.45,.4,2.3,'#627f87');}   // piers in the river reach the bed
  item(solid,OX,4.1,trackZ,TL,.12,2.7,'#89a0a4');
  item(solid,OX,4.1,expressZ,TL,.12,1.5,'#89a0a4');item(solid,OX,3.8,expressZ-.7,TL,.45,.12,'#415c6b');for(const dz of [-.42,.42])item(solid,OX,4.2,expressZ+dz,TL,.06,.06,'#a7bdc3');
- item(solid,SX,4.55,trackZ+3,14,.5,3.3,'#acb5a6');item(solid,SX,7,trackZ+3,15,.15,4,'#2b7886');
- for(const x of [-5,5])item(solid,SX+x,5.6,trackZ+3,.12,2.8,.12,'#dcceb5');
- // Station sign on the roof edge: navy panel by day; at night a lit cool-white face with a green line colour chip.
- item(solid,SX,7.5,trackZ+5.02,4.6,.7,.1,'#1F4E8C');item(solid,SX,7.5,trackZ+5.06,4.1,.46,.02,'#E8EEF2');
- item(windows,SX-.3,7.5,trackZ+5.1,3.5,.42,.03,'#EAF4FF');item(windows,SX-2.05,7.5,trackZ+5.1,.4,.4,.03,'#3E9B5C');
- item(windows,SX,6.86,trackZ+3,13,.08,3.6,'#E8F1F6');   // platform strip lights under the canopy
+ {const st=stationPlan({SX,trackZ});solid.push(...st.solid);solidDetail.push(...st.detail);windows.push(...st.windows);}
  // Crossing signals (Shibuya scramble): Japanese 2-lamp pedestrian heads on four poles and horizontal 3-lamp vehicle
  // heads (blue-green, amber, red from the driver's left) on arms over each approach. Lamps share one basic mesh.
  const pedLamps=[],vehLamps=[],lampSites=[];
@@ -268,7 +320,7 @@ export function addCityLife(parent){
  const street=addStreet(root);solid.push(...street.items);
  // The Roppongi lantern street gets warm pools of its own; the stations get theirs.
  for(const z of [-1,5])for(let x=-39;x<=-19;x+=5)street.addLightPool(x+hash(x,z)*1.5,z+(z<0?.9:-.9),LIGHT.lantern,1.9,{strength:.42,group:'lanterns'});
- for(const [x,z,r,s,y] of [[-32,NZ+1.6,3.2,.6],[-29.5,NZ-1.2,1.8,.4],[SX,trackZ+3,4.6,.5,4.85],[SX,trackZ+5.4,3.6,.45]])street.addLightPool(x,z,LIGHT.led,r,{strength:s,y:y??.235,group:'stations'});
+ for(const [x,z,r,s,y] of [[-32,NZ+1.6,3.2,.6],[-29.5,NZ-1.2,1.8,.4],[SX,trackZ+3,4.6,.5,4.85],[SX+12.6,trackZ+6.3,3.2,.45]])street.addLightPool(x,z,LIGHT.led,r,{strength:s,y:y??.235,group:'stations'});
  // Canal: lantern light on the water (every third lantern) and the bridge lamps on their decks.
  for(const [x,z,k] of canalLamps)k==='deck'?street.addLightPool(x,z,LIGHT.led,1.6,{strength:.4,y:canal.deckY+.03,group:'canal'}):street.addLightPool(x,z,k?'#FF8A5A':LIGHT.lantern,1.9,{strength:.42,y:canal.waterY+.02,group:'canal'});
  // Night reflections on the river (wave 5C): each light over the water smears toward the camera (yaw 36°) as a fading

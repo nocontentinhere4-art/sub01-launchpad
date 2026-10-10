@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {buildHeroHome,planHero,homeRoute,floorAt,mailboxFlag,lightsFor,deskProject,boardText,FURNITURE,HOUSE,OFFICE,BEDROOM,LIVING,LOT,GATE,STAIR,DESK_POINT,BED_POINT,F0,F1,EXAMPLES,heightOf} from '../src/hero-home.js';
+import {buildHeroHome,planHero,homeRoute,floorAt,mailboxFlag,lightsFor,deskProject,boardText,FURNITURE,HOUSE,OFFICE,BEDROOM,LIVING,LOT,GATE,STAIR,DESK_POINT,BED_POINT,F0,F1,EXAMPLES,heightOf,roofOpen,ROOF_RULE,fillers,bicycle} from '../src/hero-home.js';
 import {HOME_DESK,HOME_BED,sub01Goal,planRoute} from '../src/world-sync.js';
 import {places} from '../src/state.js';
 
@@ -96,4 +96,68 @@ test('hero-home builds without WebGL: one group, 7 draw calls, picks and labels 
  root.position.set(HOME_BED.x,F1,HOME_BED.z);hero.arrive(c,'sleep');assert.equal(emote,'sleep');assert.ok(root.position.y>F1,'on the bed');
  // Frames without a camera or a city: the mailbox and lights still update.
  hero.update(.016,1,null);assert.equal(hero.mailbox,false);
+});
+
+// main.js's camera: ortho, yaw 36°, pitch 40°, 168 from the target at y 2 (aimCamera).
+function aimed(x,z,zoom){const cam=new THREE.OrthographicCamera(-18,18,18,-18,.1,400),p=THREE.MathUtils.degToRad(40),y=THREE.MathUtils.degToRad(36),d=168;
+ cam.position.set(x+d*Math.cos(p)*Math.sin(y),2+d*Math.sin(p),z+d*Math.cos(p)*Math.cos(y));cam.lookAt(x,2,z);cam.zoom=zoom;cam.updateProjectionMatrix();cam.updateMatrixWorld(true);return cam;}
+
+test('hero-home doll-house: the roof rule (zoom ≥ 1.1, view centred within 9 of the desk) and the lid pieces of the plan',()=>{
+ assert.equal(roofOpen({zoom:1.4,target:{x:DESK_POINT.x,z:DESK_POINT.z}}),true);
+ assert.equal(roofOpen({zoom:1.4,target:{x:DESK_POINT.x+ROOF_RULE.radius-.1,z:DESK_POINT.z}}),true,'inside the radius');
+ assert.equal(roofOpen({zoom:1.4,target:{x:6,z:4}}),false,'looking at the Workshop corner keeps the roof');
+ assert.equal(roofOpen({zoom:1.0,target:{x:DESK_POINT.x,z:DESK_POINT.z}}),false,'the overview keeps the roof');
+ assert.equal(roofOpen({zoom:1.4,target:null}),false);assert.equal(roofOpen(null),false);
+ // Following SUB-01 indoors (main.js: zoom 1.5 / 1.1 on mobile, target on him) opens it by the same rule.
+ assert.equal(roofOpen({zoom:1.1,target:BED_POINT}),true);
+ const plan=planHero(),all=[...plan.walls,...plan.props,...plan.glass],lid=all.filter(b=>b.lid),cut=all.filter(b=>b.cut);
+ assert.ok(lid.length>=15&&lid.length<=40,`lid pieces ${lid.length}`);assert.equal(cut.length,1,'the balcony eave barge board shows only in the section');
+ for(const b of lid)assert.ok(b.y>F0+1,'lid pieces sit above the sill cut');
+ const roof=plan.walls.filter(b=>b.lid&&b.rx);assert.ok(roof.length>=2,'two more roof slopes');
+ assert.ok(roof.some(b=>b.z<-3&&b.z>-5.95),'the middle of the roof is covered');assert.ok(roof.some(b=>b.z>-2.6&&b.x>-6.3),'the eave over the office');
+ assert.ok(lid.some(b=>b.light),'the lid carries lit glass for the night');
+});
+
+test('hero-home doll-house: the lid lifts away in 0.4 s when the camera looks inside, returns outside, obeys setRoof; still 7 draw calls',async()=>{
+ const scene=new THREE.Scene(),hero=await buildHeroHome(scene,{template,interactive:[],addLabel(){},places:{},getWorld:()=>({sub01:{state:'idle'},plots:[]}),getLife:()=>null});
+ const plan=hero.plan,walls=hero.root.children.find(c=>c.name==='hero walls'),props=hero.root.children.find(c=>c.name==='hero props'),m=new THREE.Matrix4();
+ const li=plan.walls.findIndex(b=>b.lid),ci=plan.props.findIndex(b=>b.cut);assert.ok(li>=0&&ci>=0);
+ walls.getMatrixAt(li,m);assert.notEqual(m.determinant(),0,'roof on at start');props.getMatrixAt(ci,m);assert.equal(m.determinant(),0,'cut piece hidden at start');
+ let t=0;const inside=aimed(DESK_POINT.x,DESK_POINT.z,1.4);
+ for(;t<.2;t+=.05)hero.update(.05,t,inside);assert.ok(hero.roofT>0&&hero.roofT<1,`mid-way at 0.2 s (${hero.roofT})`);
+ for(;t<1;t+=.05)hero.update(.05,t,inside);assert.equal(hero.roofT,1);assert.equal(hero.roofOpen,true);
+ walls.getMatrixAt(li,m);assert.equal(m.determinant(),0,'the roof is gone');props.getMatrixAt(ci,m);assert.notEqual(m.determinant(),0,'the section barge board shows');
+ const far=aimed(-2,2,.6);for(let k=0;k<30;k++)hero.update(.05,t+k*.05,far);assert.equal(hero.roofT,0);walls.getMatrixAt(li,m);assert.notEqual(m.determinant(),0,'the roof is back');
+ const elsewhere=aimed(6,4,1.4);for(let k=0;k<30;k++)hero.update(.05,t+k*.05,elsewhere);assert.equal(hero.roofT,0,'zoomed on the Workshop corner: roof on');
+ hero.setRoof(false);hero.update(.5,99,null);assert.equal(hero.roofT,1,'setRoof(false) lifts it without a camera');
+ hero.setRoof(true);hero.update(.5,100,inside);assert.equal(hero.roofT,0,'setRoof(true) keeps it on even looking inside');
+ hero.setRoof(null);hero.update(.5,101,inside);assert.equal(hero.roofT,1,'back to the rule');
+ assert.equal(hero.stats().calls,7,'the lid rides in the existing batches');
+});
+
+test('hero-home interior: furniture stands clear of the walls\' inner faces and of each other',async()=>{
+ const hero=await buildHeroHome(new THREE.Scene(),{template,interactive:[],addLabel(){},places:{},getWorld:()=>({}),getLife:()=>null});
+ const dims=hero.dims,inner={x0:HOUSE.x0+.16,x1:HOUSE.x1-.16,z0:HOUSE.z0+.16,z1:HOUSE.z1};
+ const box=f=>{const d=dims[f.item];assert.ok(d,f.item);const rot=Math.abs(Math.sin(f.rot||0))>.5,w=rot?d.d:d.w,dd=rot?d.w:d.d;return {x0:f.x-w/2,x1:f.x+w/2,z0:f.z-dd/2,z1:f.z+dd/2};};
+ for(const f of FURNITURE){if(f.room==='balcony'||f.on)continue;const b=box(f);
+  assert.ok(b.x0>=inner.x0-.01&&b.x1<=inner.x1+.01&&b.z0>=inner.z0-.01&&b.z1<=inner.z1+.01,`${f.item} pokes into a wall ${JSON.stringify(b)}`);}
+ // Pieces standing on the same floor never intersect (rugs are walked on; the desk chair tucks under its desk).
+ const floor=FURNITURE.filter(f=>!f.on&&f.room!=='balcony'&&!f.item.startsWith('rug'));
+ for(let i=0;i<floor.length;i++)for(let j=i+1;j<floor.length;j++){const a=floor[i],b=floor[j];if(a.y!==b.y||a.item==='chairDesk'||b.item==='chairDesk')continue;
+  const A=box(a),B=box(b),over=A.x0<B.x1-.01&&B.x0<A.x1-.01&&A.z0<B.z1-.01&&B.z0<A.z1-.01;assert.ok(!over,`${a.item} overlaps ${b.item}`);}
+ // The bedside cabinet stands beside the bed, not in it; the office rug is the small round one.
+ assert.ok(FURNITURE.find(f=>f.item==='rugRound'&&f.room==='office'),'round office rug');assert.ok(!FURNITURE.some(f=>f.item==='rugRectangle'),'no 3×2 slab rug');
+});
+
+test('hero-home fillers: sheds, bikes, kōban, sentō, cage stay out of the house lot and the example volumes; bikes are hollow-wheeled',()=>{
+ const fl=fillers(),vols=[{id:'lot',...LOT},...Object.entries(EXAMPLES).map(([id,e])=>{const za=e.frontZ,zb=e.frontZ-e.fz*e.d;return {id,x0:e.x-e.w/2,x1:e.x+e.w/2,z0:Math.min(za,zb),z1:Math.max(za,zb)};})];
+ // Footprint of a box: rotations about x widen z, about z widen x, about y both (bike tubes carry a matrix: a 1×1 stamp).
+ const foot=b=>{if(b.m)return {x0:b.x-.5,x1:b.x+.5,z0:b.z-.5,z1:b.z+.5};const xr=b.rz?Math.hypot(b.w,b.h)/2:b.ry?Math.hypot(b.w,b.d)/2:b.w/2,zr=b.rx?Math.hypot(b.h,b.d)/2:b.ry?Math.hypot(b.w,b.d)/2:b.d/2;
+  return {x0:b.x-xr,x1:b.x+xr,z0:b.z-zr,z1:b.z+zr};};
+ let n=0;for(const b of [...fl.W,...fl.P,...fl.G]){const f=foot(b);n++;for(const v of vols)assert.ok(!(f.x0<v.x1&&v.x0<f.x1&&f.z0<v.z1&&v.z0<f.z1),`filler at ${b.x.toFixed(2)},${b.z.toFixed(2)} inside ${v.id}`);}
+ assert.ok(n>200,'the fillers are there');
+ const P=[];bicycle(P,0,0,0,true);assert.ok(P.length>=18&&P.length<=22,'a bike is ~19 boxes');
+ const rims=P.filter(b=>b.rz!==undefined);assert.equal(rims.length,12,'two hexagon rims of six segments');
+ assert.ok(rims.every(b=>b.h<.06),'rim segments are thin (hollow wheels, not slabs)');
+ const Q=[];bicycle(Q,0,0,0,false);assert.equal(Q.filter(b=>b.rx!==undefined).length,12,'rims turn about x when the bike points along z');
 });
