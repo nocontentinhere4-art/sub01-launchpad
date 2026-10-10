@@ -592,6 +592,13 @@ async function enter(plotId,mine,viewer){
  function close(){if(closed)return;pc?.close({quiet:true});host.setView(null);hud.remove();view.dispose();}
  host.setView(view);
  if(hasDesk(desk)){const b=el('button',{className:'button button-dark button-sm room-pc-btn',type:'button',onclick:()=>toComputer(room.furniture.findIndex(f=>SCREEN_ITEMS.has(f.item)))},icon('pc','i lead'),desk.projects.length?`${mine?'Your':owner.name+'\u2019s'} computer`:'Computer');hud.root.append(b);}
+ // Rituals (main.js host): a postcard button, SUB-01's diary page by the desk, and in your own room a quiet
+ // "while you were away" card when something happened since your last visit (nothing when empty, never a push).
+ const extra=el('div',{className:'room-extra'});
+ if(host.photo)extra.append(el('button',{className:'button button-dark button-sm',type:'button',title:'Take a postcard',ariaLabel:'Take a postcard',onclick:()=>host.photo()},icon('camera','i lead'),el('span',{className:'lbl',textContent:'Postcard'})));
+ if(host.openDiary&&hasDesk(desk))extra.append(el('button',{className:'button button-dark button-sm',type:'button',title:"SUB-01's diary",ariaLabel:"SUB-01's diary",onclick:()=>host.openDiary()},icon('book','i lead'),el('span',{className:'lbl',textContent:'Diary'})));
+ if(extra.children.length)hud.root.append(extra);
+ if(mine&&host.awayCard)host.awayCard().then(card=>{if(card&&!closed)hud.root.append(card);}).catch(()=>{});
  hud.say(welcomeText({mine,name:owner.name,model:desk}));
  if(lampsLit)applyLook();
 }

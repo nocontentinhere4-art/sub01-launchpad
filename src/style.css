@@ -654,3 +654,167 @@ h1 em{filter:drop-shadow(0 6px 24px rgba(251,117,43,.35))}
  .button:active,.icon-button:active,.close-button:active,.chip:active,.room-emote:active,.room-item:active,.account-chip:active{transform:none!important}
  .world-label:hover{transform:translate(-50%,calc(-100% - 12px))}.district-label:hover{transform:translate(-50%,-50%)}
 }
+
+/* ================================================================ rituals (calendar-ui.js, rituals.js, diary.js, photo.js, away.js)
+   Calendar strip + sheet, shrine (omikuji, ema, leaderboard), vote ledger, diary, About, postcards, predictions, photo
+   mode, "while you were away". Existing tokens and components only; sheets are .idea-card glass (bottom sheets on phones). */
+.intro .eyebrow::before{background:var(--theme-dot,var(--accent))}
+.about-button{width:40px;height:40px;border-radius:50%;background-color:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--stroke);box-shadow:var(--hl),var(--shadow-1);color:var(--ink-2)}
+.about-button:hover{background-color:rgba(40,36,32,.88);color:var(--ink)}
+.activity-next{font:inherit;letter-spacing:inherit;color:var(--accent-hi);white-space:nowrap}
+/* today strip: week theme tile + event chips (project panel; the dock on phones) */
+.today-strip{display:flex;align-items:stretch;gap:8px;flex:none;min-width:0}
+.today-theme{flex:none;display:flex;align-items:center;gap:9px;padding:6px 12px 6px 6px;border:0;border-radius:12px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke);color:var(--ink);text-align:left;transition:background var(--d-2)}
+.today-theme:hover{background:var(--fill-2)}
+.today-theme .jp{width:32px;height:32px;display:grid;place-items:center;border-radius:9px;font-size:17px;color:var(--on-accent);background:var(--theme-dot,var(--accent))}
+.today-theme-t{display:grid;gap:4px}.today-theme small{font:500 9px/1 var(--f-mono);letter-spacing:.14em;color:var(--ink-3)}.today-theme b{font:700 13px/1 var(--f-ui)}
+.today-chips{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}.today-chips::-webkit-scrollbar{display:none}
+.today-chip{flex:none;display:flex;align-items:center;gap:8px;max-width:230px;padding:5px 12px 5px 8px;border:0;border-radius:12px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke);color:var(--ink);text-align:left;transition:background var(--d-2),box-shadow var(--d-2)}
+.today-chip:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--accent-line)}
+.today-chip.is-live{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.today-chip .ic{font-size:16px;line-height:1}
+.today-chip .tx{display:grid;gap:4px;min-width:0}
+.today-chip b{font:650 12px/1.1 var(--f-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.today-chip small{font:500 9.5px/1 var(--f-mono);letter-spacing:.04em;color:var(--ink-2);white-space:nowrap}
+.project-panel .today-strip{display:grid;grid-template-columns:1fr 1fr;gap:6px}.project-panel .today-chips{display:contents}
+.project-panel .today-theme,.project-panel .today-chip{min-width:0;max-width:none;padding:5px 10px 5px 6px}.project-panel .today-theme .jp{width:28px;height:28px;font-size:15px;border-radius:8px}
+/* the centre hint would sit between the activity bar and the longer control rail: lift it above them */
+@media (min-width:1101px) and (max-width:1640px){.world-hint{bottom:94px}}
+/* sheets */
+.sheet-card{width:520px}
+.sheet-body{margin-top:16px;display:grid;gap:10px}
+.sheet-h{margin:8px 0 0;font:500 11px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+.sheet-tabs{display:flex;gap:4px;margin-top:18px;padding:4px;border-radius:var(--r-pill);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.sheet-tab{flex:1;height:34px;border:0;border-radius:var(--r-pill);background:transparent;color:var(--ink-2);font:600 13px/1 var(--f-ui);white-space:nowrap;transition:background var(--d-2),color var(--d-2)}
+.sheet-tab:hover{color:var(--ink)}.sheet-tab[aria-pressed=true]{background:var(--paper);color:var(--paper-ink);box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.link-button{display:inline-flex;align-items:center;gap:6px;padding:0;border:0;background:none;color:var(--accent-hi);font:650 13px/1.3 var(--f-ui);text-decoration:none;cursor:pointer}
+.link-button:hover{text-decoration:underline;text-underline-offset:3px}
+.sheet-foot{display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--stroke)}
+.cal-theme{display:flex;align-items:center;gap:12px;margin-top:16px;padding:12px;border-radius:14px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.cal-theme .jp{width:48px;height:48px;flex:none;display:grid;place-items:center;border-radius:12px;font-size:26px;color:var(--on-accent);background:var(--theme-dot,var(--accent))}
+.cal-theme span{display:grid;gap:5px}.cal-theme b{font:700 15px/1.2 var(--f-ui)}.cal-theme small{font:450 12.5px/1.45 var(--f-ui);color:var(--ink-2)}
+.cal-row{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border:0;border-radius:12px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke);color:var(--ink);text-align:left}
+button.cal-row:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--accent-line)}
+.cal-row.is-live{box-shadow:inset 0 0 0 1.5px var(--accent);background:var(--accent-soft)}.cal-row.is-past{opacity:.55}.cal-row.is-placeholder{opacity:.7}
+.cal-row .ic{font-size:20px;flex:none}.cal-row .tx{display:grid;gap:5px;min-width:0;flex:1}
+.cal-row b{font:650 13.5px/1.25 var(--f-ui)}.cal-row small{font:500 10.5px/1.3 var(--f-mono);letter-spacing:.03em;color:var(--ink-2)}
+.cal-row .go{flex:none;font:600 11px/1 var(--f-mono);color:var(--accent-hi)}
+/* omikuji: a wooden box that shakes, then a paper slip that unfolds */
+.omikuji{display:grid;justify-items:center;gap:12px;padding:8px 0 4px;text-align:center}
+.omikuji .button{width:100%}
+.omikuji-box{position:relative;width:96px;height:118px;margin-top:6px;border-radius:12px 12px 8px 8px;display:grid;place-items:center;
+ background:linear-gradient(90deg,#7A4E2E,#A4693D 45%,#7A4E2E),#8A5A35;box-shadow:inset 0 0 0 2px rgba(0,0,0,.25),inset 0 -10px 0 rgba(0,0,0,.18),0 14px 30px -12px rgba(0,0,0,.7)}
+.omikuji-box::before{content:"";position:absolute;top:-9px;left:50%;width:10px;height:14px;margin-left:-5px;border-radius:3px;background:#E9DCC4}
+.omikuji-box .jp{writing-mode:vertical-rl;padding:8px 5px;border-radius:5px;background:#F4EFE6;color:#C8452D;font-size:14px;letter-spacing:.2em}
+.omikuji.is-shaking .omikuji-box{animation:omi-shake .3s ease-in-out infinite}
+@keyframes omi-shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-9deg) translateY(-3px)}75%{transform:rotate(9deg) translateY(-3px)}}
+.omikuji-slip{position:relative;width:min(300px,100%);display:grid;justify-items:center;gap:8px;padding:22px 20px 18px;border-radius:6px;background:repeating-linear-gradient(0deg,transparent 0 23px,rgba(27,26,23,.06) 23px 24px),var(--paper);color:var(--paper-ink);
+ box-shadow:0 18px 40px -16px rgba(0,0,0,.7),inset 0 0 0 1px rgba(0,0,0,.08);transform-origin:50% 0}
+.omikuji-slip::before{content:"";position:absolute;inset:6px;border:1.5px solid #C8452D;border-radius:3px;pointer-events:none;opacity:.7}
+.omikuji-slip.is-unfolding{animation:omi-unfold 1.4s var(--e-out) both}
+@keyframes omi-unfold{0%{transform:scaleY(.04) scaleX(.3);opacity:0}25%{transform:scaleY(.04) scaleX(1);opacity:1}100%{transform:none}}
+.omikuji-kanji{font-size:64px;line-height:1;color:#C8452D;letter-spacing:.04em}
+.omikuji-slip.is-kyo .omikuji-kanji{color:#3A3B3D}
+.omikuji-slip b{font:800 20px/1 var(--f-ui);font-stretch:70%;text-transform:uppercase;letter-spacing:.04em}
+.omikuji-slip p{margin:0;font:500 14px/1.5 var(--f-ui);color:var(--paper-ink-2)}
+.omikuji-slip small{font:500 10.5px/1.4 var(--f-mono);color:var(--paper-ink-2);letter-spacing:.02em}
+/* ema: wooden plaques on a board */
+.ema-line{margin:0;padding:10px 12px;border-radius:12px;background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-line);font:600 13px/1.45 var(--f-ui);color:#FFD9C2}
+.ema-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ema{position:relative;display:grid;gap:6px;align-content:start;padding:22px 12px 12px;color:#2B1C10;
+ background:linear-gradient(180deg,#E7C79A,#D6AE78);clip-path:polygon(0 18px,50% 0,100% 18px,100% 100%,0 100%);border-radius:0 0 8px 8px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.12)}
+.ema-cord{position:absolute;top:9px;left:50%;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:#C8452D;box-shadow:0 0 0 2px #F4EFE6}
+.ema b{font:700 13.5px/1.25 var(--f-ui);overflow-wrap:anywhere}
+.ema small{font:500 10px/1.3 var(--f-mono);color:#5B4330}
+.ema code{font:600 10px/1 var(--f-mono);color:#7A5A3C}
+.ema-cheer{display:inline-flex;align-items:center;justify-content:space-between;gap:6px;height:30px;margin-top:4px;padding:0 4px 0 10px;border:0;border-radius:var(--r-pill);background:#2B1C10;color:#F4EFE6;font:650 12px/1 var(--f-ui)}
+.ema-cheer .count{min-width:20px;height:20px}
+.ema-cheer:disabled{opacity:.6}
+.board-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.board-list li{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:12px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.board-list .rk{width:26px;font:700 12px/1 var(--f-mono);color:var(--accent-hi)}.board-list b{flex:1;font:650 13.5px/1.2 var(--f-ui)}.board-list .pt{font:600 12px/1 var(--f-mono);color:var(--ink-2)}
+/* vote ledger */
+.ledger-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:12px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.ledger-head span{display:grid;gap:5px;min-width:0}.idea-card .ledger-head .button{width:auto;flex:none}.ledger-head code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ledger-head small{font:500 9.5px/1 var(--f-mono);letter-spacing:.14em;color:var(--ink-3)}.ledger-head code{font:600 12px/1 var(--f-mono)}
+.verify-status{margin:0;font:500 12.5px/1.45 var(--f-ui);color:var(--ink-2)}.verify-status:empty{display:none}
+.verify-status.ok{color:var(--ok)}.verify-status.bad{color:var(--danger-ink)}
+.ledger-list{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.ledger-row{display:grid;gap:7px;padding:10px 12px;border-radius:12px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.lr-top{display:flex;align-items:center;gap:10px;font:500 11px/1 var(--f-mono)}
+.lr-seq{color:var(--ink-3)}.lr-dec{font:800 12px/1 var(--f-ui);letter-spacing:.1em;padding:4px 8px;border-radius:6px;background:var(--fill-2)}
+.ledger-row.is-build .lr-dec{background:var(--accent);color:var(--on-accent)}
+.lr-p{color:var(--ink-2)}.lr-top code{margin-left:auto;color:var(--ink-3)}
+.lr-title{font:600 13px/1.3 var(--f-ui)}.lr-title.anon{font-weight:450;color:var(--ink-2)}
+.lr-nets{display:flex;flex-wrap:wrap;gap:5px}
+.lr-net{padding:3px 7px;border-radius:var(--r-pill);font:500 10px/1 var(--f-mono);color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--stroke)}
+.lr-net.lit{color:#FFD9C2;background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-line)}
+/* diary: a typed page */
+.diary-nav-row{display:flex;align-items:center;gap:6px;margin-top:16px}
+.diary-nav{background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke);font:600 20px/1 var(--f-ui);color:var(--ink)}
+.diary-date{flex:1;height:40px;padding:0 12px;border:0;border-radius:12px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke-2);font:600 14px var(--f-mono);color:var(--ink);color-scheme:dark}
+.diary-paper{padding:16px 18px;border-radius:8px;background:var(--paper);color:var(--paper-ink);box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+.diary-date-line{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding-bottom:10px;border-bottom:1.5px solid #C8452D}
+.diary-date-line b{font:700 16px/1 var(--f-mono)}.diary-date-line small{font:500 10.5px/1 var(--f-mono);color:var(--paper-ink-2)}
+.diary-list{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:12px}
+.diary-entry{display:flex;gap:10px}.diary-entry .ic{font-size:18px;line-height:1.3;flex:none}
+.diary-entry .tx{display:grid;gap:4px;min-width:0}
+.diary-entry small{font:600 10px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--paper-ink-2)}
+.diary-entry p{margin:0;font:500 14px/1.5 var(--f-mono);color:var(--paper-ink);overflow-wrap:anywhere}
+.diary-score{display:flex;align-items:center;gap:8px;max-width:180px}
+.diary-score i{display:block;height:5px;border-radius:5px;background:linear-gradient(90deg,#E85F17,#FB752B);min-width:2px}
+.diary-score em{font:600 10px/1 var(--f-mono);font-style:normal;color:var(--paper-ink-2)}
+.diary-empty{margin:12px 0 0;font:500 14px/1.5 var(--f-mono);color:var(--paper-ink-2)}
+.diary-note{margin-top:4px}
+/* About SUB-01 */
+.about-list{display:grid;grid-template-columns:132px 1fr;gap:9px 14px;margin:0;padding:14px;border-radius:14px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.about-list dt{font:500 10.5px/1.5 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.about-list dd{margin:0;font:500 13.5px/1.45 var(--f-ui);color:var(--ink)}
+.about-privacy{display:grid;gap:6px;padding:12px 14px;border-radius:14px;box-shadow:inset 0 0 0 1px var(--stroke)}
+.about-privacy b{font:500 10.5px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+.about-privacy p{margin:0;font:450 12.5px/1.55 var(--f-ui);color:var(--ink-2)}
+/* postcards */
+.postcard-card{width:640px}
+.postcard-img{display:block;width:100%;max-height:min(56dvh,520px);object-fit:contain;background:var(--fill-1);border-radius:12px;box-shadow:var(--shadow-1),inset 0 0 0 1px var(--stroke)}
+.postcard-actions{display:flex;gap:8px}.postcard-actions .button{flex:1}
+.idea-card .postcard-actions .button{width:auto}
+/* predictions on the detail card */
+.predict{display:grid;gap:10px;margin-top:18px;padding:14px;border-radius:14px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.predict-q{font:700 15px/1.3 var(--f-ui)}
+.predict-buttons{display:flex;gap:8px}.detail-card .predict-buttons .button{flex:1;width:auto}
+.predict-tally{display:grid;gap:6px}
+.predict-tally i{display:block;height:6px;border-radius:6px;background:linear-gradient(90deg,var(--accent) var(--b),var(--fill-3) var(--b))}
+.predict-tally small{font:500 10.5px/1 var(--f-mono);color:var(--ink-2)}
+.predict-result{margin:0!important;font:650 13.5px/1.4 var(--f-ui)!important;color:var(--ink)!important}
+.predict-result.ok{color:var(--ok)!important}.predict-result.miss{color:var(--ink-2)!important}
+.detail-card .predict .fine{margin:0}
+.detail-share{margin-top:14px}
+/* shrine label: a red-dotted ticket */
+.shrine-label i{background:#C8452D}
+/* photo mode: the HUD goes, a bar with the shutter stays */
+.is-photo .topbar,.is-photo .intro,.is-photo .project-panel,.is-photo .activity,.is-photo .world-controls,.is-photo .world-hint,.is-photo #labels,.is-photo .hud-scrim,.is-photo .room-hud,.is-photo .toast{display:none!important}
+.photo-bar{position:fixed;left:50%;bottom:calc(24px + var(--safe-b));transform:translateX(-50%);z-index:12;display:flex;align-items:center;gap:8px;padding:6px 6px 6px 16px;border-radius:var(--r-pill);
+ background-color:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--stroke);box-shadow:var(--hl),var(--shadow-2);color:var(--ink)}
+.photo-hint{display:flex;align-items:center;gap:6px;margin-right:6px;font:500 10.5px/1 var(--f-mono);letter-spacing:.1em;color:var(--ink-2);white-space:nowrap}
+/* room: postcard + diary buttons, the "while you were away" card */
+.room-extra{position:absolute;left:28px;bottom:30px;display:flex;gap:8px}
+.away-card{position:absolute;left:50%;top:96px;transform:translateX(-50%);width:min(380px,calc(100vw - 24px));display:grid;gap:8px;padding:16px 56px 16px 16px;border-radius:var(--r-lg);
+ background-color:var(--glass-strong);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--stroke);box-shadow:var(--hl),var(--shadow-2);color:var(--ink);animation:sheet-in var(--d-3) var(--e-spring);z-index:3}
+.away-card .close-button{top:10px;right:10px;width:34px;height:34px;font:400 20px/1 var(--f-ui)}
+.away-line{margin:0;font:600 14px/1.4 var(--f-ui)}
+.away-notes,.away-moves{list-style:none;margin:0;padding:0;display:grid;gap:5px;font:450 13px/1.45 var(--f-ui);color:var(--ink-2)}
+.away-notes b{color:var(--ink)}
+.away-card .fine{margin:2px 0 0}
+@media (max-width:600px){
+ .topbar .about-button{width:40px;height:40px;flex:none}
+ .project-panel .today-strip{display:flex;flex-direction:row;flex-wrap:nowrap}.project-panel .today-chips{display:flex;flex-wrap:nowrap;overflow-x:auto}
+ .project-panel .today-theme{padding:4px}.project-panel .today-theme-t{display:none}.project-panel .today-theme .jp{width:30px;height:30px;font-size:15px}
+ .project-panel .today-chip{padding:4px 10px 4px 7px;max-width:200px;flex:none}
+ .sheet-card,.postcard-card{width:100%}
+ .ema-list{grid-template-columns:1fr}
+ .about-list{grid-template-columns:1fr;gap:3px}.about-list dd{margin-bottom:8px}
+ .postcard-actions{flex-wrap:wrap}
+ .photo-bar{left:12px;right:12px;transform:none;justify-content:flex-end}.photo-hint{display:none}
+ .room-extra{left:auto;right:12px;bottom:auto;top:calc(172px + var(--safe-t));flex-direction:column}
+ .room-extra .button{width:40px;padding:0;justify-content:center}.room-extra .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+ .away-card{top:calc(130px + var(--safe-t))}
+}

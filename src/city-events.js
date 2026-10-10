@@ -262,6 +262,7 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
  function setQuality({fireworks=fw.slots}={}){fwSlots=Math.max(1,Math.min(fw.slots,fireworks|0));fw.points.geometry.setDrawRange(0,fwSlots*FW_PER);}
  function decorate(next,events){
   buildings=Array.isArray(next)?next:[];const d=decorations(buildings,events),items=decorItems(d,buildings),coin=coinPlan(buildings);
+  drawCheers();
   const key=JSON.stringify([items,coin]);if(key===decorKey)return;decorKey=key;
   items.boxes.push(...coin.boxes);items.boxes.length=Math.min(items.boxes.length,decorBoxes.instanceMatrix.count);
   coin.beacons.forEach((b,i)=>{m4.compose(v3.set(b.x,b.y,b.z),q.identity(),s3.setScalar(1));beacons.setMatrixAt(i,m4);});beacons.count=coin.beacons.length;beacons.instanceMatrix.needsUpdate=true;beacons.visible=night&&beacons.count>0;
@@ -390,10 +391,53 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
   fw.uniforms.uTime.value=cf.uniforms.uTime.value=T;fw.uniforms.uScale.value=cf.uniforms.uScale.value=beaconPx.value=pxPerUnit;coneTime.value=beaconTime.value=reducedMotion?0:T;
   if(party){if(T>party.end){party=null;crowd.visible=false;crowd.count=0;}else drawParty(T);}
   if(roam)stepRoam(dt,T);
+  stepBuffs(T);
  }
- return {root,decorate,celebrate,update,setQuality,visit:startVisit,explore:startExplore,cancelVisit:endRoam,endRoam,
+ // ---------- Omikuji buffs and ema cheers (rituals.js via main.js; cosmetic, nothing of value) ----------
+ // Buffs: a soft additive halo on a resident's figure (glow), with petals or confetti dots orbiting it. Yours is larger
+ // and rides with your roaming model while it is out. One instanced camera-facing quad, one draw call.
+ const BUFF_MAX=64,buffAttr=new THREE.InstancedBufferAttribute(new Float32Array(BUFF_MAX*2),2),buffGeo=new THREE.PlaneGeometry(1,1);buffGeo.setAttribute('aBuff',buffAttr);
+ // No depth test: half the residents stand on the street side the camera does not see; the aura shows through the block.
+ const buffTime={value:0},buffs=new THREE.InstancedMesh(buffGeo,new THREE.ShaderMaterial({uniforms:{uTime:buffTime,uPx:beaconPx},transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending,
+  vertexShader:`uniform float uPx;attribute vec2 aBuff;varying vec2 vUv;varying float vKind;void main(){vUv=uv;vKind=aBuff.x;
+ vec4 mv=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);mv.xy+=position.xy*aBuff.y*max(2.4,22./max(uPx,.01));mv.z+=1.2;gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`uniform float uTime;varying vec2 vUv;varying float vKind;void main(){vec2 p=(vUv-.5)*2.;float d=length(p);if(d>1.)discard;
+ vec3 col=vKind<.5?vec3(1.,.78,.42):vKind<1.5?vec3(1.,.62,.78):vec3(.62,.85,1.);float halo=pow(1.-d,2.)*.55,dots=0.;
+ if(vKind>.5){float n=7.,s=6.2831/n,a=atan(p.y,p.x)+uTime*(vKind<1.5?.6:1.3),k=floor(a/s),aa=mod(a,s)-s*.5,r=.64+.08*sin(uTime*2.+k);
+  dots=smoothstep(.14,.05,length(vec2(cos(aa),sin(aa))*d-vec2(r,0.)));if(vKind>1.5)col=mix(col,.5+.5*cos(6.2831*(k/n+vec3(0.,.33,.67))),dots);}
+ gl_FragColor=vec4(col*(halo+dots*.9),1.);}`}),BUFF_MAX);
+ buffs.count=0;buffs.frustumCulled=false;buffs.renderOrder=4;buffs.name='buffs';root.add(buffs);let buffList=[],mineBuff=-1;
+ const BUFF_CODE={glow:0,petals:1,confetti:2};
+ function setBuffs(list){buffList=(Array.isArray(list)?list:[]).filter(b=>b&&BUFF_CODE[b.kind]!==undefined&&Number.isFinite(b.x)&&Number.isFinite(b.z)).slice(0,BUFF_MAX);mineBuff=buffList.findIndex(b=>b.mine);
+  buffList.forEach((b,i)=>{m4.makeTranslation(b.x,1.05,b.z);buffs.setMatrixAt(i,m4);buffAttr.setXY(i,BUFF_CODE[b.kind],b.mine?1.5:1);});
+  buffs.count=buffList.length;buffs.instanceMatrix.needsUpdate=true;buffAttr.needsUpdate=true;}
+ // Cheers: a small paper tag "応援 ♥ N" above each thinking site with cheers (one atlas of 8 tiles, one draw call).
+ const CH_W=256,CH_H=96,CH_N=8,cheerAttr=new THREE.InstancedBufferAttribute(new Float32Array(CH_N),1),cheerGeo=new THREE.PlaneGeometry(1,1);cheerGeo.setAttribute('aTile',cheerAttr);
+ let cheerCtx=null,cheerTex=null,cheerKey='',cheerData=[];
+ if(typeof document!=='undefined'){const c=document.createElement('canvas');c.width=CH_W;c.height=CH_H*CH_N;cheerCtx=c.getContext('2d');cheerTex=new THREE.CanvasTexture(c);}   // raw sRGB in, raw out: the shader writes the canvas colours as they are
+ const cheers=new THREE.InstancedMesh(cheerGeo,new THREE.ShaderMaterial({uniforms:{uMap:{value:cheerTex},uPx:beaconPx},transparent:true,depthWrite:false,
+  vertexShader:`uniform float uPx;attribute float aTile;varying vec2 vUv;void main(){vUv=vec2(uv.x,(uv.y+${CH_N-1}.-aTile)/${CH_N}.);
+ vec4 mv=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);float k=max(1.,34./max(uPx*2.6,.01));mv.xy+=position.xy*vec2(2.6,.975)*k;mv.z+=1.;gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`uniform sampler2D uMap;varying vec2 vUv;void main(){vec4 c=texture2D(uMap,vUv);if(c.a<.05)discard;gl_FragColor=c;}`}),CH_N);
+ cheers.count=0;cheers.frustumCulled=false;cheers.name='cheers';root.add(cheers);
+ function drawCheers(){
+  const list=cheerData.map(c=>({...c,b:buildings.find(b=>b.plotId===c.plotId&&b.type==='project'&&b.phase==='thinking')})).filter(c=>c.b&&c.cheers>0).slice(0,CH_N);
+  const key=JSON.stringify(list.map(c=>[c.plotId,c.cheers]));if(key===cheerKey)return;cheerKey=key;let n=0;
+  for(const c of list){const s=siteOf(c.b,buildings);if(!s)continue;
+   if(cheerCtx){const g=cheerCtx,y=n*CH_H;g.clearRect(0,y,CH_W,CH_H);g.fillStyle='#F4EFE6';rrect(g,4,y+8,CH_W-8,CH_H-16,18);g.fill();g.fillStyle='#FB752B';g.fillRect(4,y+CH_H-22,CH_W-8,6);
+    g.fillStyle='#1B1A17';g.textBaseline='middle';g.textAlign='left';g.font='700 30px "Hiragino Sans","Noto Sans JP",sans-serif';g.fillText('応援',20,y+CH_H/2-3);
+    g.textAlign='right';g.font='800 38px Archivo, "Arial Black", sans-serif';g.fillStyle='#E85F17';g.fillText(`♥ ${c.cheers>999?'999+':c.cheers}`,CH_W-20,y+CH_H/2-2);}
+   m4.makeTranslation(s.lot.x,s.top+4.9,s.lot.z);cheers.setMatrixAt(n,m4);cheerAttr.setX(n,n);n++;}
+  cheers.count=n;cheers.instanceMatrix.needsUpdate=true;cheerAttr.needsUpdate=true;if(cheerTex)cheerTex.needsUpdate=true;
+ }
+ function setCheers(list){cheerData=(Array.isArray(list)?list:[]).filter(c=>c&&c.plotId).map(c=>({plotId:c.plotId,cheers:Math.max(0,Number(c.cheers)||0)}));drawCheers();}
+ // A short confetti shower at a spot (a fresh omikuji); never with reduced motion. Uses the second party slot.
+ function shower(x,z){if(reducedMotion)return;cf.uniforms.uShower.value[1].set(x,3.2,z,clock()+.1);cf.points.visible=true;}
+ function stepBuffs(T){buffTime.value=reducedMotion?0:T;if(mineBuff>=0&&roam?.char){const p=roam.char.root.position;m4.makeTranslation(p.x,p.y+1.05,p.z);buffs.setMatrixAt(mineBuff,m4);buffs.instanceMatrix.needsUpdate=true;}
+  else if(mineBuff>=0&&buffs.userData.away){const b=buffList[mineBuff];m4.makeTranslation(b.x,1.05,b.z);buffs.setMatrixAt(mineBuff,m4);buffs.instanceMatrix.needsUpdate=true;}buffs.userData.away=mineBuff>=0&&!!roam?.char;}
+ return {root,decorate,celebrate,setBuffs,setCheers,shower,update,setQuality,visit:startVisit,explore:startExplore,cancelVisit:endRoam,endRoam,
   // Additive sparks vanish on the pale day sky, so daytime fireworks blend normally.
   setNight(v){night=!!v;cones.visible=night&&cones.count>0;beacons.visible=night&&beacons.count>0;fw.points.material.blending=night?THREE.AdditiveBlending:THREE.NormalBlending;},
   get visiting(){return roam?.mode==='visit';},get roaming(){return roam?.mode||null;},get party(){return party;},get visitor(){return roam?.char?.root||null;},get pet(){return roam?.pet?.root||null;},
-  stats:()=>({points:fw.points.geometry.attributes.position.count+cf.points.geometry.attributes.position.count,signs:signs?.count||0,boxes:decorBoxes.count,cones:cones.count,coins:coins?.count||0,coinTiles:coinTiles.size,beacons:beacons.count})};
+  stats:()=>({points:fw.points.geometry.attributes.position.count+cf.points.geometry.attributes.position.count,signs:signs?.count||0,boxes:decorBoxes.count,cones:cones.count,coins:coins?.count||0,coinTiles:coinTiles.size,beacons:beacons.count,buffs:buffs.count,cheers:cheers.count})};
 }

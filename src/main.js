@@ -27,11 +27,18 @@ import {createExplorer,cityPois} from './explore.js';
 import {kanjiOf,codeOf,addressCode} from './districts-kanji.js';
 import {icon,cta} from './icons.js';
 import {createGuest} from './guest.js'; // guest:
+import {createCalendarUI} from './calendar-ui.js';
+import {createRituals,createShrinePicks,shrineSpots} from './rituals.js';
+import {createDiary,tokyoDate,shouldToastDiary} from './diary.js';
+import {createPhoto,serverCardUrl} from './photo.js';
+import {startTelemetry} from './telemetry.js';
+import {awayCard} from './away.js';
+import {cityLayout} from './lots.js';
 import {createGovernor,settingsFor,startLevel,gpuName,createFuse,packResume,unpackResume,safeStore,timeoutSignal,nextPollDelay,GOV,RESUME_KEY,RESUME_MAX_AGE} from './quality.js';
 // Never a white page: an uncaught error or rejection is one quiet console line. If the city never drew its first frame
 // (no WebGL, a module that failed), the loading screen says so instead of spinning forever.
-let booted=false;
-addEventListener('error',e=>{if(!e.error&&!e.message)return;console.warn('[city] uncaught:',e.message||e.error);e.preventDefault();
+let booted=false,telemetry=null;   // telemetry: startTelemetry() below; an uncaught error marks the session as crashed
+addEventListener('error',e=>{if(!e.error&&!e.message)return;telemetry?.markCrash();console.warn('[city] uncaught:',e.message||e.error);e.preventDefault();
   if(!booted){const t=document.getElementById('loading-text');if(t)t.textContent='The 3D city could not start in this browser (WebGL may be off). Reload, or try another browser.';}});
 addEventListener('unhandledrejection',e=>{console.warn('[city] unhandled:',e.reason?.message||e.reason);e.preventDefault();});
 
@@ -42,6 +49,8 @@ let roomView=null,cityBuildings=[],cityRenderer,world=null,me=null,lookOptions=n
 const resident=()=>me?.resident||null;
 let selectedPlace = places[0], night = false, follow = false, currentDialog = null, previousFocus = null;
 let cityTour=null,cityGreen=null;
+// Rituals, calendar, diary, photo mode (section 'Rituals' below); roomPlot = the apartment whose room is open.
+let calendar=null,rituals=null,diary=null,photo=null,shrinePicks=null,myBuff=null,roomPlot=null;const shrineLabels=[];
 // Quality governor state (quality.js; section 'Quality governor' below). Q = the current level's settings.
 let governor=null,Q=settingsFor(3,{mobile,dpr:devicePixelRatio||1}),ratioDirty=false,glLost=false;
 // City events: launch parties, the accepted-idea flash, and a client-only visit followed by the camera.
@@ -351,6 +360,10 @@ function showPlace(p) {
   $('detail-hanko').hidden=!seal;if(seal){$('detail-hanko').className='hanko'+(seal[2]?' '+seal[2]:'');$('detail-hanko').firstElementChild.textContent=seal[0];$('detail-hanko').lastElementChild.textContent=seal[1];}
   $('detail-disclosure').textContent=project?'Creator fees are fixed at launch: 80% to the idea author, 20% to SUB-01. The token is created by the author\'s own wallet signature.':b?'':'Example place. Real projects appear when someone drops an idea in SUB-01\'s mailbox.';
   $('takeover-button').hidden=true;$('detail-roles').hidden=true;
+  // Rituals: build-or-pass on a thinking public project, SUB-01's diary on his desk, the server's share card.
+  const predictable=project&&b.phase==='thinking'&&!b.private;$('detail-predict').hidden=true;
+  if(predictable)rituals?.predict($('detail-predict'),{ideaId:ideaIdOf(b),own:!!p.mine});else rituals?.predict(null,{ideaId:null});
+  $('detail-diary').hidden=p.id!=='home';const card=serverCardUrl(b,p.id);$('detail-share').hidden=!card;if(card)$('detail-share').href=card;
   if(project&&b.slug)loadRoles(b);$('detail-name').textContent=p.name;$('detail-category').textContent=p.kind;
   $('detail-description').textContent=p.description;$('detail-state').textContent=p.status;
   $('detail-icon').textContent=p.symbol;$('detail-icon').style.setProperty('--c',p.color);
@@ -402,7 +415,7 @@ function accountChip(name){const b=$('account-button'),nm=Object.assign(document
 async function refreshMe(){const before=knownStatus;try{me=await getJSON('/api/me');if(typeof me?.user!=='object')me=null;}catch(err){if(!(err instanceof ApiError)&&me)return;me=null;}
   // Tell the author when SUB-01 decides or a stage changes; private ideas never reach the public news.
   knownStatus=Object.fromEntries((me?.ideas||[]).map(i=>[i.id,i.status]));
-  if(before)for(const i of me?.ideas||[])if(before[i.id]&&before[i.id]!==i.status)notify(i.status==='declined'?`SUB-01 passed on “${i.title}”. ${i.status_note?.split(' [')[0]||''}`:`“${i.title}”: ${IDEA_STATUS[i.status]||i.status}.`);accountChip(me?.user?(resident()?.name||short(me.user.wallet)):null);renderList();updateResident();if(!resident())stopExplore();}
+  if(before)for(const i of me?.ideas||[])if(before[i.id]&&before[i.id]!==i.status)notify(i.status==='declined'?`SUB-01 passed on “${i.title}”. ${i.status_note?.split(' [')[0]||''}`:`“${i.title}”: ${IDEA_STATUS[i.status]||i.status}.`);accountChip(me?.user?(resident()?.name||short(me.user.wallet)):null);renderList();updateResident();if(!resident())stopExplore();rituals?.syncAccount();updateBuffs();}
 function openCreator(next){
  if(!lookOptions){notify('The city server is offline.');return;}
  const r=resident(),look=r?.look||{};$('resident-name').value=r?.name||'';$('resident-error').textContent='';
@@ -444,14 +457,15 @@ for(const side of ['prev','next'])$('eki-'+side).onclick=()=>{$('district-select
 $('home-view').onclick=()=>focusPlace(places[0]);
 $('tower-view').onclick=()=>focusPlace(tower);
 $('idea-close').onclick=$('detail-close').onclick=closeDialog;
-for(const id of ['idea-backdrop','detail-backdrop','signin-backdrop','resident-backdrop']) $(id).onclick=e=>{if(e.target===$(id))closeDialog();};
+for(const b of document.querySelectorAll('[data-close]'))b.onclick=closeDialog;
+for(const id of ['idea-backdrop','detail-backdrop','signin-backdrop','resident-backdrop','calendar-backdrop','shrine-backdrop','ledger-backdrop','diary-backdrop','about-backdrop','postcard-backdrop']) $(id).onclick=e=>{if(e.target===$(id))closeDialog();};
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape')closeDialog();
+  if(e.key==='Escape'){if(!currentDialog&&photo?.on)photo.exit();closeDialog();}
   if(e.key==='Tab'&&currentDialog){const nodes=[...currentDialog.querySelectorAll('button,input,textarea,select')].filter(n=>!n.disabled);const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){last.focus();e.preventDefault();}else if(!e.shiftKey&&document.activeElement===last){first.focus();e.preventDefault();}}
 });
 $('visit-button').onclick=()=>{
  const p=selectedPlace,b=p?.building;closeDialog();
- if(b?.type==='apartment'){stopExplore();openRoom({plotId:p.id,mine:p.mine,me,onEdit:()=>openCreator()});return;}
+ if(b?.type==='apartment'){stopExplore();roomPlot=p.id;openRoom({plotId:p.id,mine:p.mine,me,onEdit:()=>openCreator()});return;}
  if(p.ideaId){open(p.slug?`/projects/${encodeURIComponent(p.slug)}/review`:`/ideas/${encodeURIComponent(p.ideaId)}`,'_blank','noopener');return;}
  if(b?.type==='project'){if(b.slug)open(`/projects/${encodeURIComponent(b.slug)}${p.mine?'/review':''}`,'_blank','noopener');else focusPlace(p);return;}
  if(cityPlots.some(c=>c.id===p.id)){openBuildForm(p);return;}
@@ -536,7 +550,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.cli
 renderer.domElement.addEventListener('pointerup',e=>{
   if(!down||Math.hypot(e.clientX-down.x,e.clientY-down.y)>6)return;
   pointer.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);if(roomView){roomView.click(pointer);return;}raycaster.setFromCamera(pointer,camera);
-  const hit=raycaster.intersectObjects(interactive,false)[0];if(hit&&cityRenderer?.select(hit))return;if(hit?.object.userData.place){showPlace(hit.object.userData.place);return;}
+  const hit=raycaster.intersectObjects(interactive,false)[0];const shrine=shrinePicks?.spotOf(hit);if(shrine){rituals?.openShrine('omikuji',shrine);return;}if(hit&&cityRenderer?.select(hit))return;if(hit?.object.userData.place){showPlace(hit.object.userData.place);return;}
   // Explore mode: a tap on the ground walks the resident there along the streets; a second tap within 350 ms runs.
   if(explorer&&raycaster.ray.intersectPlane(groundPlane,tapPoint)){const t=performance.now(),run=t-lastTap.t<350&&Math.hypot(e.clientX-lastTap.x,e.clientY-lastTap.y)<40;
    lastTap.t=run?0:t;lastTap.x=e.clientX;lastTap.y=e.clientY;if(explorer.tap(tapPoint,{run})&&cityEvents.visitor){followObj=cityEvents.visitor;follow=true;cameraTween=null;}}
@@ -553,11 +567,14 @@ for(const d of districts){const element=document.createElement('button');element
 // Shared world: the server is the source of truth; the city redraws only when something changed.
 const residents=addResidents(scene),worldLabels=[],cityEvents=createCityEvents(scene,{mobile,reducedMotion,gpu:crowdGPU});
 // Rooms borrow this renderer; the city stops updating while one is open.
-attachRoomHost({template,notify,openIdea(){openBuildForm();},setView(view){
+attachRoomHost({template,notify,openIdea(){openBuildForm();},
+  // Rituals in a room (room.js): a postcard button, SUB-01's diary by the desk, the 'while you were away' card in your own room.
+  photo(){photo?.enter();},openDiary(){diary?.open();},awayCard(){return awayCard(getJSON);},
+  setView(view){
   // Memory audit: room.js's dispose() clears its scene but not its sun's shadow map (a 512² render target per visit
   // stayed on the GPU). The host frees the closing room's light shadow maps here; room.js runs its dispose() right after.
   if(!view&&roomView)roomView.scene.traverse(n=>{if(n.isLight&&n.shadow?.map)n.shadow.dispose();});
-  roomView=view;controls.enabled=!view;governor?.grace(GOV.grace.room,performance.now());if(view)fuses.room.reset();else ratioDirty=true;
+  if(!view){roomPlot=null;photo?.exit();}roomView=view;controls.enabled=!view;governor?.grace(GOV.grace.room,performance.now());if(view)fuses.room.reset();else ratioDirty=true;
   document.body.classList.toggle('in-room',!!view);if(view)view.resize(innerWidth/innerHeight);}});
 function residentList(){return cityBuildings.filter(b=>b.type==='apartment').map(b=>{const f=frontOf(b.plotId);const look=b.resident.look||{};return f&&{x:f.x+1.2,z:f.z,look,key:b.plotId+JSON.stringify(look)};}).filter(Boolean);}
 function setServer(up){if(up===serverUp)return;serverUp=up;$('server-status').textContent=up?'LIVE CITY':'SERVER OFFLINE';$('activity-label').textContent=up?'SUB-01 · LIVE':'SUB-01 · OFFLINE';$('server-badge').classList.toggle('is-offline',!up);if(!up)$('activity-text').textContent='The city server is offline. Nothing here is live right now.';}
@@ -578,7 +595,9 @@ async function pollWorld(){
   for(const l of worldLabels){l.element.remove();labels.splice(labels.indexOf(l),1);}worldLabels.length=0;
   for(const b of items.filter(b=>b.type==='project')){const plot=cityPlots.find(p=>p.id===b.plotId);addLabel({...placeFor(plot),name:b.ticker?`${b.name} · $${b.ticker}`:b.name,color:b.phase==='open'?'#ffcf6e':'#fb752b'},(cityRenderer.heightOf(b.plotId)??3)+(b.phase==='open'?2.6:1.4));worldLabels.push(labels.at(-1));}
   if(opened.length&&worldKey&&$('activity-text'))notify(`${opened[0].name} just opened its doors.`);
+  updateShrines();
  }
+ updateBuffs();updateCheers();
  cityEvents.decorate(cityBuildings,world.events);
  for(const e of freshEvents(world.events,seenEvents,Number(world.now)||Date.now()))cityEvent(e);
  for(const b of flipped)party(b.plotId);
@@ -705,6 +724,66 @@ window.__city={quality,get scene(){return scene;},get green(){return cityGreen?.
    endRoam(){cityEvents.endRoam();},get roaming(){return cityEvents.roaming;},
    // Textures the open room's scene draws (uuid, kind, size): compared across opens to find per-room textures.
    roomTextures(){const out=new Map();roomView?.scene.traverse(n=>{for(const m of [n.material].flat())for(const k of ['map','emissiveMap','alphaMap'])if(m?.[k])out.set(m[k].uuid,`${m[k].uuid.slice(0,6)} ${m[k].constructor.name} ${m[k].image?.width}x${m[k].image?.height} ${n.name||n.type}`);});return [...out.values()];}}};
+// ---------- Rituals: calendar, shrine (omikuji, ema, predictions, ledger), diary, photo mode, telemetry, About ----------
+// calendar-ui.js, rituals.js, diary.js, photo.js, telemetry.js, away.js. Nothing here awards anything of value.
+const todayJST=()=>tokyoDate(Date.now());
+// Fly to an address and open its card (calendar links, ?focus= share links).
+function focusPlot(plotId){const f=frontOf(plotId);if(f){cityTour=null;follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(f.x,2,f.z),zoom:camera.zoom,endZoom:mobile?.8:1.3,elapsed:0};}showPlace({id:plotId});}
+// A world project's idea id: the snapshot's own field when the server sends it, the author's plot record, or the ema board (slug, then title).
+function ideaIdOf(b){if(!b)return null;const w=world?.plots?.find(p=>p.plotId===b.plotId)?.project?.ideaId,own=me?.plots?.find(p=>p.plotId===b.plotId)?.ideaId;
+  if(w||own)return w||own;const e=rituals?.ema||[];return (b.slug&&e.find(x=>x.slug===b.slug)||e.find(x=>x.title===b.name))?.ideaId||null;}
+function ensureResident(next){if(!me?.user){guest.requireWallet('claim',()=>ensureResident(next));return;}if(!resident()){openCreator(next);return;}next?.();}
+// Buffs: every resident's from /api/world (kind only), yours from your own slip at once (until midnight JST).
+function updateBuffs(){if(myBuff&&Date.now()>myBuff.until)myBuff=null;const mine=resident()?.plotId;
+  cityEvents.setBuffs(cityBuildings.filter(b=>b.type==='apartment').map(b=>{const f=frontOf(b.plotId),own=b.plotId===mine,kind=own&&myBuff?myBuff.kind:b.resident?.buff;
+   return f&&kind&&kind!=='none'&&{x:f.x+1.2,z:f.z,kind,mine:own};}).filter(Boolean));}
+// Cheer counters over thinking sites: the ema board's counts, matched to the building like ideaIdOf.
+function updateCheers(){const e=rituals?.ema||[];if(!e.length){cityEvents.setCheers([]);return;}
+  cityEvents.setCheers(cityBuildings.filter(b=>b.type==='project'&&b.phase==='thinking'&&!b.private).map(b=>{const id=ideaIdOf(b),x=e.find(r=>r.ideaId===id);return x&&{plotId:b.plotId,cheers:x.cheers};}).filter(Boolean));}
+// Shrines: the open-ground spots lots.js lays out as 'shrine' (vacant plots turn into shrines or coin parking).
+function updateShrines(){if(!shrinePicks)return;const spots=shrineSpots(cityLayout(cityBuildings));shrinePicks.set(spots);
+  for(const l of shrineLabels){l.element.remove();const i=labels.indexOf(l);if(i>=0)labels.splice(i,1);}shrineLabels.length=0;
+  for(const s of shrinePicks.spots){const a=shrinePicks.labelAt(s),element=Object.assign(document.createElement('button'),{className:'world-label shrine-label',type:'button'});
+   element.append(Object.assign(document.createElement('i'),{}),document.createTextNode('SHRINE'),Object.assign(document.createElement('em'),{textContent:'⛩'}));element.onclick=()=>rituals.openShrine('omikuji',s);
+   $('labels').append(element);const l={element,position:new THREE.Vector3(a.x,a.y,a.z)};labels.push(l);shrineLabels.push(l);}}
+shrinePicks=createShrinePicks(scene,interactive);updateShrines();
+rituals=createRituals({getJSON,api,me:()=>me,guest,openDialog,closeDialog,notify,ensureResident,reducedMotion,today:todayJST,telemetryLine:()=>telemetry?.line()||'',
+  onFortune(f,{fresh}){myBuff=f.buff.kind!=='none'&&f.buff.until>Date.now()?{kind:f.buff.kind,until:f.buff.until}:null;updateBuffs();calendar?.render();
+   if(fresh&&myBuff){const at=cityEvents.visitor?.position||frontOf(resident()?.plotId);if(at)cityEvents.shower(at.x,at.z);}},
+  onEma(){updateCheers();}});
+calendar=createCalendarUI({getJSON,openDialog,closeDialog,notify,omikuji:()=>rituals.chip(),onShrine:()=>rituals.openShrine('omikuji'),
+  onFocus:focusPlot});
+diary=createDiary({getJSON,openDialog,today:todayJST});
+photo=createPhoto({openDialog,closeDialog,notify,
+  // One synchronous render, read in the same task by photo.js (the drawing buffer is not preserved).
+  capture(){if(roomView)renderer.render(roomView.scene,roomView.camera);else renderer.render(scene,camera);return renderer.domElement;},
+  sky:()=>$('world').style.background||getComputedStyle($('world')).backgroundImage,
+  context(){const plot=roomPlot&&cityPlots.find(p=>p.id===roomPlot);
+   if(roomView&&plot){const b=cityBuildings.find(x=>x.plotId===roomPlot);return {kind:'room',name:b?.name,district:plot.districtName?.split(' / ')[0],plotId:roomPlot};}
+   // The last opened place, if the camera is still looking at it; else the nearest district.
+   const p=selectedPlace,b=p?.building,t=controls.target,near=p?.x!==undefined&&Math.hypot(p.x-t.x,p.z-t.z)<24;
+   if(near&&b?.type==='project'&&!b.private)return {kind:'building',name:b.name,ticker:b.ticker,phase:b.phase,slug:b.slug};
+   if(near&&b?.type==='apartment')return {kind:'room',name:b.name,district:p.districtName?.split(' / ')[0],plotId:p.id};
+   const d=districts.reduce((a,x)=>Math.hypot(x.x-t.x,x.z-t.z)<Math.hypot(a.x-t.x,a.z-t.z)?x:a,districts[0]);return {kind:'city',district:d?.name.split(' / ')[0]};},
+  enter(){closeDialog();cityTour=null;cameraTween=null;},exit(){}});
+control('calendar-button',icon('cal'),()=>calendar.open()).title='City calendar';
+control('diary-button',icon('book'),()=>diary.open()).title="SUB-01's diary";
+control('photo-button',icon('camera'),()=>photo.toggle()).title='Photo mode: take a postcard';
+for(const [id,text] of [['calendar-button','City calendar'],['diary-button',"SUB-01's diary"],['photo-button','Photo mode: take a postcard']])label($(id),text);
+$('about-button').onclick=()=>rituals.openAbout();
+$('detail-diary').onclick=()=>{closeDialog();diary.open();};
+// The activity bar names the next event; countdowns tick every 30 s; the calendar refreshes every minute, the ema board every 2.
+const nextCaption=Object.assign(document.createElement('span'),{className:'activity-next'});$('activity-label').after(nextCaption);
+function tickRituals(){calendar.render();const t=calendar.next();nextCaption.textContent=t?` · ${t}`:'';updateBuffs();
+  // 23:00 Tokyo: one quiet toast a day that SUB-01 wrote in his diary (not over a dialog, a room, photo mode or another toast).
+  const c=tokyoClock(Date.now()),today=todayJST();
+  if(shouldToastDiary({hours:c.hours,today,last:local.get('sub01.diary.toast'),busy:document.hidden||!!currentDialog||!!roomView||photo.on||!$('toast').hidden})){local.set('sub01.diary.toast',today);notify('SUB-01 wrote in his diary.');}}
+setInterval(tickRituals,3e4);
+telemetry=startTelemetry(()=>({phone,gpu:GPU,level:governor.level,ema:governor.ema,contextLost:glLosses>0}));
+window.__city.rituals={get calendar(){return calendar;},get rituals(){return rituals;},get diary(){return diary;},get photo(){return photo;},get telemetry(){return telemetry;},get shrines(){return shrinePicks.spots;},get buff(){return myBuff;}};
+// Share pages (/p/<slug>, /r/<plotId>) land on /?focus=<plotId>: that plot's card opens once the world is in.
+function focusFromUrl(){const q=new URLSearchParams(location.search),id=q.get('focus');if(!id)return;q.delete('focus');history.replaceState(null,'',location.pathname+(q.size?'?'+q:'')+location.hash);
+  if(cityPlots.some(p=>p.id===id))focusPlot(id);}
 const clock=new THREE.Clock();let lastRender=0,renderedAt=-1;
 // Per-frame subsystems run behind fuses (quality.js): three errors in a row switch off only that subsystem.
 const fuses=Object.fromEntries(['crowd','weather','critters','events','explore','room'].map(n=>[n,createFuse(n)]));
@@ -743,6 +822,7 @@ async function initialize(){try{
   const first=Promise.all([refreshMe(),pollWorld()]).catch(err=>console.warn('[city] first poll',err?.message||err));
   await Promise.race([first,new Promise(r=>setTimeout(r,2500))]);
   first.then(()=>{pollLoop(pollWorld,()=>nextPollDelay(POLL.world,worldFails));pollLoop(()=>me?.user&&serverUp?refreshMe():null,()=>POLL.me);});
+  first.then(()=>{focusFromUrl();calendar.refresh().then(tickRituals);rituals.loadEma();pollLoop(()=>calendar.refresh().then(tickRituals),()=>6e4);pollLoop(()=>rituals.loadEma(),()=>12e4);});
   first.then(()=>{window.__city.guest=guest;return guest.boot();}).catch(err=>console.warn('[city] guest',err?.message||err)); // guest:
   $('loading').classList.add('is-ready');
   // Browser-visible diagnostics are limited to rendering; no wallet or account data.

@@ -54,6 +54,10 @@
     <symbol id="i-pc" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="11.5" rx="2"/><path d="M9 20h6M12 16v4"/></symbol>
     <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H17v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><circle cx="16" cy="13.5" r="1.2"/></symbol>
     <symbol id="i-brush" viewBox="0 0 24 24"><path d="M14.5 4.5l5 5-8 8-5-5zM6.5 12.5c-2 0-3 1.5-3 3.5 0 1.5-.5 2.5-1 3 3 .5 6.5-.5 6.5-3.5"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5A2 2 0 0 1 6 6.5h2.2l1.5-2h4.6l1.5 2H18a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.6" r="3.4"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.2"/></symbol>
+    <symbol id="i-torii" viewBox="0 0 24 24"><path d="M3.5 6c3 1 14 1 17 0M5 9.5h14M7.5 7v13M16.5 7v13"/></symbol>
   </defs></svg>
   <div id="app">
     <div id="world" aria-label="Interactive 3D neighborhood"></div>
@@ -61,6 +65,7 @@
     <header class="topbar">
       <a class="brand" href="#" aria-label="SUB-01 neighborhood home"><img src="/brand/mark-small.svg" alt="" width="40" height="40" class="brand-mark"><span class="brand-name">SUBZERONE<small>TOKYO / YOUR CITY</small></span></a>
       <div class="preview-badge" id="server-badge"><i></i><span id="server-status">CONNECTING</span></div>
+      <button class="icon-button about-button" id="about-button" type="button" aria-label="About SUB-01" title="About SUB-01"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg></button>
       <button class="account-chip" id="account-button" type="button"><svg class="i" aria-hidden="true"><use href="#i-wallet"/></svg><span class="nm">Sign in</span></button>
       <button class="button button-orange" id="idea-button" type="button"><span class="lbl">Drop an idea</span><span class="arw ne"><svg class="i" aria-hidden="true"><use href="#i-ne"/></svg></span></button>
     </header>
@@ -114,9 +119,9 @@
         <h2 id="detail-name"></h2><p id="detail-description"></p>
         <div class="detail-stats"><div><small>STATE</small><strong id="detail-state"></strong></div><div><small>DEVELOPER</small><strong>SUB-01</strong></div><div id="detail-fees-box"><small>CREATOR FEES</small><strong id="detail-fees">80% author · 20% SUB&#8209;01</strong></div></div>
         <div class="progress-head" id="detail-progress-head" hidden><span class="eyebrow">Build progress</span><span class="eyebrow" id="detail-pct"></span></div>
-        <div class="progress" id="detail-progress" hidden><i></i></div><div id="detail-roles" class="roles" hidden></div>
+        <div class="progress" id="detail-progress" hidden><i></i></div><div id="detail-roles" class="roles" hidden></div><div id="detail-predict" class="predict" hidden></div>
         <div class="milestones" id="detail-milestones"><span>01 Idea</span><span>02 Build</span><span>03 Launch</span></div>
-        <button class="button button-orange" id="visit-button" type="button">Visit this place<span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button><button class="button button-ghost" id="takeover-button" type="button" hidden>Propose a community takeover</button>
+        <button class="button button-orange" id="visit-button" type="button">Visit this place<span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button><button class="button button-ghost" id="takeover-button" type="button" hidden>Propose a community takeover</button><button class="button button-ghost" id="detail-diary" type="button" hidden><svg class="i lead" aria-hidden="true"><use href="#i-book"/></svg>Read today's diary</button><a class="link-button detail-share" id="detail-share" target="_blank" rel="noopener" hidden>Share card ↗</a>
         <p class="disclosure" id="detail-disclosure"></p>
       </section>
     </div>
@@ -165,6 +170,54 @@
             <p class="disclosure">Your name and look are public. Your wallet address is never shown in the city.</p>
           </div>
         </form>
+      </section>
+    </div>
+    <div class="dialog-backdrop" id="calendar-backdrop" hidden>
+      <section class="idea-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="calendar-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow" id="calendar-eyebrow">CITY CALENDAR · 暦</span><h2 id="calendar-title">Today in <em>Tokyo.</em></h2><div class="cal-theme" id="calendar-theme"></div>
+        <div class="sheet-body" id="calendar-body"></div>
+      </section>
+    </div>
+    <div class="dialog-backdrop" id="shrine-backdrop" hidden>
+      <section class="idea-card sheet-card shrine-card" role="dialog" aria-modal="true" aria-labelledby="shrine-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow" id="shrine-eyebrow">NEIGHBORHOOD SHRINE · 神社</span><h2 id="shrine-title">The <em>shrine.</em></h2><div class="sheet-tabs" id="shrine-tabs"></div>
+        <div class="sheet-body" id="shrine-body"></div>
+      </section>
+    </div>
+    <div class="dialog-backdrop" id="ledger-backdrop" hidden>
+      <section class="idea-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="ledger-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow" id="ledger-eyebrow">VOTE LEDGER · 投票台帳</span><h2 id="ledger-title">Every vote, <em>chained.</em></h2>
+        <div class="sheet-body" id="ledger-body"></div>
+      </section>
+    </div>
+    <div class="dialog-backdrop" id="diary-backdrop" hidden>
+      <section class="idea-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="diary-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow" id="diary-eyebrow">SUB-01'S DIARY · 日報</span><h2 id="diary-title">Dear <em>diary.</em></h2><div class="diary-nav-row" id="diary-nav"></div>
+        <div class="sheet-body" id="diary-body"></div>
+      </section>
+    </div>
+    <div class="dialog-backdrop" id="about-backdrop" hidden>
+      <section class="idea-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="about-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow" id="about-eyebrow">ABOUT SUB-01 · 開示</span><h2 id="about-title">What SUB-01 <em>is.</em></h2>
+        <div class="sheet-body" id="about-body"></div>
+      </section>
+    </div>
+    <div class="dialog-backdrop" id="postcard-backdrop" hidden>
+      <section class="idea-card sheet-card postcard-card" role="dialog" aria-modal="true" aria-labelledby="postcard-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow" id="postcard-eyebrow">POSTCARD · 絵葉書</span><h2 id="postcard-title">Wish you <em>were here.</em></h2>
+        <div class="sheet-body" id="postcard-body"></div>
       </section>
     </div>
     <div class="toast" id="toast" role="status" hidden></div>
