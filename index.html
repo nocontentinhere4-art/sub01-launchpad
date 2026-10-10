@@ -58,6 +58,7 @@
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5A2 2 0 0 1 6 6.5h2.2l1.5-2h4.6l1.5 2H18a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.6" r="3.4"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.2"/></symbol>
     <symbol id="i-torii" viewBox="0 0 24 24"><path d="M3.5 6c3 1 14 1 17 0M5 9.5h14M7.5 7v13M16.5 7v13"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4.5 6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H10l-4.5 3.5v-3.5h0a2 2 0 0 1-1-1.7z"/><path d="M8.5 9.5h7M8.5 12.5h4.5"/></symbol>
   </defs></svg>
   <div id="app">
     <div id="world" aria-label="Interactive 3D neighborhood"></div>
@@ -109,6 +110,24 @@
       </div>
     </nav>
     <div class="world-hint" id="world-hint"><span class="kbd">DRAG</span> TO EXPLORE <span class="dim">·</span> <span class="kbd">CLICK</span> A BUILDING</div>
+    <!-- chat: the city's live line (src/chat.js); on phones chat.js moves #chat-form into the dock -->
+    <section class="chat" id="chat" aria-label="City chat">
+      <div class="chat-panel" id="chat-panel" hidden>
+        <header class="chat-head"><span class="eyebrow">CITY CHAT · 会話</span><span class="chat-online" id="chat-online"><i></i>connecting…</span>
+          <button class="icon-button" id="chat-close" type="button" aria-label="Close the chat" title="Close the chat"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></header>
+        <p class="chat-intro" id="chat-intro" hidden>SUB-01 is an AI character; he answers in his own time.</p>
+        <div class="chat-sub01"><span class="chat-av s" aria-hidden="true">01</span><div><span class="chat-state" id="chat-sub01-state"><i></i>Status unknown</span>
+          <p>SUB-01 answers only when he’s awake and at his desk, in his own time. Write <b>@sub01</b> or tap his chip.</p></div></div>
+        <ol class="chat-list" id="chat-list" role="log" aria-live="polite" aria-label="Last 50 messages"></ol>
+      </div>
+      <form class="chat-bar" id="chat-form" autocomplete="off">
+        <button class="icon-button chat-toggle" id="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel" aria-label="Open the city chat" title="City chat"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg></button>
+        <button class="chat-to" id="chat-to" type="button" aria-pressed="false" title="Talk to SUB-01"><span class="chat-av s" aria-hidden="true">01</span>SUB-01</button>
+        <label class="sr-only" for="chat-input">Message</label><input id="chat-input" maxlength="140" enterkeyhint="send" placeholder="Say something in Tokyo…" />
+        <button class="chat-send" id="chat-send" type="submit" aria-label="Send" title="Send"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></button>
+        <p class="chat-note" id="chat-note" role="status" hidden></p>
+      </form>
+    </section>
     <div id="loading" class="loading"><span class="loading-ring"><img src="/brand/mark-mid.svg" alt="" width="64" height="64" class="loading-mark"></span><strong>Opening Tokyo</strong><span id="loading-text">Making room for your ideas…</span></div>
     <div class="dialog-backdrop" id="detail-backdrop" hidden>
       <section class="detail-card" role="dialog" aria-modal="true" aria-labelledby="detail-name">

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {addFacade} from './facades.js';
 // Cel shading: three flat light bands instead of PBR. Cheaper than MeshStandardMaterial and reads as anime/Sims.
 // The bands are coloured (art brief 3.10): cool violet-blue shade, neutral mid, warm lit. three's toon chunk reads only the
 // red channel of the gradient map, so the chunk is patched once to read RGB; every toon material shares this one ramp.
@@ -61,10 +62,16 @@ export function toon(params={}){const {roughness,metalness,...rest}=params;const
 // (sills at `sill` = ground + 3.8, + 2.5·k; none below `streakFrom`), on vertical faces only, faded out where a streak
 // column is under a pixel wide.
 // night:true also multiplies by NIGHT_TINT.walls as the shared night amount rises (leave it off if the caller tints).
-export function wallMaterial({ground=.24,foot=1,dirt=.18,cap=.3,capDirt=.08,streak=.13,tint=.07,sill=ground+3.8,streakFrom=sill-.9,night:nightTint=false,...params}={}){
+// Wave 5A (facades.js): every wall also samples the shared facade atlas and fakes bevels / contact AO.
+//   facade   null (default) = per instance, from the geometry's `aFacade` attribute (facades.js facadeAttribute; meshes
+//            without it stay plain); or one name/code for the whole mesh, e.g. wallMaterial({facade:'tileWhite'}).
+//   edges    true (default): bevel highlight, coping, drip line, ground/corner AO. Needs the unit BoxGeometry(1,1,1)
+//            scaled per mesh or instance; pass false for other geometry.
+//   facadeY0 world y where storey-aligned patterns start (default ground + 3.0, the first upper floor).
+export function wallMaterial({ground=.24,foot=1,dirt=.18,cap=.3,capDirt=.08,streak=.13,tint=.07,sill=ground+3.8,streakFrom=sill-.9,night:nightTint=false,facade=null,edges=true,facadeY0=ground+3,...params}={}){
  const m=toon(params),u={uGround:{value:ground},uFoot:{value:foot},uDirt:{value:dirt},uCap:{value:cap},uCapDirt:{value:capDirt},uStreak:{value:streak},uTintShift:{value:tint},uSill:{value:sill},uStreakFrom:{value:streakFrom},uNight:night,uNightTint:{value:nightColor('walls')}};
  m.userData.wall=u;
- m.onBeforeCompile=shader=>{addWeather(shader);Object.assign(shader.uniforms,u);
+ m.onBeforeCompile=shader=>{addWeather(shader);Object.assign(shader.uniforms,u);addFacade(shader,{edges,y0:facadeY0,ground,fixed:facade});
   shader.vertexShader='varying float vWallY;varying float vWallTop;varying float vWallU;varying float vWallV;varying vec2 vWallSeed;\n'+shader.vertexShader.replace('#include <project_vertex>',`#include <project_vertex>
  vec4 wallP=vec4(transformed,1.);float wallSy=length(modelMatrix[1].xyz);vec3 wallN=normal;vWallSeed=modelMatrix[3].xz;
  #ifdef USE_INSTANCING
@@ -79,7 +86,7 @@ export function wallMaterial({ground=.24,foot=1,dirt=.18,cap=.3,capDirt=.08,stre
  float wallBelow=mod(uSill-vWallY,2.5),wallFade=1.-smoothstep(.12,.3,fwidth(vWallU));
  diffuseColor.rgb*=1.-uStreak*step(.6,wallS)*(1.-smoothstep(0.,.8+1.3*fract(wallS*5.3),wallBelow))*step(uStreakFrom,vWallY)*vWallV*wallFade*(.7+.3*sin(vWallY*5.+wallCol));
  ${nightTint?'diffuseColor.rgb*=mix(vec3(1.),uNightTint,uNight);':''}`);};
- m.customProgramCacheKey=()=>'wall-w4b'+(nightTint?'n':'');
+ m.customProgramCacheKey=()=>'wall-w5a'+(nightTint?'n':'')+(edges?'e':'')+(facade!=null?'f'+facade:'');
  return m;
 }
 const converted=new WeakMap();

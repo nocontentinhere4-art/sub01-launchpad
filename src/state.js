@@ -2,7 +2,7 @@ export const STORAGE_KEY = 'sub01-neighborhood-drafts-v1';
 export const MAX_DRAFTS = 8;
 export const RESIDENT_KEY = 'sub01-tokyo-resident-v1';
 export const places = [
-  { id: 'home', name: 'SUB-01’s place', symbol: '01', kind: 'HOME / WORKSPACE', status: 'At home', color: '#ff772c', x: -6, z: -4, description: 'The first room in the neighborhood. This is where SUB-01 receives ideas, works at his desk and remembers the projects he has built.' },
+  { id: 'home', name: 'SUB-01’s place', symbol: '01', kind: 'HOME / WORKSPACE', status: 'At home', color: '#ff772c', x: -6, z: -4, description: 'The first house in the neighborhood. Ideas arrive in the mailbox at his gate; he works at the desk downstairs, sleeps in the loft, and remembers the projects he has built.' },
   { id: 'lab', name: 'The Workshop', symbol: '⌘', kind: 'DEMO / BUILD STUDIO', status: 'Taking shape', color: '#69978a', x: 3.4, z: -5, description: 'A place for tools and experiments. In the full launchpad, you will be able to open working previews and follow each project’s build history.' },
   { id: 'arcade', name: 'Bad Idea Arcade', symbol: '↗', kind: 'DEMO / GAME PROJECT', status: 'Prototype', color: '#e2a05b', x: 8, z: 7.5, description: 'A terrible idea with a good front door. An example of how a game project could become somewhere you can actually visit in the neighborhood.' },
   { id: 'studio', name: 'Midnight Studio', symbol: '♫', kind: 'DEMO / MUSIC PROJECT', status: 'In the queue', color: '#8990bb', x: -3.5, z: 8.5, description: 'A small studio for sounds made after midnight. An example project, ready for a future connection to its own site, team and activity feed.' },
@@ -37,11 +37,11 @@ export function readDrafts(storage) {
   } catch { return []; }
 }
 export const tourStops = [
-  { x: -6, z: -2.4, duration: 4, text: 'A new idea arrived at the door.' },
-  { x: -6, z: 1.6, duration: 3, text: 'Heading out to check the neighborhood.' },
+  { x: -4.5, z: -2.25, duration: 4, text: 'A new idea arrived in the mailbox at the gate.' },
+  { x: -4.5, z: 1.6, duration: 3, text: 'Heading out to check the neighborhood.' },
   { x: 3.4, z: 1.6, duration: 6, text: 'Every idea needs somewhere to start.' },
-  { x: 3.4, z: -1.3, duration: 3, text: 'Checking in at the Workshop.' },
+  { x: 3.4, z: -1.3, duration: 3, text: 'Checking in at the Workshop (an example place).' },
   { x: 3.4, z: 1.6, duration: 2, text: 'One brain. A few places to build.' },
-  { x: -6, z: 1.6, duration: 5, text: 'Back home. There’s work to do.' },
-  { x: -6, z: -2.4, duration: 3, text: 'Your brief is on his desk. This is only the beginning.' },
+  { x: -4.5, z: 1.6, duration: 5, text: 'Back home. There’s work to do.' },
+  { x: -4.5, z: -2.25, duration: 3, text: 'Your brief is on his desk. This is only the beginning.' },
 ];

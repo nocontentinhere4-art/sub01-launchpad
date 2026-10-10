@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET,isRing3,builtHeight,CATEGORY} from '../src/lots.js';
+import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET,isRing3,builtHeight,CATEGORY,TOWER_PARKS} from '../src/lots.js';
 import {cityPlots,districts,buildingColors} from '../src/city-state.js';
 import {frontOf} from '../src/world-sync.js';
 import {createCity} from '../src/city.js';
@@ -26,7 +26,7 @@ test('lots: fronts face the district street (plots at d.z+6 face −z) and agree
 });
 test('lots: every plot is covered; vacant plots are T8 spots; the user takes the widest sub-lot in their colour',()=>{
  for(const p of cityPlots){const s=subLotsOf(p.id);
-  if(p.vacant){assert.equal(s.lots.length,0);assert.ok((isRing3(p.district)?['park','coin-parking','shrine']:['coin-parking','shrine']).includes(s.spots[0].kind));}
+  if(p.vacant){assert.equal(s.lots.length,0);assert.ok((isRing3(p.district)||TOWER_PARKS.includes(p.id)?['park','coin-parking','shrine']:['coin-parking','shrine']).includes(s.spots[0].kind));}
   else{assert.ok(s.lots.length>=1&&s.lots.length<=3);for(const l of s.lots)assert.ok(Math.abs(l.x-p.x)<=2.9&&l.width>1.5&&l.height>=3.5&&[l.x,l.z,l.width,l.depth,l.height].every(Number.isFinite));}}
  const u=subLotsOf('shibuya-2',user);assert.equal(u.user.wall,buildingColors.orange);assert.equal(u.user.type,'T1');
  assert.equal(u.user.width,Math.max(...u.lots.map(l=>l.width)));assert.equal(subLotsOf('shibuya-5',user).user.type,'T3');
@@ -75,11 +75,13 @@ test('lots: the user building stands ≥ 2 floors above the other lots on its pl
 });
 test('city: one batch per kind, picks cover the user sub-lot, heightOf follows the new storey scale',()=>{
  const scene=new THREE.Scene(),interactive=[],city=createCity(scene,interactive,()=>{},user);
- const st=city.stats();assert.ok(st.drawCalls<=6);assert.ok(st.walls>2000&&st.windows>500&&st.roofs>1000);
+ const st=city.stats();assert.ok(st.drawCalls<=9,`draw calls ${st.drawCalls}`);   // wave 5A: + prisms, awnings, tower ribbonsassert.ok(st.walls>2000&&st.windows>500&&st.roofs>1000);
  // Budget (wave 2B): the city's own boxes stay under 7,500; overview LOD drops details without extra draw calls.
  // Wave 4A, 48 districts: ≈ 2× the 24-district 6.85k; the overview hides the detail tail plus the third ring's bands,
  // canopies, stairs and roof clutter (second LOD), so it stays ≈ 1.65× the old 4.83k.
- assert.ok(st.instances<14000,`city instances ${st.instances}`);
+ // Wave 5A (facades, railings, frames, roof silhouettes): ≈ +5.3k boxes, all but the T5/pent/mansard prisms in the detail
+ // tail, so the overview stays put; the triangle budget (≤ +15 % at district zoom) is the real limit.
+ assert.ok(st.instances<19500,`city instances ${st.instances}`);
  city.setDetail(false);const far=city.stats();assert.ok(far.instances<8600&&far.instances<st.instances-4000&&!far.detail&&far.drawCalls===st.drawCalls,`overview ${far.instances}`);city.setDetail(true);
  assert.equal(city.stats().instances,st.instances);
  const u=subLotsOf('shibuya-2',user).user;assert.equal(city.heightOf('shibuya-2'),u.height);

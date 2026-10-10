@@ -17,7 +17,8 @@ test('city addresses are unique, separated and the geometry stays batched after 
  const scene=new THREE.Scene(),interactive=[];const city=createCity(scene,interactive,()=>{},[]);
  assert.equal(interactive.length,2);assert.equal(interactive[0].count,288);
  const meshes=()=>{let count=0;scene.traverse(n=>{if(n.isMesh)count++;});return count;};
- const initial=meshes();city.redraw([build()]);assert.equal(meshes(),initial);assert.ok(initial<40);
+ // Wave 5A: + prisms, awnings and the tower ribbon lattice (3 meshes).
+ const initial=meshes();city.redraw([build()]);assert.equal(meshes(),initial);assert.ok(initial<43,`meshes ${initial}`);
 });
 test('clicking an instanced city building resolves its project after a redraw',()=>{
  let selected;const city=createCity(new THREE.Scene(),[],p=>selected=p,[]);

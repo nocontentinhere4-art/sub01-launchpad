@@ -12,7 +12,6 @@ import { places, residence } from './state.js';
 import {cityPlots,districts,tower} from './city-state.js';
 import * as CS from './city-state.js';
 import {addCityGreen} from './city-green.js';
-import {windowMaterial} from './windows.js';
 import {openRoom,attachRoomHost} from './room.js';
 import {addResidents} from './residents.js';
 import {createCrowdGPU,crowdPixels,crowdClose} from './crowd-gpu.js';
@@ -20,7 +19,8 @@ import {renderLookFields,readLook,isUnlocked} from './creator.js';
 import {loadCharacter,HEIGHT} from './characters.js';
 import {api,short,ApiError} from './api.js';
 import {listWallets,onWallets,signIn,signOut} from './wallet.js';
-import {worldBuildings,sub01Goal,planRoute,frontOf} from './world-sync.js';
+import {worldBuildings,sub01Goal,planRoute,frontOf,HOME_DESK} from './world-sync.js';
+import {buildHeroHome} from './hero-home.js';
 import {createCity} from './city.js';
 import {createCityEvents,freshEvents} from './city-events.js';
 import {createExplorer,cityPois} from './explore.js';
@@ -34,6 +34,7 @@ import {createPhoto,serverCardUrl} from './photo.js';
 import {startTelemetry} from './telemetry.js';
 import {awayCard} from './away.js';
 import {cityLayout} from './lots.js';
+import {createChat} from './chat.js'; // chat:
 import {createGovernor,settingsFor,startLevel,gpuName,createFuse,packResume,unpackResume,safeStore,timeoutSignal,nextPollDelay,GOV,RESUME_KEY,RESUME_MAX_AGE} from './quality.js';
 // Never a white page: an uncaught error or rejection is one quiet console line. If the city never drew its first frame
 // (no WebGL, a module that failed), the loading screen says so instead of spinning forever.
@@ -58,7 +59,6 @@ let partyGoal=null,partyWaveAt=0,markerFlash=0,followObj=null,visitKey=null,walk
 let character, sub01, cameraTween = null, toastTimer;
 // Explore mode (explore.js): the resident's own model walks the city; client-only. Taps on the ground pick a plane at y=0.25.
 let explorer=null,lastTap={t:0,x:0,y:0};const groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-.25),tapPoint=new THREE.Vector3();
-const floorY = 0.24;
 const labels = [], interactive = [], cache = new Map();
 const scene = new THREE.Scene();
 // The sky is the page's CSS gradient behind a transparent canvas (style.css #world): zero draw calls, exact colours.
@@ -121,21 +121,6 @@ const roomLight = new THREE.PointLight('#ffb366', 0, 12); roomLight.position.set
 // Pedestrians, residents and party guests up close: rigged characters drawn by instanced GPU skinning (crowd-gpu.js).
 const crowdGPU = createCrowdGPU(scene, { mobile, lights: { hemi, dirs: [sunlight, fill] } });
 
-const geometries = new Map();
-function box(w, h, d, color, x, y, z, parent = scene) {
-  const key = `${w}/${h}/${d}`;
-  if (!geometries.has(key)) geometries.set(key, new THREE.BoxGeometry(w, h, d));
-  const object = new THREE.Mesh(geometries.get(key), toon({ color, roughness: .9 }));
-  object.position.set(x, y, z); object.castShadow = true; object.receiveShadow = true; parent.add(object); return object;
-}
-function sign(text, x, y, z, color = '#fff8e8', scale = 3) {
-  const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
-  const ctx = canvas.getContext('2d'); ctx.fillStyle = '#292d26'; ctx.fillRect(0, 0, 512, 128);
-  ctx.fillStyle = color; ctx.font = 'bold 34px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 256, 66, 470);
-  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(scale, scale / 4), new THREE.MeshBasicMaterial({ map: texture }));
-  mesh.position.set(x, y, z); scene.add(mesh); return mesh;
-}
 function addLabel(place, height) {
   const element = document.createElement('button'); element.className = 'world-label';
   const dot = document.createElement('i'); dot.style.background = dot.style.color = place.color;
@@ -151,140 +136,51 @@ async function template(kind, name) {
   if (!cache.has(url)) cache.set(url, new GLTFLoader().loadAsync(url).then(gltf=>{toonify(gltf.scene);return gltf;}));
   return cache.get(url);
 }
-async function model(kind, name, x, z, size, rotation = 0, by = 'width', y = floorY, parent = scene) {
-  const data = await template(kind, name), object = data.scene.clone(true);
-  const bounds = new THREE.Box3().setFromObject(object), dim = bounds.getSize(new THREE.Vector3());
-  const divisor = by === 'height' ? dim.y : Math.max(dim.x, dim.z);
-  object.scale.setScalar(size / Math.max(divisor, .001));
-  const normalized = new THREE.Box3().setFromObject(object), center = normalized.getCenter(new THREE.Vector3());
-  const wrapper = new THREE.Group(); object.position.x -= center.x; object.position.z -= center.z; object.position.y -= normalized.min.y;
-  wrapper.add(object); wrapper.position.set(x, y, z); wrapper.rotation.y = rotation;
-  wrapper.traverse(node => { if (node.isMesh) { node.castShadow = true; node.receiveShadow = true; } });
-  parent.add(wrapper); return wrapper;
-}
-
-// Hero block (art direction wave 2B): the same concrete, asphalt and sidewalk as city.js, buildings at the city's storey
-// scale (ground floor 3.0, storeys 2.5), and street trees only along the block's street edges.
-const HERO={concrete:'#A9A79D',asphalt:'#7A7F7C',sidewalk:'#B4B1A7',kerb:'#CFCBC0',top:.135,kitScale:1.7};
-const HERO_TREES=[[9.8,-.5],[-12.6,3.75],[-4.4,3.75],[2.4,3.75],[12.6,3.75]].map(([x,z])=>({species:'zelkova',x,z,y:HERO.top,s:.92}));
-// Hero block batches (wave 4B): small props in ONE toon box batch, glass in ONE window batch (fake interiors, lit at night).
-const heroProps=[],heroGlass=[];
-const heroBox=(list,x,y,z,w,h,d,color,ry=0)=>list.push({x,y,z,w,h,d,color,ry});
-function flushHero(){const m=new THREE.Object3D(),c=new THREE.Color();
-  for(const [list,material,name] of [[heroProps,toon({roughness:.9}),'hero props'],[heroGlass,windowMaterial({spare:.55}),'hero windows']]){
-    const mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),material,Math.max(1,list.length));mesh.count=list.length;mesh.name=name;
-    list.forEach((b,i)=>{m.position.set(b.x,b.y,b.z);m.rotation.set(0,b.ry,b.rz||0);m.scale.set(b.w,b.h,b.d);m.updateMatrix();mesh.setMatrixAt(i,m.matrix);mesh.setColorAt(i,c.set(b.color));});
-    mesh.castShadow=name==='hero props';mesh.receiveShadow=true;mesh.raycast=()=>{};mesh.computeBoundingSphere();scene.add(mesh);list.length=0;}}
-// SUB-01's yard in the city's language: a concrete pad, a block wall with a cap on the open side, planters, a vending
-// pair facing the street, his mailbox at the gate and a bicycle. The room itself (furniture, HOME_DESK/HOME_BED) is unchanged.
-function makeHomeYard(){
-  const P=heroProps,y=HERO.top+.12,p=places[0];
-  heroBox(P,p.x,HERO.top+.06,p.z+.15,7.9,.12,7.2,HERO.concrete);
-  for(const x of [-9.4,-8,-6.6,-5.2,-3.8])heroBox(P,x,HERO.top+.125,-.6,.02,.01,.4,'#8E8C84');   // pad joints
-  // Block wall (concrete block, 1.1 tall) along the east side, a short return at the front-left; a lighter cap.
-  heroBox(P,-2.3,y+.55,-5.25,.16,1.1,3.9,'#9C9A91');heroBox(P,-2.3,y+1.13,-5.25,.22,.06,3.96,'#B4B1A7');
-  heroBox(P,-8.95,y+.45,-.8,1.3,.9,.16,'#9C9A91');heroBox(P,-8.95,y+.93,-.8,1.36,.06,.22,'#B4B1A7');
-  for(const z of [-6.7,-5.8,-4.9,-4.0])for(const dy of [.3,.75])heroBox(P,-2.21,y+dy,z,.02,.04,.5,'#87857D');   // block courses
-  // Planters along the wall and by the gate.
-  [[-1.95,-6.6],[-1.95,-5.7],[-1.98,-4.6],[-1.95,-3.5],[-7.9,-1.0],[-7.4,-1.05]].forEach(([x,z],i)=>{const h=.26+.08*(i%3);
-    heroBox(P,x,y+h/2,z,.34,h,.34,['#9A7A60','#B9C6C4','#7D8B8E'][i%3]);heroBox(P,x,y+h+.18,z,.46,.36,.42,i%2?'#6F8F5E':'#8FA66B',i*.7);heroBox(P,x+.06,y+h+.38,z-.04,.28,.22,.26,'#7A955F',i*.3);});
-  // Vending pair facing the street (bodies white/red, a display band and a coin slot).
-  [[-13.1,'#EDEDE8'],[-12.15,'#C63B34']].forEach(([x,col])=>{heroBox(P,x,y+.875,-1.15,.9,1.75,.65,col);heroBox(P,x,y+1.33,-.81,.72,.42,.03,'#CFE3EA');heroBox(P,x,y+.55,-.81,.7,.12,.03,'#3B4245');heroBox(P,x+.25,y+.95,-.81,.08,.16,.03,'#5B6466');});
-  heroBox(P,-11.45,y+.4,-1.1,.35,.8,.45,'#7D8B8E');   // the recycling bin
-  // Mailbox on a post by the gate (the one the ideas go into), with an orange slot plate.
-  heroBox(P,-3.1,y+.55,-.95,.07,1.1,.07,'#3E4A48');heroBox(P,-3.1,y+1.25,-.95,.46,.38,.32,'#3E4A48');heroBox(P,-3.1,y+1.33,-.78,.3,.05,.02,'#FB752B');
-  // A bicycle (wheels as two crossed thin boxes each, frame, seat, bars), parked along the pad edge.
-  const bx=-4.6,bz=-1.0;for(const dx of [-.48,.48])for(const r of [0,Math.PI/4])heroBox(P,bx+dx,y+.32,bz,.6,.6,.04,'#2B2B2B',0),P.at(-1).rz=r;
-  for(const b of P.slice(-4))b.ry=0;
-  heroBox(P,bx,y+.5,bz,.9,.05,.05,'#2F6FB5');heroBox(P,bx-.18,y+.62,bz,.05,.5,.05,'#2F6FB5');heroBox(P,bx-.2,y+.9,bz,.22,.05,.12,'#2B2B2B');heroBox(P,bx+.42,y+.85,bz,.05,.5,.05,'#5B6466');heroBox(P,bx+.42,y+1.08,bz,.05,.05,.5,'#5B6466');
-  heroBox(P,bx+.55,y+.72,bz,.22,.16,.26,'#7D8B8E');   // basket
+// Hero block (wave 5B, hero-home.js): SUB-01's house, the lane with its Inari corner and vending pair, the three example
+// places and Orange Apartments, all in the city's language. HERO_TREES are planted by city-green.js with the city's own.
+const HERO={top:.135};
+const HERO_TREES=[[9.8,-.5],[-12.6,3.75],[-4.4,3.75],[2.4,3.75],[12.6,3.75]].map(([x,z])=>({species:'zelkova',x,z,y:HERO.top,s:.92}))
+  .concat([{species:'grove',x:-13.25,z:-5.7,y:HERO.top,s:.72},{species:'grove',x:-11.95,z:-6.2,y:HERO.top,s:.55}]);
+let heroHome=null;
+// One ground under the whole city (owner bug: sky-coloured strips between districts at close zoom): a concrete plane
+// over CITY_EXTENT + 40 at y = −0.02 with a hole for the canal (water at −1.05), and a darker far plane to ±600 at −1.6
+// that the fog swallows. One geometry, vertex colours, one draw call; the city's ground night tint (#55617A) in-shader.
+const GROUND_PLANE={near:'#8E8E88',far:'#77776F',margin:40,far_:600,y:-.02,farY:-1.6};
+function cityGround(){
+  const E=CS.CITY_EXTENT,M=GROUND_PLANE.margin,x0=E.minX-M,x1=E.maxX+M,z0=E.minZ-M,z1=E.maxZ+M,cx=CS.CANAL_X??null,F=GROUND_PLANE.far_;
+  const rects=[],R=(a,b,c,d,y,col)=>{if(b-a>.01&&d-c>.01)rects.push([a,b,c,d,y,col]);};
+  if(cx!==null&&cx-6>x0&&cx+6<x1){const cz0=Math.max(z0,E.minZ-3),cz1=Math.min(z1,E.maxZ+3);
+    R(x0,cx-6,z0,z1,GROUND_PLANE.y,GROUND_PLANE.near);R(cx+6,x1,z0,z1,GROUND_PLANE.y,GROUND_PLANE.near);
+    R(cx-6,cx+6,z0,cz0,GROUND_PLANE.y,GROUND_PLANE.near);R(cx-6,cx+6,cz1,z1,GROUND_PLANE.y,GROUND_PLANE.near);}
+  else R(x0,x1,z0,z1,GROUND_PLANE.y,GROUND_PLANE.near);
+  R(-F,F,-F,F,GROUND_PLANE.farY,GROUND_PLANE.far);
+  const pos=[],nor=[],col=[],c=new THREE.Color();
+  for(const [a,b,zA,zB,y,hex] of rects){c.set(hex);for(const [x,z] of [[a,zA],[a,zB],[b,zA],[b,zA],[a,zB],[b,zB]]){pos.push(x,y,z);nor.push(0,1,0);col.push(c.r,c.g,c.b);}}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  const m=toon({vertexColors:true}),prev=m.onBeforeCompile;
+  m.onBeforeCompile=(s,r)=>{prev.call(m,s,r);s.uniforms.uGpNight=nightAmount;s.uniforms.uGpTint={value:new THREE.Color().setHex(0x55617A,THREE.LinearSRGBColorSpace)};
+    s.fragmentShader='uniform float uGpNight;uniform vec3 uGpTint;\n'+s.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=mix(vec3(1.),uGpTint,uGpNight);');};
+  m.customProgramCacheKey=()=>'ground-plane';
+  const mesh=new THREE.Mesh(g,m);mesh.name='city ground';mesh.receiveShadow=true;mesh.raycast=()=>{};mesh.frustumCulled=false;scene.add(mesh);return mesh;
 }
 function groundwork() {
-  box(28, .65, 26, '#9C9A91', 0, -.37, 2);
-  box(27.7, .18, 25.7, HERO.concrete, 0, .045, 2);
-  // The central street connects the project's walkable parcels; a Japanese side street has no centre line.
-  box(27.7, .035, 3.5, HERO.asphalt, 0, .165, 1.6);
-  box(27.7, .055, .52, HERO.sidewalk, 0, .175, -.4);
-  box(27.7, .055, .52, HERO.sidewalk, 0, .175, 3.6);
-  makeApartments();
-  // Street trees (wave 4B): zelkova from city-green.js (one instanced draw call with the city's own, with wind sway).
-  makeHomeYard();flushHero();
-}
-// Orange Apartments: a small RC mansion at the city scale, 3 floors (3.0 + 2.5 + 2.5 + parapet 0.6), balconies facing
-// the camera, a glass entrance and the ORANGE / 03 fascia.
-function makeApartments(){
-  const r=residence,W=4.4,D=4.0,H=3+2.5*2+.6,y0=HERO.top,front=r.z+D/2,wall='#eac09b',band='#f2d2b4';
-  box(W+1,.08,D+1.2,HERO.sidewalk,r.x,y0+.04,r.z+.1);
-  const apartment=box(W,H,D,wall,r.x,y0+H/2,r.z);apartment.userData.place=r;interactive.push(apartment);
-  box(W-.24,.03,D-.24,'#7C8A80',r.x,y0+H+.015,r.z);
-  box(1.5,1.8,1.6,'#d3ab88',r.x-W/2+.95,y0+H+.9,r.z-D/2+1.0);
-  // Ground floor: glass entrance, a mailbox wall and the fascia.
-  heroBox(heroGlass,r.x+.9,y0+1.0,front+.02,.95,2.0,.06,'#3D525B');
-  box(1.3,1.1,.08,'#8E9290',r.x-.6,y0+1.0,front+.03);
-  sign('ORANGE / 03',r.x,y0+2.55,front+.06,'#ffac70',2.2);
-  for(let k=1;k<3;k++){const y=y0+3+2.5*(k-1);
-    heroBox(heroGlass,r.x,y+1.25,front+.02,W-.4,2.0,.04,'#5E7881');
-    box(W+.02,1.0,.9,band,r.x,y+.45,front+.45);
-    box(.8,.6,.3,'#E5E1D6',r.x+(k===1?1.4:-1.4),y+1.25,front+.2);
-  }
-  addLabel(r,y0+H+.7);
+  cityGround();
 }
 async function makeHome() {
-  const p = places[0];
-  box(7, .09, 6.3, '#e9d8b9', p.x, .28, p.z);
-  for (let x = -9.4; x < -2.8; x += .55) box(.018,.01,6.2,'#d7c29f',x,.335,-4);
-  // Cutaway walls keep the room legible from the isometric camera.
-  box(7,2.7,.16,'#ece6d7',-6,1.68,-7.1);
-  box(.16,2.7,6.3,'#ece6d7',-9.45,1.68,-4);
-  box(7,.18,.2,'#cbc3b0',-6,3.1,-7.1);
-  box(.2,.18,6.3,'#cbc3b0',-9.45,3.1,-4);
-  box(1.6,1.3,.03,'#a6c2bb',-7.8,1.8,-7.0);
-  box(.07,1.35,.07,'#f9f6eb',-7.8,1.8,-6.96);
-  box(1.65,.07,.07,'#f9f6eb',-7.8,1.8,-6.95);
-  sign('SUB-01', -4.8, 2.1, -6.99, '#ff953e', 1.8);
-  await Promise.all([
-    model('furniture','bed_single_A',-8,-5.5,2.35,Math.PI/2,'width',.335),
-    model('furniture','table_medium',-4.5,-5.8,2.05,0,'width',.335),
-    model('furniture','chair_A',-4.5,-4.55,.83,Math.PI,'width',.335),
-    model('furniture','couch',-8,-2.5,2.1,Math.PI/2,'width',.335),
-    model('furniture','cactus_small_A',-3.4,-2.1,.65,0,'height',.335),
-    model('furniture','shelf_B_small_decorated',-9.1,-4,1.4,Math.PI/2,'height',.335),
-    model('furniture','lamp_standing',-3.1,-6.4,1.7,0,'height',.335),
-    model('furniture','rug_rectangle_A',-6,-3.6,2.45,0,'width',.337),
-  ]);
-  // The desk monitor is deliberately inexpensive geometry.
-  box(.13,.4,.13,'#3c4240',-4.5,1.48,-6.1);
-  box(1,.65,.08,'#313a38',-4.5,1.82,-6.1);
-  box(.86,.51,.01,'#ff883e',-4.5,1.82,-6.045);
-  box(.6,.025,.22,'#48504a',-4.5,1.23,-5.8);
-  const pick = box(7,.03,6.3,'#e9d8b9',p.x,.32,p.z); pick.userData.place = p; interactive.push(pick);
-  addLabel(p,3.25);
+  heroHome=await buildHeroHome(scene,{template,interactive,addLabel,places:{home:places[0],lab:places[1],arcade:places[2],studio:places[3],residence},
+    getWorld:()=>world,getLife:()=>cityRenderer?.life,getCharacter:()=>sub01,light:roomLight});
+  if(sub01)heroHome.arrive(sub01,'desk');
 }
-async function makeBuildings() {
-  // KayKit buildings scaled ×1.7 so their doors are about 2.0 tall like the city's (brief 3.1), on a paved forecourt.
-  await Promise.all(places.slice(1).map(async (p,i) => {
-    const object = await model('city', ['building_C_withoutBase','building_B_withoutBase','building_A_withoutBase'][i],p.x,p.z,4.7*HERO.kitScale,0,'width',HERO.top);
-    object.userData.place = p; object.traverse(n => { if(n.isMesh) {n.userData.place = p;interactive.push(n);} });
-    const bounds = new THREE.Box3().setFromObject(object), size = bounds.getSize(new THREE.Vector3());
-    box(size.x+.9,.06,size.z+.9,HERO.sidewalk,p.x,HERO.top+.03,p.z);
-    addLabel(p,bounds.max.y+.6);
-    sign(['WORKSHOP','BAD IDEA ARCADE','MIDNIGHT STUDIO'][i],p.x,2.55,bounds.max.z+.06,p.id === 'arcade' ? '#ffae6c' : '#f0ecd8',3.3);
-  }));
-  await Promise.all([
-    model('city','bench',-11.4,4.9,1.7,0),
-    model('city','streetlight',-1,.15,4.6,0,'height'),
-    model('city','streetlight',10.8,3.8,4.6,Math.PI,'height'),
-    model('city','car_hatchback',-10.5,1.7,2.5,Math.PI/2),
-  ]);
-}
+async function makeBuildings() {}   // the example places are part of the hero block (hero-home.js)
 async function makeCharacter() {
-  // SUB-01 keeps his dark hoodie and hair; skin stays the model's own.
+  // SUB-01 keeps his dark hoodie and hair; skin stays the model's own. He starts in his gaming chair.
   sub01=await loadCharacter({outfit:'hoodie',top:'#313a37',bottom:'#313a37',hair:'#202a26'},{template});
   character=sub01.root;character.scale.setScalar(1.55/HEIGHT);
-  character.position.set(-6,.335,-2.4); character.rotation.y = .5; scene.add(character);
+  character.position.set(HOME_DESK.x,.335,HOME_DESK.z); character.rotation.y = Math.PI; scene.add(character);
   const marker = new THREE.Mesh(new THREE.OctahedronGeometry(.17),toon({ color: '#ff7b32', emissive: '#ff7620', emissiveIntensity: .25, roughness:.5 }));
   // Marker sits in scene units so it is not affected by the imported rig scale.
   scene.add(marker); character.userData.marker=marker;
+  heroHome?.arrive(sub01,'desk');
   $('activity-text').textContent='At home. Waiting for the first brief.';
 }
 function play(name){sub01?.play(name);}
@@ -373,7 +269,7 @@ function showPlace(p) {
 function focusPlace(p) {
   cityTour=null;follow=false;
   if(p.x===undefined){notify('Your brief is saved here. Building integration comes next.');return;}
-  cameraTween={ start: controls.target.clone(), target: new THREE.Vector3(p.x,p.id==='tower'?14:2,p.z), zoom:camera.zoom, endZoom:p.id==='tower'?.7:1.65, elapsed:0 };
+  cameraTween={ start: controls.target.clone(), target: new THREE.Vector3(p.x,p.id==='tower'?24:2,p.z), zoom:camera.zoom, endZoom:p.id==='tower'?.5:1.65, elapsed:0 };
 }
 function notify(text){clearTimeout(toastTimer);const ic=document.createElement('span');ic.className='ic';ic.append(icon('check'));$('toast').replaceChildren(ic,Object.assign(document.createElement('span'),{textContent:text}));$('toast').hidden=false;toastTimer=setTimeout(()=>{$('toast').hidden=true;},4500);}
 function meetDev(){cityTour=null;if(!character)return;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();notify(goal?.text||'Following SUB-01.');}
@@ -449,7 +345,7 @@ $('idea-button').onclick=()=>openBuildForm();
 $('city-tour').onclick=()=>{cityTour={index:0,elapsed:0};nextCityView();};
 // Canal and metro from city-state.js (wave 4A); the station sits 26 route units west of centre, stretched to the city.
 const CANAL_X=CS.CANAL_X??79,METRO_Z=CS.METRO_Z??78,CE=CS.CITY_EXTENT,STATION_X=CE?(CE.minX+CE.maxX)/2-26*(CE.maxX-CE.minX)/145:-26;
-const cityViews=[{x:-29,z:-28,y:12,zoom:.63,text:'Tokyo Tower / Shiba'},{x:29,z:2,y:4,zoom:.72,text:'Shibuya / Neon crossing'},{x:55,z:-58,y:16,zoom:.48,text:'Broadcast tower / Skyline'},{x:CANAL_X,z:2,y:1,zoom:.56,text:'Waterfront / Bridges'},{x:STATION_X,z:METRO_Z,y:4,zoom:.56,text:'Metro / City in motion'}];
+const cityViews=[{x:-29,z:-28,y:24,zoom:.5,text:'Tokyo Tower / Shiba'},{x:29,z:2,y:4,zoom:.72,text:'Shibuya / Neon crossing'},{x:55,z:-58,y:16,zoom:.48,text:'Broadcast tower / Skyline'},{x:CANAL_X,z:2,y:1,zoom:.56,text:'Waterfront / Bridges'},{x:STATION_X,z:METRO_Z,y:4,zoom:.56,text:'Metro / City in motion'}];
 function nextCityView(){const v=cityViews[cityTour.index];follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(v.x,v.y,v.z),zoom:camera.zoom,endZoom:mobile?v.zoom*.55:v.zoom,elapsed:0};$('activity-text').textContent=v.text;}
 
 $('district-select').onchange=()=>{cityTour=null;renderList();const d=districts.find(d=>d.id===$('district-select').value);if(d){follow=false;cameraTween={start:controls.target.clone(),target:new THREE.Vector3(d.x,2,d.z),zoom:camera.zoom,endZoom:mobile?.36:.72,elapsed:0};}else resetView();};
@@ -556,7 +452,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
    lastTap.t=run?0:t;lastTap.x=e.clientX;lastTap.y=e.clientY;if(explorer.tap(tapPoint,{run})&&cityEvents.visitor){followObj=cityEvents.visitor;follow=true;cameraTween=null;}}
 });
 $('district-select').replaceChildren();const all=document.createElement('option');all.value='';all.textContent='Entire city';$('district-select').append(all);for(const d of districts){const option=document.createElement('option');option.value=d.id;option.textContent=d.name;$('district-select').append(option);}
-addEventListener('resize',()=>{resize();governor?.grace(GOV.grace.resize,performance.now());});resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings,{mobile,gpu:crowdGPU});cityGreen=addCityGreen(scene,{buildings:cityBuildings,mobile,extra:HERO_TREES});addLabel(tower,32);
+addEventListener('resize',()=>{resize();governor?.grace(GOV.grace.resize,performance.now());});resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings,{mobile,gpu:crowdGPU});cityGreen=addCityGreen(scene,{buildings:cityBuildings,mobile,extra:HERO_TREES});addLabel(tower,51);
 for(const d of districts){const element=document.createElement('button');element.className='world-label district-label';element.textContent=d.name.toUpperCase();element.dataset.kanji=kanjiOf(d.id);element.onclick=()=>{$('district-select').value=d.id;$('district-select').onchange();};$('labels').append(element);labels.push({element,district:true,position:new THREE.Vector3(d.x,.4,d.z+11.4)});}
 // Phone layout (style.css ≤ 600px): SUB-01's activity bar joins the project panel as one bottom dock; the world-control
 // rail sits above the dock, whose height is kept in --dock-h.
@@ -784,6 +680,12 @@ window.__city.rituals={get calendar(){return calendar;},get rituals(){return rit
 // Share pages (/p/<slug>, /r/<plotId>) land on /?focus=<plotId>: that plot's card opens once the world is in.
 function focusFromUrl(){const q=new URLSearchParams(location.search),id=q.get('focus');if(!id)return;q.delete('focus');history.replaceState(null,'',location.pathname+(q.size?'?'+q:'')+location.hash);
   if(cityPlots.some(p=>p.id===id))focusPlot(id);}
+// ---------- Chat: the city's live line, speech bubbles over heads, talking to SUB-01 (chat.js) ----------
+// Bubbles are world labels (labels[], projected below in animate); chat.frame() keeps their anchors on the speakers.
+const chat=createChat({me:()=>me,labels,notify,requireWallet:(k,next)=>guest.requireWallet(k,next),openCreator:next=>openCreator(next),
+  sub01:()=>character,visitor:()=>cityEvents.visitor,target:()=>controls.target,selected:()=>$('district-select').value});
+window.__city.chat=chat;
+// ---------- end Chat ----------
 const clock=new THREE.Clock();let lastRender=0,renderedAt=-1;
 // Per-frame subsystems run behind fuses (quality.js): three errors in a row switch off only that subsystem.
 const fuses=Object.fromEntries(['crowd','weather','critters','events','explore','room'].map(n=>[n,createFuse(n)]));
@@ -797,13 +699,18 @@ function animate(now){
   if(roomView){renderer.toneMappingExposure=EXPOSURE.room;wxUniforms.wet.value=wxUniforms.snow.value=wxUniforms.wear.value=0;fuses.room.run(()=>roomView.update(Math.min(clock.getDelta(),.08)));renderer.render(roomView.scene,roomView.camera);return;}
   if(ratioDirty){ratioDirty=false;renderer.setPixelRatio(Q.pixelRatio);}
   const seconds=reducedMotion?0:now*.001;fuses.crowd.run(crowdFrame,seconds);if(fuses.crowd.off&&crowdGPU.active){crowdGPU.active=crowdNear=false;crowdGPU.hide();residents.update(seconds,crowdGPU);}
-  fuses.critters.run(()=>cityRenderer?.update(seconds));const dt=Math.min(clock.getDelta(),.08);sub01?.update(dt);
+  fuses.critters.run(()=>cityRenderer?.update(seconds));const dt=Math.min(clock.getDelta(),.08);sub01?.update(dt);heroHome?.update(dt,now*.001,camera);
   fuses.events.run(()=>cityEvents.update(dt,renderer.getPixelRatio()*innerHeight*camera.zoom/(camera.top-camera.bottom)));if(explorer&&cityEvents.visitor)fuses.explore.run(()=>explorer.update(dt));if(cityEvents.visitor){roamTag.position.copy(cityEvents.visitor.position);roamTag.position.y+=2.05;}
   if(goal?.activity==='party'&&!walker&&now>partyWaveAt&&partyWaveAt){play('Idle');play('Wave');partyWaveAt=now+6e3;}
+  // Hero house (hero-home.js): legs inside SUB-01's lot go through the gate, the door and the stair; he walks indoors,
+  // follows the floors (stair, loft) and sits at the desk or lies in bed on arrival.
+  if(walker&&character&&heroHome&&!walker.homed){walker.homed=true;walker.points=heroHome.route(walker.points,character.position.y);walker.index=Math.min(1,walker.points.length-1);
+    walker.indoor=walker.points.every(heroHome.inLot);if(walker.points.some((p,i)=>i&&Math.hypot(p.x-walker.points[i-1].x,p.z-walker.points[i-1].z)>.05))heroHome.stand(sub01);}
   if(walker&&character){
-    const target=walker.points[walker.index],pos=character.position,dx=target.x-pos.x,dz=target.z-pos.z,dist=Math.hypot(dx,dz),stepLen=dt*(walker.points.length>3?4.2:2.4);
-    if(dist<=stepLen){pos.x=target.x;pos.z=target.z;walker.index++;if(walker.index>=walker.points.length){walker=null;if(goal?.activity==='party'){character.rotation.y=goal.yaw;play('Idle');play('Wave');partyWaveAt=now+6e3;}else play(goal?.activity==='build'?'Interact':goal?.activity==='desk'?'Idle_Neutral':'Idle');}}
-    else{pos.x+=dx/dist*stepLen;pos.z+=dz/dist*stepLen;character.rotation.y=Math.atan2(dx,dz);play(walker.points.length>3?'Run':'Walk');}
+    const target=walker.points[walker.index],pos=character.position,dx=target.x-pos.x,dz=target.z-pos.z,dist=Math.hypot(dx,dz),stepLen=dt*(walker.points.length>3&&!walker.indoor?4.2:2.4);
+    if(dist<=stepLen){pos.x=target.x;pos.z=target.z;walker.index++;if(walker.index>=walker.points.length){walker=null;if(goal?.activity==='party'){character.rotation.y=goal.yaw;play('Idle');play('Wave');partyWaveAt=now+6e3;}else{play(goal?.activity==='build'?'Interact':goal?.activity==='desk'?'Idle_Neutral':'Idle');heroHome?.arrive(sub01,goal?.activity);}}}
+    else{pos.x+=dx/dist*stepLen;pos.z+=dz/dist*stepLen;character.rotation.y=Math.atan2(dx,dz);play(walker.points.length>3&&!walker.indoor?'Run':'Walk');}
+    const fy=heroHome?.floorAt(pos.x,pos.z,pos.y);if(fy!=null&&!heroHome.seated)pos.y=fy;
   }
   if(character){const m=character.userData.marker,fl=markerFlash>now?Math.abs(Math.sin(now*.012)):0;m.scale.setScalar(1+fl*.9);m.material.emissiveIntensity=.25+fl*2.5;m.position.copy(character.position);m.position.y+=2+(reducedMotion?0:Math.sin(now*.002)*.04);m.rotation.y=now*.0005;if(follow){const before=controls.target.clone();controls.target.lerp((followObj||character).position,.07);camera.position.add(controls.target.clone().sub(before));}}
   if(cameraTween){cameraTween.elapsed+=dt;const t=Math.min(cameraTween.elapsed/.75,1),ease=1-(1-t)**3;const before=controls.target.clone();controls.target.lerpVectors(cameraTween.start,cameraTween.target,ease);camera.position.add(controls.target.clone().sub(before));camera.zoom=THREE.MathUtils.lerp(cameraTween.zoom,cameraTween.endZoom,ease);camera.updateProjectionMatrix();if(t===1)cameraTween=null;}
@@ -812,6 +719,7 @@ function animate(now){
   cityRenderer?.setDetail(camera.zoom>=.3&&Q.detail);cityGreen?.setDetail(camera.zoom>=.3&&Q.detail);   // quality level 0 keeps the overview LOD even up close
   fuses.weather.run(weatherFrame,now,dt,seconds);controls.update();updateSunAndFog();if(!fuses.crowd.off)fuses.crowd.run(crowdEnd,now);setCityFocus(cityEvents.visitor?.position||character?.position||null);renderer.render(scene,camera);renderedAt=now;booted=true;
   document.body.classList.toggle('is-close',camera.zoom>.42);
+  chat?.frame(camera.zoom); // chat: before the labels are projected
   for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1;}
 }
 requestAnimationFrame(animate);

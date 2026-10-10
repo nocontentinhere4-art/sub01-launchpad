@@ -1,6 +1,6 @@
 import {cityPlots,districts,ROAD_Z,BOULEVARD_X} from './city-state.js';
 // Pure helpers that turn the server's /api/world snapshot into what the city draws.
-export const HOME_DESK={x:-4.5,z:-4.45},HOME_BED={x:-7.2,z:-5.5};
+export const HOME_DESK={x:-4.5,z:-5.75},HOME_BED={x:-7.75,z:-5.4};   // hero-home.js: the gaming chair, the bedside in the loft
 const PALETTE=['orange','mint','violet','sand'];
 // Building phase per pipeline stage. Declined and cancelled ideas release their plot server-side.
 export function phaseOf(stage){

@@ -25,7 +25,14 @@
 //    sideAC          number of AC units stacked on the exposed side wall (T1/T2)
 //    sideWindows     0–2 small windows on the exposed side wall
 //    leftH, rightH   heights of the touching neighbours along the street (0 = open)
-//    slab            true on the one tall building of its district (HEIGHTS[class].slab floors, far row) }
+//    slab            true on the one tall building of its district (HEIGHTS[class].slab floors, far row)
+//    Wave 5A (skin5a; their own rng stream, nothing above changes):
+//    facade          facades.js surface of the body: T1 tile/concrete/glass/brick, T2 tile/siding, T3 white tile/plaster,
+//                    T4 plaster/wood/siding/metal, T5 wood/plaster, T6 white tile, T7 glass/concrete (dark walls → brick)
+//    bayWindow       T2/T4 ≈ 20 %: {floor, w} a window box protruding 0.35 on one upper floor, else null
+//    roofForm        'flat' | 'gable' (T5) | 'pent' (T4 tiled hisashi over the shop, ≈ 30 %) | 'mansard' (T4 ≥ 3 floors)
+//    dish            flat roofs ≈ 18 %: {u, v, ry} a satellite dish, else null
+//    laundryRoof     T2/T3/T4 flat roofs ≈ 22 %: {len} a laundry pole line across the back of the roof, else null }
 //
 // Spot (open ground, from cityLayout().spots): { id, plotId|null, district, kind:'alley'|'vending'|'parking'|
 //    'coin-parking'|'shrine'|'park', x, z, width, depth, front, frontZ, bays?, cars? }   vacant plots → T8 coin parking or
@@ -126,13 +133,29 @@ function roofRecipe(r,lot,category){
  return items;
 }
 
+const FACADES={T1:[['tileWhite',3],['concrete',3],['glass',1.5],['tileBeige',2],['brick',1]],T2:[['tileBeige',5],['tileWhite',3],['siding',2],['brick',1]],
+ T3:[['tileWhite',5.5],['plaster',4.5],['brick',1]],T4:[['plaster',4],['wood',2],['siding',2.5],['metal',1.5]],T5:[['wood',6],['plaster',4]],T6:[['tileWhite',1]],T7:[['glass',5],['concrete',5]]};
+export function skin5a(lot){
+ const r=rng(lot.id+':w5a'),t=lot.type,W=lot.width-.3,D=lot.depth-.3;
+ lot.facade=pick(r,FACADES[t]||FACADES.T4);
+ if(['#9A7A60','#76574A'].includes(lot.wall)&&['T1','T2','T3'].includes(t)&&r()<.6)lot.facade='brick';
+ lot.bayWindow=(t==='T2'||t==='T4')&&lot.floors>=2&&lot.width>=1.7&&r()<.2?{floor:1+Math.floor(r()*(lot.floors-1)),w:Math.min(1.5,lot.width-.5)}:null;
+ lot.roofForm=t==='T5'?'gable':t==='T4'&&!['house','pilotis'].includes(lot.shop)&&r()<.3?'pent':t==='T4'&&lot.floors>=3&&r()<.15?'mansard':'flat';
+ const flat=t!=='T5';
+ lot.dish=flat&&W>1.4&&r()<.18?{u:(r()-.5)*(W-1),v:(r()-.5)*(D-1),ry:r()*Math.PI*2}:null;
+ lot.laundryRoof=flat&&['T2','T3','T4'].includes(t)&&W>1.4&&r()<.22?{len:Math.min(2.2,W-.6)}:null;
+ return lot;
+}
+
+// Wave 5A: the vacant plot beside Tokyo Tower is a small park (city-green.js plants its trees).
+export const TOWER_PARKS=['shiba-6'];
 function sideElements(d,s,buildings){
  // s = -1: the row at d.z-6 (fronts face +z); s = 1: the row at d.z+6 (fronts face −z).
  const front=s<0?'+z':'-z',plots=cityPlots.filter(p=>p.district===d.id&&(s<0?p.z<d.z:p.z>d.z)).sort((a,b)=>a.x-b.x);
  const el=[];
  plots.forEach((p,k)=>{
   const b=buildings.find(b=>b.plotId===p.id),r=rng(p.id+':split');
-  if(p.vacant&&!b){const x=r(),kind=isRing3(d.id)?(x<.45?'park':x<.8?'shrine':'coin-parking'):x<.65?'coin-parking':'shrine';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
+  if(p.vacant&&!b){const x=r(),kind=TOWER_PARKS.includes(p.id)?'park':isRing3(d.id)?(x<.45?'park':x<.8?'shrine':'coin-parking'):x<.65?'coin-parking':'shrine';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
   else{
    let split=pick(r,SPLITS).slice();
    if(b&&split.length===3)split=[1.8,4];
@@ -255,7 +278,7 @@ function layoutDistrict(d,buildings,out){
    if(e.type==='T2')for(let f=1;f<lot.floors;f++)lot.bays.push([{balcony:r()<.5}]);
    // Side AC stacks: T1 2–4, pencils fewer and shorter (budget, wave 2B).
    if(e.type==='T1'&&r()<.45)lot.sideAC=2+Math.floor(r()*3);else if(e.type==='T2'&&r()<.25)lot.sideAC=1+Math.floor(r()*2);
-   lot.roofItems=roofRecipe(rng(e.seed+':roof'),lot,category);
+   lot.roofItems=roofRecipe(rng(e.seed+':roof'),lot,category);skin5a(lot);
    e.lot=lot;out.lots.push(lot);
   });
   // Touching neighbours along the street (0 where an alley, gap or parking breaks the wall).
@@ -278,7 +301,7 @@ function layoutDistrict(d,buildings,out){
   const depth=between(r,3.4,4.0),frontZ=d.z+h.s*(EDGE+.6)-fz*.8,floors=tile?2:2+Math.floor(r()*2),wall=tile?(r()<.5?'#6B5443':'#D9CDB4'):pick(r,WALLS);
   out.lots.push({id:`${d.id}:house:${h.x.toFixed(2)}`,plotId:null,district:d.id,role:'interior',user:false,building:null,x:h.x,z:frontZ-fz*depth/2,width:h.width,depth,setback:.8,front,frontZ,
    type,floors,height:heightFor(floors,type),eave:tile?GROUND+STOREY:undefined,wall,roof:pick(r,tile?TILE_ROOFS:ROOFS),shop:'house',stripe:null,awning:null,stair:false,gap:null,
-   leftH:0,rightH:0,bays:[],sideAC:0,sideWindows:Math.floor(r()*2),roofItems:roofRecipe(r,{type,floors,width:h.width,depth},category)});}
+   leftH:0,rightH:0,bays:[],sideAC:0,sideWindows:Math.floor(r()*2),roofItems:roofRecipe(r,{type,floors,width:h.width,depth},category)});skin5a(out.lots.at(-1));}
 }
 
 // Height a user lot shows for its building phase (city.js draws sites this tall): thinking = a 2 m hoarding, a site

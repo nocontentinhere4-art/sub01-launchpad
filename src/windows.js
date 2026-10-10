@@ -12,7 +12,10 @@ import {toon,addWeather,night,weather} from './toon.js';
 //
 // Drop-in for city.js:  const windowMat=nightLit(windowMaterial()),...   (nightLit still adds its per-instance light;
 // this shader re-shapes that light per window afterwards, so the order of the two hooks does not matter).
-export const WINDOW={cell:1.15,frame:.05,mix:{dark:.22,curtain:.2,tv:.09},spare:.1,warm:'#FFC27A',tv:'#5D86FF',curtain:'#D9D2C2',frameColor:'#8A918F'};
+// Wave 5A: mullion (half-width of the meeting rail), lintel/jamb inner shadows (strength, depth in units) and the sill
+// highlight on the bottom frame (day: × 1 + sillLift; night: a little of the room light on it).
+export const WINDOW={cell:1.15,frame:.05,mix:{dark:.22,curtain:.2,tv:.09},spare:.1,warm:'#FFC27A',tv:'#5D86FF',curtain:'#D9D2C2',frameColor:'#9AA09E',
+ mullion:.02,lintel:.42,lintelDepth:.16,jamb:.22,jambDepth:.08,sillLift:.55};
 // The GLSL hash, mirrored in JS (tests and anyone placing things against a lit window).
 export const winHash=(x,y)=>{const v=Math.sin(x*12.9898+y*78.233)*43758.5453;return v-Math.floor(v);};
 export const windowCells=len=>Math.max(1,Math.floor(len/WINDOW.cell+.5));
@@ -46,13 +49,19 @@ export function windowFragment(){const m=WINDOW.mix,d=m.dark,c=d+m.curtain,t=c+m
  vec2 winQ=vec2(clamp(winX/winCw-winCell,0.,1.),clamp(vWinUV.y/vWinSize.y+.5,0.,1.));
  float winH=fract(sin(dot(vWinSeed+winCell*vec2(3.17,1.91),vec2(12.9898,78.233)))*43758.5453),winH2=fract(winH*13.37+.17),winH3=fract(winH*71.9+.53);
  float winEdge=min(min(winQ.x,1.-winQ.x)*winCw,min(winQ.y,1.-winQ.y)*vWinSize.y),winFrame=1.-step(${f(WINDOW.frame)},winEdge);
+ // Wave 5A depth: a meeting rail between the two sliding sashes (cells ≥ 0.8 wide), the lintel's shadow inside the top
+ // of the opening and the jamb's on the left, and a lit sill along the bottom frame.
+ float winMull=step(.8,winCw)*step(abs(winQ.x-.5+.012)*winCw,${f(WINDOW.mullion)});winFrame=max(winFrame,winMull);
+ float winTopD=(1.-winQ.y)*vWinSize.y-${f(WINDOW.frame)},winLeftD=winQ.x*winCw-${f(WINDOW.frame)};
+ float winShade=(1.-${f(WINDOW.lintel)}*(1.-smoothstep(0.,${f(WINDOW.lintelDepth)},winTopD)))*(1.-${f(WINDOW.jamb)}*(1.-smoothstep(0.,${f(WINDOW.jambDepth)},winLeftD)));
+ float winSill=step(winQ.y*vWinSize.y,${f(WINDOW.frame)})*(1.-winMull);
  float wkDark=step(winH,${f(d)}),wkCurt=step(${f(d)},winH)*step(winH,${f(c)}),wkTv=step(${f(c)},winH)*step(winH,${f(t)}),wkRoom=1.-wkDark-wkCurt-wkTv;
  float winCurt=wkCurt*step(winH2<.5?winQ.x:1.-winQ.x,.35+.65*winH3);
  float winFurn=max(step(winQ.y,.28+.12*winH3)*step(abs(winQ.x-(.25+.5*winH2)),.16+.12*winH3),step(winH3,.45)*step(abs(winQ.x-(.86-.72*winH2)),.07)*step(winQ.y,.74));
  vec3 winDay=winBase*(.62+1.05*winQ.y)+vec3(.018,.026,.034)*winQ.y+.05*step(fract(winQ.x*.6+winQ.y*.45+winH*3.),.13);
  winDay=mix(winDay,winBase*.42,winFurn*.6*(1.-winCurt));
- winDay=mix(winDay,${glslColor(WINDOW.curtain)}*.6,winCurt*.85);
- diffuseColor.rgb=mix(diffuseColor.rgb,diffuse*mix(winDay,${glslColor(WINDOW.frameColor)},winFrame),winGlass);`,
+ winDay=mix(winDay,${glslColor(WINDOW.curtain)}*.6,winCurt*.85)*winShade;
+ diffuseColor.rgb=mix(diffuseColor.rgb,diffuse*mix(winDay,${glslColor(WINDOW.frameColor)}*(1.+${f(WINDOW.sillLift)}*winSill),winFrame),winGlass);`,
  light:`
  {float winE=dot(totalEmissiveRadiance,vec3(.333));vec3 winLit=totalEmissiveRadiance;
   float winFl=.55+.45*sin(uWinTime*6.3+winH*40.)*sin(uWinTime*1.7+winH*9.);
@@ -61,7 +70,7 @@ export function windowFragment(){const m=WINDOW.mix,d=m.dark,c=d+m.curtain,t=c+m
   vec3 winCloth=winLit*vec3(1.,.88,.7)*(.68+.12*winQ.y);
   vec3 winOn=wkRoom*winRoom+wkTv*winTv+wkCurt*mix(winRoom,winCloth,winCurt);
   vec3 winSpare=uWinNight*(${glslColor(WINDOW.warm)}*.5*step(winH,uWinSpare)*(1.-.7*winFurn)*mix(1.,.7,winCurt)+${glslColor(WINDOW.tv)}*.3*winFl*step(uWinSpare,winH)*step(winH,uWinSpare+.03));
-  totalEmissiveRadiance=mix(totalEmissiveRadiance,mix(winSpare,winOn,step(.004,winE))*(1.-winFrame),winGlass);}
+  totalEmissiveRadiance=mix(totalEmissiveRadiance,mix(winSpare,winOn,step(.004,winE))*(1.-winFrame)*mix(1.,winShade,.6)+winSill*winE*.35*${glslColor(WINDOW.warm)},winGlass);}
  #include <lights_toon_fragment>`};}
 
 // A toon material for window bands with the fake interior. `spare` is the share of windows lit in bands that carry no
@@ -73,7 +82,7 @@ export function windowMaterial({spare=WINDOW.spare,interior=true,...params}={}){
   shader.vertexShader='varying float vWinFace;varying vec2 vWinUV,vWinSize,vWinSeed;\n'+shader.vertexShader.replace('#include <project_vertex>','#include <project_vertex>'+WINDOW_VERT);
   shader.fragmentShader='uniform float uWinOn,uWinSpare,uWinNight,uWinTime;varying float vWinFace;varying vec2 vWinUV,vWinSize,vWinSeed;\n'+shader.fragmentShader
    .replace('#include <color_fragment>','#include <color_fragment>'+fr.color).replace('#include <lights_toon_fragment>',fr.light);};
- m.customProgramCacheKey=()=>'win-w4b';
+ m.customProgramCacheKey=()=>'win-w5a';
  return m;
 }
 // The night-light hook city.js uses (nightLight attribute × night), for meshes outside city.js that want the same

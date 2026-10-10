@@ -55,7 +55,8 @@ export const REASONS={
  claim:'A wallet keeps your apartment and your 80% of creator fees.',
  idea:'Ideas need a wallet: it receives your 80% of creator fees if SUB-01 builds yours.',
  guestbook:'Sign in to sign the guestbook: notes carry your resident name.',
- save:'A wallet keeps your room saved for you.'};
+ save:'A wallet keeps your room saved for you.',
+ chat:'Sign in to chat: your messages carry your resident name, never your wallet.'};
 export const reasonFor=key=>REASONS[key]||REASONS.claim;
 // Which reason a write stands for; null = not gated (reads, the sign-in calls themselves).
 export function gateReason(path,method='GET'){
@@ -67,7 +68,7 @@ export function gateReason(path,method='GET'){
  if(m==='PUT'&&p==='/api/rooms/me')return 'save';
  return 'default';
 }
-export const GATE_TEXT={guestbook:'Sign in to sign the guestbook.',save:'Sign in to save your room.',idea:'Sign in to drop an idea.',claim:'Sign in to claim an apartment.',default:'Sign in first.'};
+export const GATE_TEXT={guestbook:'Sign in to sign the guestbook.',save:'Sign in to save your room.',idea:'Sign in to drop an idea.',claim:'Sign in to claim an apartment.',chat:'Sign in to chat.',default:'Sign in first.'};
 
 // ---- DOM wiring ----
 // ctx (main.js): me, options, buildings, goal, serverUp, explorer (get/set), cityEvents, template, mobile, refreshMe,
