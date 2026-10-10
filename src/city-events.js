@@ -409,24 +409,25 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
   return !!spawn(o,'visit',route[0],(v,c)=>{const r=c.root;
    // Prefer the rig's own skate emote (board + lean, characters.js); otherwise a plain box board and the Run clip.
    if(o.skate&&!(v.emote=typeof c.emote==='function'&&c.emote('skate')===true)){v.board=new THREE.Mesh(new THREE.BoxGeometry(.34,.06,.95),toon({color:'#fb752b'}));v.board.position.y=-.06;r.add(v.board);v.lift=.12;}
-   Object.assign(v,{state:'go',route,path:route,i:1,dist:0,run:!!o.skate,speed:(routeLength(route)>30?3:WALK_SPEED)*(o.skate?2:1)});});
+   Object.assign(v,{state:'go',route,path:route,i:1,dist:0,run:!!o.skate,speed:(routeLength(route)>30?3:WALK_SPEED)*(o.skate?2:1)});v.onPath?.(route,v.speed);});
  }
  function stepVisit(v,dt,T){
   const c=v.char;
-  if(v.state==='stay'){if(T>v.waveAt){c.play('Wave');v.waveAt=Infinity;}if(T>v.until){v.state='back';v.path=[...v.route].reverse();v.i=1;if(v.emote)c.emote('skate');}return;}
+  if(v.state==='stay'){if(T>v.waveAt){c.play('Wave');v.waveAt=Infinity;}if(T>v.until){v.state='back';v.path=[...v.route].reverse();v.i=1;if(v.emote)c.emote('skate');v.onPath?.(v.path,v.speed);}return;}
   if(!walk(v,dt))return;
   if(v.state==='back'){endRoam();return;}
-  v.state='stay';v.until=T+20;v.waveAt=T+10;c.root.rotation.y=Math.PI/2;if(v.emote)c.stopEmote?.();c.play('Idle');c.play('Wave');v.onArrive?.();
+  v.state='stay';v.until=T+20;v.waveAt=T+10;c.root.rotation.y=Math.PI/2;if(v.emote)c.stopEmote?.();c.play('Idle');c.play('Wave');v.onPath?.(null,0);v.onArrive?.();
  }
  // Explore mode: the explore.js brain drives the model through this handle (one object per outing, no per-frame garbage).
  function startExplore(o){
   const v=spawn(o,'explore',o.at);if(!v)return null;const ch=()=>roam===v&&v.char;
   return v.handle={get x(){return v.char?v.char.root.position.x:v.at.x;},get z(){return v.char?v.char.root.position.z:v.at.z;},get root(){return v.char?.root||null;},get moving(){return !!v.path;},
-   go(path,{run=false,done=null}={}){if(roam!==v)return;v.path=path;v.i=1;v.dist=0;v.run=run;v.done=done;v.speed=run?RUN_SPEED:routeLength(path)>30?3:WALK_SPEED;},
-   halt(){v.path=v.done=null;if(ch())v.char.play('Idle');},face(yaw){if(ch())v.char.root.rotation.y=yaw;},play(name){if(ch())v.char.play(name);},
+   // onPath (presence.js): the route the model walks now, null when it stands still.
+   go(path,{run=false,done=null}={}){if(roam!==v)return;v.path=path;v.i=1;v.dist=0;v.run=run;v.done=done;v.speed=run?RUN_SPEED:routeLength(path)>30?3:WALK_SPEED;v.onPath?.(path,v.speed);},
+   halt(){v.path=v.done=null;if(ch())v.char.play('Idle');v.onPath?.(null,0);},face(yaw){if(ch())v.char.root.rotation.y=yaw;},play(name){if(ch())v.char.play(name);},
    emote(name){return !!ch()&&typeof v.char.emote==='function'&&v.char.emote(name)===true;},stopEmote(){if(ch())v.char.stopEmote?.();}};
  }
- function stepExplore(v,dt){if(!v.path||!walk(v,dt))return;v.path=null;v.char.play('Idle');const d=v.done;v.done=null;d?.();}
+ function stepExplore(v,dt){if(!v.path||!walk(v,dt))return;v.path=null;v.char.play('Idle');v.onPath?.(null,0);const d=v.done;v.done=null;d?.();}
  function stepRoam(dt,T){
   const v=roam;if(!v.char)return;v.char.update(dt);
   if(v.mode==='visit')stepVisit(v,dt,T);else stepExplore(v,dt);

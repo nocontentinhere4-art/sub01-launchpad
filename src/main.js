@@ -15,6 +15,7 @@ import * as CS from './city-state.js';
 import {addCityGreen} from './city-green.js';
 import {openRoom,attachRoomHost} from './room.js';
 import {addResidents} from './residents.js';
+import {createRemoteWalkers,createPresenceSender} from './presence.js'; // presence: other residents' live walkers, your own outing posted
 import {createCrowdGPU,crowdPixels,crowdClose} from './crowd-gpu.js';
 import {renderLookFields,readLook,isUnlocked} from './creator.js';
 import {loadCharacter,HEIGHT} from './characters.js';
@@ -38,6 +39,7 @@ import {startTelemetry} from './telemetry.js';
 import {awayCard} from './away.js';
 import {cityLayout} from './lots.js';
 import {createChat} from './chat.js'; // chat:
+import {verdictModel,renderVerdict,prefillFrom,pollPlan,counterLabel} from './verdict.js'; // verdict: SUB-01 answers the drop in seconds
 import {createGovernor,settingsFor,startLevel,gpuName,createFuse,packResume,unpackResume,safeStore,timeoutSignal,nextPollDelay,GOV,RESUME_KEY,RESUME_MAX_AGE} from './quality.js';
 // Never a white page: an uncaught error or rejection is one quiet console line. If the city never drew its first frame
 // (no WebGL, a module that failed), the loading screen says so instead of spinning forever.
@@ -297,6 +299,8 @@ function showPlace(p) {
   // Rituals: build-or-pass on a thinking public project, SUB-01's diary on his desk, the server's share card.
   const predictable=project&&b.phase==='thinking'&&!b.private;$('detail-predict').hidden=true;
   if(predictable)rituals?.predict($('detail-predict'),{ideaId:ideaIdOf(b),own:!!p.mine});else rituals?.predict(null,{ideaId:null});
+  // verdict: the author's own idea (private or public) shows SUB-01's card with his notes; nobody else sees it here
+  {const vid=p.ideaId||(project&&p.mine?ideaIdOf(b):null);$('detail-verdict').hidden=true;if(vid&&me?.ideas?.some(i=>i.id===vid))loadDetailVerdict(vid,p);}
   $('detail-diary').hidden=p.id!=='home';const card=serverCardUrl(b,p.id);$('detail-share').hidden=!card;if(card)$('detail-share').href=card;
   if(project&&b.slug)loadRoles(b);$('detail-name').textContent=p.name;$('detail-category').textContent=p.kind;
   renderOnchain(project&&b.phase==='open'?b:null);
@@ -382,16 +386,25 @@ function clampToCity(){
 function resetView(){cityTour=null;follow=false;cameraTween=null;aimCamera(OVERVIEW_TARGET.clone());camera.zoom=mobile?OVERVIEW.mobile:OVERVIEW.desktop;camera.updateProjectionMatrix();controls.update();}
 
 // The mailbox needs a signed-in resident. Each step opens the next one.
-async function openBuildForm(plot){
+// `revise`: the idea he passed on (GET /api/ideas/:id), prefilled; the drop then goes as a new version (PATCH).
+async function openBuildForm(plot,revise=null){
  if(!serverUp){notify('The city server is offline. Ideas cannot be dropped right now.');return;}
- if(!me?.user){guest.requireWallet('idea',()=>openBuildForm(plot));return;} // guest: sign-in with the reason line
- if(!me?.user){openSignIn(()=>openBuildForm(plot));return;}
- if(!resident()){openCreator(()=>openBuildForm(plot));return;}
+ if(!me?.user){guest.requireWallet('idea',()=>openBuildForm(plot,revise));return;} // guest: sign-in with the reason line
+ if(!me?.user){openSignIn(()=>openBuildForm(plot,revise));return;}
+ if(!resident()){openCreator(()=>openBuildForm(plot,revise));return;}
  const free=cityPlots.filter(p=>!p.reserved&&!cityBuildings.some(b=>b.plotId===p.id));
  if(!free.length){notify('Every address is taken right now.');return;}
  $('plot-address').replaceChildren(...free.map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name+(p.vacant?' / open lot':'');return o;}));
  $('plot-address').value=(plot&&free.some(p=>p.id===plot.id)?plot:free.find(p=>p.vacant)||free[0]).id;
- if(!$('idea-wallet').value)$('idea-wallet').value=me.user.wallet;$('form-error').textContent='';openDialog('idea-backdrop');
+ revising=revise&&revise.id?revise:null;
+ if(revising){const f=prefillFrom(revising);$('idea-title-input').value=f.title;$('idea-concept').value=f.concept;$('idea-name').value=f.nameSuggestion;$('idea-ticker').value=f.tickerSuggestion;if(f.receivingWallet)$('idea-wallet').value=f.receivingWallet;$('idea-rights').checked=true;}
+ const next=revising?counterLabel((revising.version||1)+1,revising.maxVersions):null;
+ $('idea-eyebrow').textContent=revising?`REVISE · ${next.toUpperCase()} · 再投函`:'SUB-01\'S MAILBOX · 投函';
+ $('idea-title').replaceChildren(revising?'Change his ':'Give your idea ',Object.assign(document.createElement('em'),{textContent:revising?'mind.':'an address.'}));
+ $('idea-intro').textContent=revising?`He passed on ${next.replace(/^v(\d+).*/,(m,n)=>'v'+(n-1))}. Work his notes into the text and drop it again; he reads every version.`:'Drop it in his mailbox. SUB-01 decides if he builds it. If he does, the building rises here while he works.';
+ $('idea-submit-label').textContent=revising?`Drop it again (${next})`:'Drop it in the mailbox';
+ if(!$('idea-wallet').value)$('idea-wallet').value=me.user.wallet;$('form-error').textContent='';
+ $('idea-verdict').hidden=true;$('idea-form').hidden=false;openDialog('idea-backdrop');
 }
 // The wallet list redraws on every detection change (wallet.js rescans on open, on load and for 4 s after); while a
 // sign-in is pending the buttons are disabled and the list keeps still, and a failure prints the wallet's own words.
@@ -406,6 +419,37 @@ function openSignIn(next){
     finally{busy=false;label.nodeValue=w.name;b.classList.remove('is-busy');all.forEach(x=>x.disabled=false);if(dirty)draw();}};return b;})
    :[Object.assign(document.createElement('p'),{className:'fine wallet-note'+(help.mode==='scanning'?' is-scanning':''),textContent:help.note})]));};
  scanWallets();draw();walletsUnsub?.();walletsUnsub=onWallets(draw);openDialog('signin-backdrop');
+}
+// verdict: SUB-01 answers the drop while the dialog is open. GET /api/ideas/:id every 2 s for at most 30 s (the
+// stream's `verdict` frame, when the chat relays it as a window event, cuts the wait short); then the card.
+let revising=null,watch=null;
+function watchVerdict(ideaId,root,{plot=null,dialog=null,closable=true}={}){
+ if(watch)watch.stop();
+ const started=Date.now();let timer=0,stopped=false,last=null;
+ const stop=()=>{stopped=true;clearTimeout(timer);removeEventListener('sub01:verdict',onFrame);if(watch?.ideaId===ideaId)watch=null;};
+ const close=dialog&&closable?m=>()=>{stop();closeDialog();if(m?.state==='build'&&plot)focusPlace(plot);}:()=>null;
+ const draw=idea=>{last=idea;const m=verdictModel(idea);renderVerdict(root,m,{onRevise:m.canRevise?()=>{stop();closeDialog();openBuildForm(plot,idea);}:null,onClose:close(m)});return m;};
+ const onFrame=e=>{if(e.detail?.ideaId===ideaId)tick(true);};
+ async function tick(now=false){
+  if(stopped)return;
+  if(dialog&&$(dialog).hidden){stop();return;}                           // the author closed it; the building tells the rest
+  let idea=null;try{idea=await getJSON(`/api/ideas/${encodeURIComponent(ideaId)}`);}catch(err){if(err instanceof ApiError&&err.status===404){draw(null);stop();return;}}
+  if(stopped)return;
+  const m=idea?draw(idea):null;
+  if(m&&m.state!=='waiting'){stop();refreshMe();pollWorld();return;}
+  const plan=pollPlan(started,Date.now());
+  if(!plan.again&&!now){if(last)renderVerdict(root,{...verdictModel(last),waitNote:'He is taking longer than usual. Nothing is decided yet; the building shows his answer when it comes.'},{onClose:close(null)});stop();return;}
+  timer=setTimeout(tick,now?0:plan.delay);
+ }
+ renderVerdict(root,verdictModel({status:'submitted',version:1,evaluation:null}),{onClose:close(null)});
+ addEventListener('sub01:verdict',onFrame);
+ watch={ideaId,stop};
+ tick(true);
+ return watch;
+}
+// The building's sheet: the same card for the author (a private idea is only ever shown to its author).
+function loadDetailVerdict(ideaId,plot){
+ watchVerdict(ideaId,$('detail-verdict'),{plot,dialog:'detail-backdrop',closable:false});   // the sheet has its own close
 }
 const IDEA_STATUS={submitted:'In his mailbox',evaluating:'SUB-01 is thinking',selected:'He will build it',declined:'He passed',generating:'Being built',preview_ready:'Ready for your review',approved:'Approved by you',launch_prepared:'Launch ready',awaiting_signature:'Waiting for your signature',confirming:'Confirming on-chain',launched:'Launched',failed:'Stopped: needs attention',cancelled:'Cancelled'};
 let knownStatus=null;
@@ -480,13 +524,16 @@ $('visit-button').onclick=()=>{
  if(cityPlots.some(c=>c.id===p.id)){openBuildForm(p);return;}
  focusPlace(p);
 };
-function updateResident(){if(world)residents.set(residentList());}
+function updateResident(){if(world)residents.set(residentList());remoteWalkers.setMyPlot(resident()?.plotId);} // presence: never your own walker twice
 $('idea-form').onsubmit=async e=>{
  e.preventDefault();$('form-error').textContent='';
  const body={plotId:$('plot-address').value,title:$('idea-title-input').value,concept:$('idea-concept').value,nameSuggestion:$('idea-name').value,tickerSuggestion:$('idea-ticker').value,receivingWallet:$('idea-wallet').value.trim(),rightsConfirmed:$('idea-rights').checked};
- try{await api('/api/ideas',{method:'POST',body});closeDialog();$('idea-form').reset();await Promise.all([refreshMe(),pollWorld()]);
-  const p=cityPlots.find(p=>p.id===body.plotId);focusPlace(p);notify('In his mailbox. SUB-01 will decide whether to build it.');
- }catch(err){const errors=err.body?.details?.errors||err.body?.errors;$('form-error').textContent=errors?Object.entries(errors).map(([k,v])=>`${k}: ${v}`).join(' · '):err.message;}
+ // verdict: a revision goes as a new version of the passed idea; either way the dialog stays open and SUB-01 answers in it
+ const target=revising?`/api/ideas/${encodeURIComponent(revising.id)}`:'/api/ideas',method=revising?'PATCH':'POST';
+ try{const out=await api(target,{method,body});const ideaId=out?.id||revising?.id;revising=null;$('idea-form').reset();$('idea-form').hidden=true;
+  const p=cityPlots.find(p=>p.id===body.plotId);watchVerdict(ideaId,$('idea-verdict'),{plot:p,dialog:'idea-backdrop'});
+  await Promise.all([refreshMe(),pollWorld()]);focusPlace(p);notify(method==='PATCH'?'Dropped again. SUB-01 is reading the new version.':'In his mailbox. SUB-01 is reading it.');
+ }catch(err){const errors=err.body?.details?.errors||err.body?.errors;$('form-error').textContent=errors?Object.entries(errors).map(([k,v])=>`${k}: ${v}`).join(' · '):err.status===429&&err.body?.retryAfterS?`${err.message}: try again in ${err.body.retryAfterS} s.`:err.message;}
 };
 $('tour-button').onclick=meetDev;
 $('follow-button').onclick=()=>{if(!character)return;follow=!follow;if(follow){camera.zoom=1.7;camera.updateProjectionMatrix();}notify(follow?'Following SUB-01.':'Free camera.');};
@@ -503,8 +550,9 @@ function visitWalk(p){
 // The roaming model (a visit or explore mode) is followed by the camera like meetDev; its figure at home (box or GPU) is hidden.
 // A name tag rides above it: in the isometric view the street is often behind a building.
 const roamTag={element:Object.assign(document.createElement('div'),{className:'world-label roam-tag',hidden:true}),position:new THREE.Vector3(),roam:true};
-function roamStart(r,root){visitKey=boxKey(r.plotId);residents.hide(new Set(visitKey?[visitKey]:[]));roamTag.element.replaceChildren(icon('walk'),r.name);if(!labels.includes(roamTag)){$('labels').append(roamTag.element);labels.push(roamTag);}cityTour=null;cameraTween=null;followObj=root;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();}
-function roamEnd(){const i=labels.indexOf(roamTag);if(i>=0)labels.splice(i,1);roamTag.element.remove();visitKey=null;residents.hide(new Set());if(followObj){followObj=null;follow=false;}}
+function roamStart(r,root){visitKey=boxKey(r.plotId);residents.hide(new Set(visitKey?[visitKey]:[]));roamTag.element.replaceChildren(icon('walk'),r.name);if(!labels.includes(roamTag)){$('labels').append(roamTag.element);labels.push(roamTag);}cityTour=null;cameraTween=null;followObj=root;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();
+ if(me?.user&&resident()&&!r.guest)presenceSender.start();} // presence: a signed-in resident's outing is seen by everyone; a guest's stays here
+function roamEnd(){presenceSender.stop();const i=labels.indexOf(roamTag);if(i>=0)labels.splice(i,1);roamTag.element.remove();visitKey=null;residents.hide(new Set());if(followObj){followObj=null;follow=false;}}
 // The host's greeting when a visitor (or an exploring resident) stops at their door.
 function greet(plotId,name){const f=frontOf(plotId);if(f)bubble(`💬 Hi ${name}!`,new THREE.Vector3(f.x+1.2,2.4,f.z),4000);const k=boxKey(plotId);if(k)residents.wave(k,performance.now()*.001);}
 // Purely local: nothing about a visit is sent to the server.
@@ -512,6 +560,7 @@ function startVisit(){
  const r=resident(),b=selectedPlace?.building;if(!r||b?.type!=='apartment'||cityEvents.visiting)return;closeDialog();stopExplore();
  const emotes=me?.unlocks?.emotes;
  const ok=cityEvents.visit({from:r.plotId,to:b.plotId,skate:Array.isArray(emotes)&&emotes.includes('skate'),pet:r.look?.pet,load:()=>loadCharacter(r.look||{},{template}),
+  onPath:(p,s)=>presenceSender.path(p,s), // presence: a visit is a walk others see
   onStart(root){roamStart(r,root);notify(`${r.name} is on the way to ${b.name}'s place.`);},
   onArrive(){greet(b.plotId,r.name);},onEnd:roamEnd});
  if(!ok)notify('No street route to that address.');
@@ -526,7 +575,7 @@ function toggleExplore(){
  if(!resident()){openCreator(toggleExplore);return;}
  const r=resident(),at=frontOf(r.plotId);if(!at)return;
  if(cityEvents.roaming)cityEvents.endRoam();
- const roam=cityEvents.explore({at,pet:r.look?.pet,load:()=>loadCharacter(r.look||{},{template}),
+ const roam=cityEvents.explore({at,pet:r.look?.pet,load:()=>loadCharacter(r.look||{},{template}),onPath:(p,s)=>presenceSender.path(p,s), // presence: every route change goes out
   onStart(root){roamStart(r,root);notify(mobile?'Tap a street to walk, double-tap to run.':'Click a street to walk there, double-click to run. Leave it 8 s and it wanders on its own.');},
   onEnd(){roamEnd();explorer=null;exploreUI();if(serverUp)$('activity-text').textContent=goal?.text||'';}});
  if(!roam){notify('Your character is busy right now.');return;}
@@ -594,6 +643,8 @@ function showCoach(){if(coachSeen(coachStore)||roomView||photo?.on)return;[...$(
 
 // Shared world: the server is the source of truth; the city redraws only when something changed.
 const residents=addResidents(scene),worldLabels=[],cityEvents=createCityEvents(scene,{mobile,reducedMotion,gpu:crowdGPU});
+// presence: everyone else's outings drawn by the residents' crowd (no draw call of their own); yours posted while it is out.
+const remoteWalkers=createRemoteWalkers({residents,labels}),presenceSender=createPresenceSender({root:()=>cityEvents.visitor});
 // Rooms borrow this renderer; the city stops updating while one is open.
 attachRoomHost({template,notify,openIdea(){openBuildForm();},
   // Rituals in a room (room.js): a postcard button, SUB-01's diary by the desk, the 'while you were away' card in your own room.
@@ -834,13 +885,15 @@ function focusFromUrl(){const q=new URLSearchParams(location.search),id=q.get('f
 // ---------- Chat: the city's live line, speech bubbles over heads, talking to SUB-01 (chat.js) ----------
 // Bubbles are world labels (labels[], projected below in animate); chat.frame() keeps their anchors on the speakers.
 const chat=createChat({me:()=>me,labels,notify,requireWallet:(k,next)=>guest.requireWallet(k,next),openCreator:next=>openCreator(next),
-  sub01:()=>character,visitor:()=>cityEvents.visitor,target:()=>controls.target,selected:()=>$('district-select').value});
-window.__city.chat=chat;
+  sub01:()=>character,visitor:()=>cityEvents.visitor,target:()=>controls.target,selected:()=>$('district-select').value,
+  walkerAt:plotId=>remoteWalkers.at(plotId),presence:remoteWalkers}); // presence: bubbles over walkers, walker frames in
+window.__city.chat=chat;window.__city.presence={get walkers(){return remoteWalkers.list;},get myId(){return remoteWalkers.myId;},get sender(){return presenceSender.stats;},get frames(){return remoteWalkers.frames;},
+  inject:frames=>remoteWalkers.apply(frames)};   // rendering only (screenshots, the draw-call audit): a fake walker frame as the stream would send it
 // ---------- end Chat ----------
 const clock=new THREE.Clock();let lastRender=0,renderedAt=-1;
 // Per-frame subsystems run behind fuses (quality.js): three errors in a row switch off only that subsystem.
 const fuses=Object.fromEntries(['crowd','weather','critters','events','explore','room'].map(n=>[n,createFuse(n)]));
-function crowdFrame(seconds){crowdBegin(seconds);residents.update(seconds,crowdGPU);}
+function crowdFrame(seconds){crowdBegin(seconds);remoteWalkers.frame(performance.now());residents.update(seconds,crowdGPU);} // presence: reckon the walkers before the crowd draws them
 function animate(now){
   requestAnimationFrame(animate);
   // Governor sample: the cost of the last rendered frame = this rAF minus that frame's rAF (vsync-quantised, cap-free).
@@ -874,7 +927,7 @@ function animate(now){
   // While the headline is up (first INTRO_MS), no district label may sit in its column, header included (owner
   // 2026-10-10: Kiyosumi/Kinshicho over the title).
   const introRect=introUp?introBox():null;
-  for(const label of labels){if(!labelsOn&&!label.roam&&!label.element.classList.contains('visit-bubble')&&!label.element.classList.contains('chat-bubble')){label.element.hidden=true;continue;}if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;const lx=(p.x*.5+.5)*innerWidth,ly=(-p.y*.5+.5)*innerHeight;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1||(introRect&&label.district&&lx<introRect.right+40&&ly<introRect.bottom+24);}
+  for(const label of labels){if(!labelsOn&&!label.roam&&!label.element.classList.contains('visit-bubble')&&!label.element.classList.contains('chat-bubble')){label.element.hidden=true;continue;}if(label.minZoom&&camera.zoom<label.minZoom){label.element.hidden=true;continue;}if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;const lx=(p.x*.5+.5)*innerWidth,ly=(-p.y*.5+.5)*innerHeight;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1||(introRect&&label.district&&lx<introRect.right+40&&ly<introRect.bottom+24);}
 }
 // The headline ("Your idea. A whole city.") shows for INTRO_MS after the city is up, then fades (CSS .intro-gone).
 const INTRO_MS=5000;let introUp=true,introBoxCache=null,introBoxAt=0;

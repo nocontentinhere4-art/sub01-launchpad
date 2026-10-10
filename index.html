@@ -180,6 +180,7 @@
         <div class="onchain" id="detail-onchain" hidden><div class="onchain-head"><span class="eyebrow">ON-CHAIN</span><span class="onchain-src" id="detail-onchain-src"></span></div><dl class="onchain-grid" id="detail-onchain-grid"></dl><a class="link-button onchain-link" id="detail-onchain-link" target="_blank" rel="noopener" hidden>DexScreener<svg class="i" aria-hidden="true"><use href="#i-ne"/></svg></a></div>
         <div class="progress-head" id="detail-progress-head" hidden><span class="eyebrow">Build progress</span><span class="eyebrow" id="detail-pct"></span></div>
         <div class="progress" id="detail-progress" hidden><i></i></div><div id="detail-roles" class="roles" hidden></div><div id="detail-predict" class="predict" hidden></div>
+        <div class="verdict" id="detail-verdict" hidden></div>
         <div class="milestones" id="detail-milestones"><span>01 Idea</span><span>02 Build</span><span>03 Launch</span></div>
         <button class="button button-orange" id="visit-button" type="button">Visit this place<span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button><button class="button button-ghost" id="takeover-button" type="button" hidden>Propose a community takeover</button><button class="button button-ghost" id="detail-diary" type="button" hidden><svg class="i lead" aria-hidden="true"><use href="#i-book"/></svg>Read today's diary</button><a class="link-button detail-share" id="detail-share" target="_blank" rel="noopener" hidden>Share card<svg class="i" aria-hidden="true"><use href="#i-ne"/></svg></a>
         <p class="disclosure" id="detail-disclosure"></p>
@@ -189,8 +190,8 @@
       <section class="idea-card" role="dialog" aria-modal="true" aria-labelledby="idea-title">
         <span class="grabber" aria-hidden="true"></span>
         <button class="close-button" id="idea-close" type="button" aria-label="Close idea form"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
-        <span class="eyebrow">SUB-01'S MAILBOX · 投函</span><h2 id="idea-title">Give your idea <em>an address.</em></h2>
-        <p>Drop it in his mailbox. SUB-01 decides if he builds it. If he does, the building rises here while he works.</p>
+        <span class="eyebrow" id="idea-eyebrow">SUB-01'S MAILBOX · 投函</span><h2 id="idea-title">Give your idea <em>an address.</em></h2>
+        <p id="idea-intro">Drop it in his mailbox. SUB-01 decides if he builds it. If he does, the building rises here while he works.</p>
         <form id="idea-form">
           <label for="plot-address">Address for the project</label><select id="plot-address" required></select>
           <label for="idea-title-input">Idea in one line</label><input id="idea-title-input" maxlength="80" minlength="3" required placeholder="An arcade for people who keep buying the top" />
@@ -201,8 +202,10 @@
           <p class="fine">The split is fixed and written into the token at launch; it cannot be changed later, not even by a community takeover. You sign the launch transaction with your own wallet.</p>
           <label class="check"><input type="checkbox" id="idea-rights" required /> The idea is mine to give, and I accept that what SUB-01 builds becomes public once I publish it.</label>
           <p class="form-error" id="form-error" role="alert"></p>
-          <button class="button button-orange" type="submit">Drop it in the mailbox<span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button>
+          <button class="button button-orange" type="submit" id="idea-submit"><span id="idea-submit-label">Drop it in the mailbox</span><span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button>
         </form>
+        <!-- verdict: SUB-01 reads the idea while this stays open; the card replaces the form (src/verdict.js) -->
+        <div class="verdict" id="idea-verdict" aria-live="polite" hidden></div>
       </section>
     </div>
     <div class="dialog-backdrop" id="signin-backdrop" hidden>

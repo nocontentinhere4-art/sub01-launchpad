@@ -69,6 +69,8 @@ export function gateReason(path,method='GET'){
  return 'default';
 }
 export const GATE_TEXT={guestbook:'Sign in to sign the guestbook.',save:'Sign in to save your room.',idea:'Sign in to drop an idea.',claim:'Sign in to claim an apartment.',chat:'Sign in to chat.',default:'Sign in first.'};
+// Shown once (localStorage) on a guest's first outing: others never see a guest walk (presence.js).
+export const PRESENCE_HINT='Sign in so others can see you walk.',PRESENCE_HINT_KEY='sub01.presence.hint';
 
 // ---- DOM wiring ----
 // ctx (main.js): me, options, buildings, goal, serverUp, explorer (get/set), cityEvents, template, mobile, refreshMe,
@@ -135,7 +137,10 @@ export function createGuest(ctx){
   if(!g)return;const ce=ctx.cityEvents;if(ce.roaming)ce.endRoam();
   const r={name:g.name,look:g.look,traits:g.traits,guest:true,plotId:null};
   const roam=ce.explore({at:spawnFor(r),pet:g.look.pet,load:()=>loadCharacter(g.look,{template:ctx.template}),
-   onStart(root){ctx.roamStart({...r,name:`${g.name} · guest`},root);ctx.notify(`Exploring as ${g.name}. ${ctx.mobile?'Tap a street to walk, double-tap to run.':'Click a street to walk, double-click to run.'} Sign in any time to claim an apartment.`);},
+   onStart(root){ctx.roamStart({...r,name:`${g.name} · guest`},root);ctx.notify(`Exploring as ${g.name}. ${ctx.mobile?'Tap a street to walk, double-tap to run.':'Click a street to walk, double-click to run.'} Sign in any time to claim an apartment.`);
+    // Live presence (presence.js) is for residents: a guest is never sent to the server, and hears it once.
+    let seen=null;try{seen=store()?.getItem(PRESENCE_HINT_KEY);}catch{}
+    if(!seen){try{store()?.setItem(PRESENCE_HINT_KEY,'1');}catch{}setTimeout(()=>{if(exploring)ctx.notify(PRESENCE_HINT);},5000);}},
    onEnd(){exploring=false;ctx.roamEnd();ctx.explorer=null;ctx.exploreUI();const a=$('activity-text');if(a&&ctx.serverUp)a.textContent=ctx.goal?.text||'';}});
   if(!roam){ctx.notify('Your character is busy right now.');return;}
   exploring=true;setChip(g);

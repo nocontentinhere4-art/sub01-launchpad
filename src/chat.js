@@ -141,6 +141,8 @@ export function createChat(ctx){
  const anchor=(key,out)=>{
   if(key==='sub01'){const c=ctx.sub01();if(!c)return false;out.copy(c.position);out.y+=2.75;return true;}
   if(key==='me'){const v=ctx.visitor();if(v){out.copy(v.position);out.y+=2.9;return true;}const p=myPlot();if(!p)return false;key='plot:'+p;}
+  // a resident out walking (presence.js) speaks over their walker, not over their apartment
+  const w=ctx.walkerAt?.(key.slice(5));if(w){out.set(w.x,w.y+2.9,w.z);return true;}
   const f=frontOf(key.slice(5));if(!f)return false;out.set(f.x+1.2,2.45,f.z);return true;};
  function drawStack(key){
   const s=bubbles.stack(key);let l=stackLabels.get(key);
@@ -237,8 +239,9 @@ export function createChat(ctx){
  // -- the stream
  function handle(e){
   let d=null;try{d=JSON.parse(e.data);}catch{return;}
-  if(e.event==='hello'){you=d?.you||null;online=d?.online??[];for(const m of d?.recent||[])log.add(m);render();chrome();return;}
+  if(e.event==='hello'){you=d?.you||null;online=d?.online??[];for(const m of d?.recent||[])log.add(m);ctx.presence?.hello(d);render();chrome();return;}
   if(e.event==='presence'){online=d?.online??[];chrome();return;}
+  if(e.event==='walker'||e.event==='walkers'){ctx.presence?.apply(Array.isArray(d)?d:[d]);return;}   // live walkers (presence.js)
   if(e.event==='sub01'){sub01=d;chrome();return;}
   if(e.event==='del'){const id=String(d?.id);log.del(id);const k=bubbles.remove(id);if(k)drawStack(k);render();return;}
   if(e.event!=='msg')return;
@@ -270,7 +273,9 @@ export function createChat(ctx){
  const self={
   // Every frame from main.js, before the labels are projected: anchors follow their speakers, old bubbles go, far = 💬.
   frame(zoom){try{
-   const a=(ctx.me()?.user?.wallet||'')+'|'+(myName()||'');if(a!==acct){const wallet=acct.split('|')[0];acct=a;chrome();if(wallet!==a.split('|')[0]&&gen)connect();}
+   // a new wallet or a new resident name reconnects: the fresh hello carries `you` (name, own walker id) and the snapshot
+   const w=ctx.me()?.user?.wallet||'',rn=ctx.me()?.resident?.name||null,a=w+'|'+(rn||'');
+   if(a!==acct){const pw=acct.split('|')[0],first=acct==='';acct=a;chrome();if(!first&&gen&&(pw!==w||(rn&&you?.name!==rn)))connect();}
    for(const k of bubbles.expire(performance.now()))drawStack(k);
    for(const [k,l] of stackLabels){if(!anchor(k,l.position))l.position.set(0,-1e4,0);l.element.classList.toggle('is-far',zoom<CHAT.farZoom);}
   }catch(err){console.warn('[city] chat',err?.message||err);}},

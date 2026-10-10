@@ -1095,3 +1095,19 @@ button.cal-row:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--a
  /* the More sheet's time-of-day control gets its own line, three equal segments */
  #more-day{flex-wrap:wrap}#more-day .more-k{flex:1 1 100%}#more-day .daynight{flex:1 1 100%;flex-direction:row}#more-day .daynight .icon-button{flex:1;justify-content:center;padding:0 6px}
 }
+/* SUB-01's verdict card (src/verdict.js): in the mailbox dialog after a drop, and in the author's building sheet */
+.verdict{display:grid;gap:10px;margin-top:18px;padding:16px;border-radius:14px;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.verdict.is-build{box-shadow:inset 0 0 0 1px var(--accent-line);background:var(--accent-soft)}
+.verdict.is-failed{box-shadow:inset 0 0 0 1px var(--danger)}
+.verdict .eyebrow{margin-top:6px}
+.verdict-eyebrow .pulse{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:verdict-pulse 1.2s ease-in-out infinite}
+@keyframes verdict-pulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+.verdict-head{margin:0;font:700 22px/1.15 var(--f-ui);letter-spacing:-.01em;color:var(--ink)}
+.verdict-summary,.verdict-wait,.verdict-if{margin:0;font:450 15px/1.5 var(--f-ui);color:var(--ink)}
+.verdict-wait{color:var(--ink-2)}
+.verdict-list{margin:0;padding-left:18px;display:grid;gap:6px;font:450 14px/1.45 var(--f-ui);color:var(--ink-2)}
+.verdict-list li b{color:var(--ink);font-weight:650}.verdict-list li small{display:block;font:450 13px/1.4 var(--f-ui);color:var(--ink-3)}
+.verdict-context{color:var(--ink-3)}
+.verdict-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.verdict-actions .button{flex:1 1 auto;width:auto}
+.verdict-actions .button[disabled]{opacity:.55;cursor:not-allowed}
+@media (prefers-reduced-motion:reduce){.verdict-eyebrow .pulse{animation:none}}
