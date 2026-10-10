@@ -88,6 +88,7 @@
     <symbol id="i-face" viewBox="0 0 24 24"><circle cx="12" cy="9" r="5.2"/><path d="M8.2 8.8h7.6M5 21a7 7 0 0 1 14 0"/></symbol>
     <symbol id="i-dance" viewBox="0 0 24 24"><circle cx="13" cy="4.5" r="1.9"/><path d="M8 21l3.2-6 3.3 2V21M10.2 15l1.3-5.4L8 10.5 5 8M12.8 9.6l3.5 1.4 2.7-2.5"/></symbol>
     <symbol id="i-selfie" viewBox="0 0 24 24"><rect x="7" y="3.5" width="10" height="17" rx="2.5"/><path d="M12 17.5h.01M10 7h4"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol>
   </defs></svg>
   <div id="app">
     <div id="world" aria-label="Interactive 3D neighborhood"></div>
@@ -95,9 +96,10 @@
     <header class="topbar">
       <a class="brand" href="#" aria-label="SUB-01 neighborhood home"><img src="/brand/mark-small.svg" alt="" width="40" height="40" class="brand-mark"><span class="brand-name">SUBZERONE<small>TOKYO / YOUR CITY</small></span></a>
       <div class="preview-badge" id="server-badge"><i></i><span id="server-status">CONNECTING</span></div>
-      <button class="icon-button about-button" id="about-button" type="button" aria-label="About SUB-01" title="About SUB-01"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg></button>
       <button class="account-chip" id="account-button" type="button"><svg class="i" aria-hidden="true"><use href="#i-wallet"/></svg><span class="nm">Sign in</span></button>
-      <button class="button button-orange" id="idea-button" type="button"><svg class="i lead" aria-hidden="true"><use href="#i-mail"/></svg><span class="lbl">Drop an idea</span><span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button>
+      <!-- SIMPLIFY 2026-10-10: the three primary actions are #idea-button, #explore-button (Walk) and #tour-button (Visit SUB-01).
+           On phones main.js moves all three into #walk-dock, which becomes the dock's Idea · Walk · SUB-01 bar (.lbl-s = short labels). -->
+      <button class="button button-orange" id="idea-button" type="button"><svg class="i lead" aria-hidden="true"><use href="#i-mail"/></svg><span class="lbl">Drop an idea</span><span class="lbl-s">Idea</span><span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button>
     </header>
     <section class="intro">
       <span class="eyebrow">One brain · a city you can live in</span>
@@ -106,39 +108,47 @@
     </section>
     <div id="labels" aria-hidden="true"></div>
     <aside class="project-panel" id="project-panel" aria-label="Addresses">
+      <!-- Phones only (style.css): the dock is collapsed to this handle plus the Idea · Walk · SUB-01 bar; tap or swipe pulls the rest up. -->
+      <button class="dock-handle" id="dock-handle" type="button" aria-expanded="false" aria-controls="project-panel" aria-label="Open the city panel"><i aria-hidden="true"></i><span>Places, today, chat</span></button>
       <div class="eki" id="eki">
         <div class="eki-row">
           <button class="eki-side prev" id="eki-prev" type="button"><svg class="i" aria-hidden="true"><use href="#i-cl"/></svg><span id="eki-prev-name">MEJIRO</span></button>
-          <div class="eki-main"><span class="jp" id="eki-kanji" aria-hidden="true">東京</span><strong id="eki-name">TOKYO</strong>
-            <label class="sr-only" for="district-select">Explore district</label><select id="district-select"><option value="">Entire city</option></select></div>
+          <div class="eki-main"><span class="jp" id="eki-kanji" aria-hidden="true">東京</span><strong id="eki-name">TOKYO</strong><svg class="i cd" aria-hidden="true"><use href="#i-cd"/></svg>
+            <label class="sr-only" for="district-select">Pick a district</label><select id="district-select"><option value="">Entire city</option></select></div>
           <button class="eki-side next" id="eki-next" type="button"><span id="eki-next-name">SHIBA</span><svg class="i" aria-hidden="true"><use href="#i-cr"/></svg></button>
         </div>
         <div class="eki-band"><b id="eki-code">TYO</b><span><span id="project-count">283</span> ADDRESSES · <span id="eki-live">0</span> LIVE</span></div>
       </div>
-      <div class="city-shortcuts"><button class="button button-ghost button-sm" id="home-view" type="button"><svg class="i lead" aria-hidden="true"><use href="#i-home"/></svg>SUB-01’s home</button><button class="button button-ghost button-sm" id="tower-view" type="button"><svg class="i lead" aria-hidden="true"><use href="#i-tower"/></svg>Tokyo Tower</button></div>
+      <!-- SIMPLIFY: the SUB-01's home / Tokyo Tower shortcuts duplicate list rows; kept (hidden) for main.js's handlers. -->
+      <div class="city-shortcuts" hidden><button class="button button-ghost button-sm" id="home-view" type="button"><svg class="i lead" aria-hidden="true"><use href="#i-home"/></svg>SUB-01’s home</button><button class="button button-ghost button-sm" id="tower-view" type="button"><svg class="i lead" aria-hidden="true"><use href="#i-tower"/></svg>Tokyo Tower</button></div>
+      <!-- One "Today" chip for the calendar, the week theme, the omikuji and the diary (calendar-ui.js's #today-strip stays hidden). -->
+      <button class="today-button" id="today-button" type="button" aria-label="Today in the city: calendar, omikuji and diary"><span class="ic" aria-hidden="true"><svg class="i"><use href="#i-cal"/></svg></span><span class="tx"><b>Today</b><small id="today-sub">Calendar · omikuji · diary</small></span><svg class="i cr" aria-hidden="true"><use href="#i-cr"/></svg></button>
       <div id="project-list"></div>
-      <button id="tour-button" class="button button-orange" type="button">Meet your dev<span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button>
-      <p class="panel-footnote">Orange dots are real ideas dropped in SUB-01's mailbox. The Workshop, Arcade and Studio are example places.</p>
+      <button class="list-more" id="list-more" type="button" hidden aria-expanded="false" aria-controls="project-list">All places<svg class="i" aria-hidden="true"><use href="#i-cr"/></svg></button>
+      <button id="tour-button" class="button button-orange" type="button" title="The camera follows SUB-01, the AI who lives here"><img class="lead tour-mark" src="/brand/mark-small.svg" alt="" width="20" height="20"><span class="lbl">Visit SUB-01</span><span class="lbl-s">SUB-01</span><span class="arw"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></span></button>
+      <p class="panel-footnote" hidden>Orange dots are real ideas dropped in SUB-01's mailbox. The Workshop, Arcade and Studio are example places.</p>
     </aside>
+    <!-- SIMPLIFY: SUB-01's state is one sentence; the LIVE / next-event caps line and the follow button stay for the scripts that write them, hidden. -->
     <section class="activity" id="activity" aria-live="polite">
       <div class="activity-avatar"><img src="/brand/mark-small.svg" alt="" width="40" height="40"></div>
       <div class="activity-text"><span class="eyebrow"><i class="live-dot"></i><span id="activity-label">SUB-01 · OFFLINE</span></span><strong id="activity-text">Getting the neighborhood ready.</strong></div>
-      <button class="button button-orange button-sm explore-button" id="explore-button" type="button" aria-pressed="false" title="Walk your resident around the city"><svg class="i lead" aria-hidden="true"><use href="#i-walk"/></svg>Explore</button>
-      <button class="icon-button" id="follow-button" type="button" aria-label="Follow SUB-01" title="Follow SUB-01"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg></button>
+      <button class="icon-button" id="follow-button" type="button" hidden aria-label="Follow SUB-01" title="Follow SUB-01"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg></button>
     </section>
-    <nav class="world-controls" aria-label="World controls">
-      <button class="icon-button" id="city-tour" type="button" aria-label="Tour the city" title="Tour the city"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button><span class="sep" aria-hidden="true"></span>
+    <!-- The character control: "Walk as ‹name›" / "Walk around" → "Stop walking" (main.js exploreUI). Bottom-centre on desktop; the dock's bar on phones. -->
+    <div class="walk-dock" id="walk-dock">
+      <button class="button button-orange explore-button" id="explore-button" type="button" aria-pressed="false" title="Put your character on the street and walk around the city"><svg class="i lead" aria-hidden="true"><use href="#i-walk"/></svg><span class="lbl">Walk around</span></button>
+    </div>
+    <nav class="world-controls" aria-label="View controls">
       <button class="icon-button zoom" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out"><svg class="i" aria-hidden="true"><use href="#i-minus"/></svg></button>
-      <button class="icon-button zoom" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
-      <button class="icon-button" id="reset-view" type="button" aria-label="Reset camera" title="Reset camera"><svg class="i" aria-hidden="true"><use href="#i-home"/></svg></button><span class="sep" aria-hidden="true"></span>
-      <span class="sep" id="sep-day" aria-hidden="true"></span>
-      <div class="daynight" id="day-night" role="group" aria-label="Day and night">
-        <button class="icon-button" type="button" data-mode="day" aria-pressed="true" aria-label="Day" title="Day"><svg class="i" aria-hidden="true"><use href="#i-sun"/></svg></button>
-        <button class="icon-button" type="button" data-mode="night" aria-pressed="false" aria-label="Night" title="Night"><svg class="i" aria-hidden="true"><use href="#i-moon"/></svg></button>
-        <button class="icon-button" type="button" data-mode="auto" aria-pressed="false" aria-label="Follow the Tokyo clock" title="Follow the Tokyo clock"><svg class="i" aria-hidden="true"><use href="#i-clock"/></svg></button>
-      </div>
+      <button class="icon-button zoom" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button><span class="sep" aria-hidden="true"></span>
+      <button class="icon-button more-button" id="more-button" type="button" aria-haspopup="dialog" aria-controls="more-backdrop" title="Time of day, weather, sounds, graphics, postcard, tour, about"><svg class="i" aria-hidden="true"><use href="#i-more"/></svg><span>More</span></button>
     </nav>
-    <div class="world-hint" id="world-hint"><span class="kbd">DRAG</span> TO EXPLORE <span class="dim">·</span> <span class="kbd">CLICK</span> A BUILDING</div>
+    <div class="world-hint" id="world-hint">Drag to look around · Click a building</div>
+    <!-- First-visit coach: three steps, shown once (localStorage 'sub01.coach', try/catch in main.js). -->
+    <div class="coach" id="coach" hidden role="note" aria-label="How the city works">
+      <ol class="coach-steps"><li><b>1</b>Drag to look around</li><li><b>2</b>Click a building</li><li><b>3</b>Walk as your character</li></ol>
+      <button class="icon-button coach-close" id="coach-close" type="button" aria-label="Got it, hide these tips"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
     <!-- chat: the city's live line (src/chat.js); on phones chat.js moves #chat-form into the dock -->
     <section class="chat" id="chat" aria-label="City chat">
       <div class="chat-panel" id="chat-panel" hidden>
@@ -146,12 +156,13 @@
           <button class="icon-button" id="chat-close" type="button" aria-label="Close the chat" title="Close the chat"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></header>
         <p class="chat-intro" id="chat-intro" hidden>SUB-01 is an AI character; he answers in his own time.</p>
         <div class="chat-sub01"><span class="chat-av s" aria-hidden="true"><img src="/brand/mark-small.svg" alt="" width="28" height="28"></span><div><span class="chat-state" id="chat-sub01-state"><i></i>Status unknown</span>
-          <p>SUB-01 answers only when he’s awake and at his desk, in his own time. Write <b>@sub01</b> or tap his chip.</p></div></div>
+          <p>SUB-01 answers only when he’s awake and at his desk, in his own time. Write <b>@sub01</b> or press his chip:</p>
+          <!-- SIMPLIFY: the "to SUB-01" chip moved from the bar into the panel (same id; chat.js keeps its handler). -->
+          <button class="chat-to" id="chat-to" type="button" aria-pressed="false" title="Address your message to SUB-01"><span class="chat-av s" aria-hidden="true"><img src="/brand/mark-small.svg" alt="" width="28" height="28"></span>Talk to SUB-01</button></div></div>
         <ol class="chat-list" id="chat-list" role="log" aria-live="polite" aria-label="Last 50 messages"></ol>
       </div>
       <form class="chat-bar" id="chat-form" autocomplete="off">
         <button class="icon-button chat-toggle" id="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel" aria-label="Open the city chat" title="City chat"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg></button>
-        <button class="chat-to" id="chat-to" type="button" aria-pressed="false" title="Talk to SUB-01"><span class="chat-av s" aria-hidden="true"><img src="/brand/mark-small.svg" alt="" width="28" height="28"></span>SUB-01</button>
         <label class="sr-only" for="chat-input">Message</label><input id="chat-input" maxlength="140" enterkeyhint="send" placeholder="Say something in Tokyo…" />
         <button class="chat-send" id="chat-send" type="submit" aria-label="Send" title="Send"><svg class="i" aria-hidden="true"><use href="#i-arrow"/></svg></button>
         <p class="chat-note" id="chat-note" role="status" hidden></p>
@@ -225,8 +236,36 @@
       <section class="idea-card sheet-card" role="dialog" aria-modal="true" aria-labelledby="calendar-title">
         <span class="grabber" aria-hidden="true"></span>
         <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
-        <span class="eyebrow" id="calendar-eyebrow">CITY CALENDAR · 暦</span><h2 id="calendar-title">Today in <em>Tokyo.</em></h2><div class="cal-theme" id="calendar-theme"></div>
+        <span class="eyebrow" id="calendar-eyebrow">TODAY · 暦</span><h2 id="calendar-title">Today in <em>Tokyo.</em></h2><div class="cal-theme" id="calendar-theme"></div>
         <div class="sheet-body" id="calendar-body"></div>
+        <!-- Today's other doors: main.js puts #diary-button here and binds #shrine-button; a click closes this sheet first. -->
+        <div class="today-links" id="today-links"><button class="button button-ghost button-sm" id="shrine-button" type="button"><svg class="i lead" aria-hidden="true"><use href="#i-torii"/></svg>Shrine · omikuji</button></div>
+      </section>
+    </div>
+    <!-- SIMPLIFY: the "More" sheet. The buttons inside are the original controls (ids, handlers, aria-pressed), moved here by index.html / main.js. -->
+    <div class="dialog-backdrop" id="more-backdrop" hidden>
+      <section class="idea-card sheet-card more-card" role="dialog" aria-modal="true" aria-labelledby="more-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow" id="more-eyebrow">SETTINGS · 設定</span><h2 id="more-title">Set up <em>the view.</em></h2>
+        <div class="sheet-body more-list" id="more-body">
+          <div class="more-row" id="more-day"><span class="more-k"><b>Time of day</b><small class="more-v">Day</small></span>
+            <div class="daynight" id="day-night" role="group" aria-label="Time of day">
+              <button class="icon-button" type="button" data-mode="day" aria-pressed="true" aria-label="Day" title="Day"><svg class="i" aria-hidden="true"><use href="#i-sun"/></svg><span>Day</span></button>
+              <button class="icon-button" type="button" data-mode="night" aria-pressed="false" aria-label="Night" title="Night"><svg class="i" aria-hidden="true"><use href="#i-moon"/></svg><span>Night</span></button>
+              <button class="icon-button" type="button" data-mode="auto" aria-pressed="false" aria-label="Follow the Tokyo clock" title="Follow the Tokyo clock"><svg class="i" aria-hidden="true"><use href="#i-clock"/></svg><span>Tokyo clock</span></button>
+            </div></div>
+          <div class="more-row" id="more-weather"><span class="more-k"><b>Weather</b><small class="more-v">auto</small></span></div>
+          <div class="more-row" id="more-sound"><span class="more-k"><b>City sounds</b><small class="more-v">off</small></span></div>
+          <div class="more-row" id="more-lite"><span class="more-k"><b>Low graphics</b><small class="more-v">off</small></span></div>
+          <div class="more-row" id="more-photo"><span class="more-k"><b>Postcard</b><small class="more-v">Photo mode: frame the city, save a card</small></span></div>
+          <div class="more-row" id="more-tour"><span class="more-k"><b>Tour the city</b><small class="more-v">Five stops, 25 seconds</small></span>
+            <button class="icon-button" id="city-tour" type="button" aria-label="Tour the city" title="Tour the city"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button></div>
+          <div class="more-row" id="more-reset"><span class="more-k"><b>Reset the view</b><small class="more-v">Back to the whole city</small></span>
+            <button class="icon-button" id="reset-view" type="button" aria-label="Reset the view" title="Reset the view"><svg class="i" aria-hidden="true"><use href="#i-rotate"/></svg></button></div>
+          <div class="more-row" id="more-about"><span class="more-k"><b>About SUB-01</b><small class="more-v">What he is, how he decides, privacy</small></span>
+            <button class="icon-button" id="about-button" type="button" aria-label="About SUB-01" title="About SUB-01"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg></button></div>
+        </div>
       </section>
     </div>
     <div class="dialog-backdrop" id="shrine-backdrop" hidden>

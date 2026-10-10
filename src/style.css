@@ -738,8 +738,6 @@ h1 em{filter:drop-shadow(0 6px 24px rgba(251,117,43,.35))}
 .today-chip small{font:500 9.5px/1 var(--f-mono);letter-spacing:.04em;color:var(--ink-2);white-space:nowrap}
 .project-panel .today-strip{display:grid;grid-template-columns:1fr 1fr;gap:6px}.project-panel .today-chips{display:contents}
 .project-panel .today-theme,.project-panel .today-chip{min-width:0;max-width:none;padding:5px 10px 5px 5px}.project-panel .today-theme .jp{width:28px;height:28px;font-size:15px;border-radius:9px}
-/* the centre hint would sit between the activity bar and the longer control rail: lift it above them */
-@media (min-width:1101px) and (max-width:1640px){.world-hint{bottom:94px}}
 /* sheets */
 .sheet-card{width:520px}
 .sheet-body{margin-top:16px;display:grid;gap:10px}
@@ -886,7 +884,6 @@ button.cal-row:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--a
 /* Bottom centre, in the gap between the activity bar and the control rail when it is wide enough (≥ 1641 px), else one
    row up. No transform on .chat: the panel is position:fixed (bottom-left, above the activity bar, off the view's centre). */
 .chat{position:absolute;left:0;right:0;margin:0 auto;bottom:108px;z-index:3;width:min(400px,calc(100% - 32px))}
-@media (min-width:1641px){.chat{bottom:24px}}
 .chat-bar{position:relative;display:flex;align-items:center;gap:4px;height:50px;padding:4px;border-radius:var(--r-pill);
  background-color:var(--glass);background-image:var(--glow);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--stroke);box-shadow:var(--hl),var(--shadow-2)}
 .chat-bar:focus-within{box-shadow:var(--hl),var(--shadow-2),0 0 0 1.5px var(--accent-line)}
@@ -976,8 +973,6 @@ button.cal-row:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--a
 [data-speaker=sub01] .chat-far{box-shadow:inset 0 0 0 1.5px var(--accent),0 6px 14px -6px rgba(0,0,0,.6)}
 @keyframes chat-pop{from{transform:translateY(8px) scale(.8);opacity:0}}
 .in-room .chat,.is-photo .chat,.in-room .project-panel .chat-bar{display:none!important}
-@media (min-width:1641px){.world-hint{bottom:86px}}
-@media (min-width:1101px) and (max-width:1640px){.world-hint{bottom:168px}}
 @media (max-width:600px){
  .chat{position:static;margin:0;width:auto}
  .project-panel .chat-bar{height:44px;padding:2px;flex:none;background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke);border:0;-webkit-backdrop-filter:none;backdrop-filter:none}
@@ -990,3 +985,107 @@ button.cal-row:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--a
  .chat-bubble{max-width:180px;font-size:12px}
 }
 @media (prefers-reduced-motion:reduce){.chat-bubble,.chat-panel{animation:none}}
+
+/* ================================================================ SIMPLIFY (2026-10-10, scratchpad/uidir/SIMPLIFY.md)
+   Three primary actions (Drop an idea · Walk · Visit SUB-01), one More sheet, one Today chip, five rows then "All places",
+   one-sentence activity pill, a plain one-line hint, a first-visit coach. Same tokens and components; only what is on
+   screen and what it says changed. Later rules win over the sections above on purpose. */
+.lbl-s{display:none}
+.dock-handle{display:none}
+/* station board: no arrows on desktop; a chevron says the name is a menu */
+.eki-side{display:none}
+.eki-main{max-width:none;padding:2px 30px 2px 30px}
+.eki-main .cd{position:absolute;right:9px;bottom:6px;width:14px;height:14px;stroke-width:2.4;color:var(--paper-ink-2)}
+#today-strip{display:none!important}
+/* the Today chip: week theme + next event under one word */
+.today-button{display:flex;align-items:center;gap:10px;flex:none;width:100%;padding:6px 10px 6px 6px;border:0;border-radius:var(--r-row);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke);color:var(--ink);text-align:left;transition:background var(--d-2),box-shadow var(--d-2)}
+.today-button:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--accent-line)}
+.today-button .ic{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;flex:none;color:var(--on-accent);background:var(--theme-dot,var(--accent))}
+.today-button .ic svg.i{width:17px;height:17px;stroke-width:2}
+.today-button .tx{display:grid;gap:4px;min-width:0;flex:1}
+.today-button b{font:700 13px/1 var(--f-ui)}
+.today-button small{font:500 10px/1.2 var(--f-mono);letter-spacing:.03em;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.today-button .cr{width:15px;height:15px;color:var(--ink-3);stroke-width:2}
+/* places: five rows, then All places (N) */
+.list-more{display:flex;align-items:center;justify-content:center;gap:6px;flex:none;height:36px;border:0;border-radius:var(--r-sm);background:transparent;color:var(--accent-hi);font:650 13px/1 var(--f-ui);transition:background var(--d-2)}
+.list-more:hover{background:var(--fill-1)}
+.list-more svg.i{width:14px;height:14px;stroke-width:2.2}
+#tour-button .tour-mark{width:20px;height:20px;flex:none}
+/* activity pill: SUB-01's avatar and one sentence, above the chat bar (left column) */
+.activity{left:28px;bottom:86px;width:min(380px,calc(100% - 56px));max-width:none;min-width:0;gap:12px;padding:8px 18px 8px 8px}
+.activity .eyebrow,.activity .tokyo-clock,.activity .activity-next{display:none}
+.activity strong{font-size:13.5px;font-weight:550}
+/* the Walk button: bottom-centre, the only orange thing on the ground */
+.walk-dock{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:3;display:flex;gap:8px}
+.explore-button{--h:54px;margin:0;padding:0 24px 0 20px;gap:10px;font-size:15.5px}
+.explore-button .lead,.explore-button>svg.i{width:22px;height:22px}
+.explore-button[aria-pressed=true]{color:var(--ink);background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:inset 0 0 0 1px var(--stroke-2),var(--shadow-2)}
+/* view controls: − + · More */
+.more-button{width:auto;height:40px;padding:0 13px 0 10px;gap:6px;border-radius:var(--r-pill);display:inline-flex;align-items:center;font:650 13px/1 var(--f-ui);color:var(--ink)}
+/* hint: one plain line above the Walk button */
+.world-hint{bottom:90px;height:32px;padding:0 14px;font:500 12.5px/1 var(--f-ui);letter-spacing:0;text-transform:none;color:var(--ink-2)}
+/* first-visit coach: 1 → 2 → 3, one strip, an × */
+.coach{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:4px;padding:5px 5px 5px 6px;border-radius:var(--r-pill);
+ background-color:var(--glass);background-image:var(--glow);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--stroke);box-shadow:var(--hl),var(--shadow-2);color:var(--ink);animation:toast-in var(--d-3) var(--e-spring)}
+.coach-steps{list-style:none;margin:0;padding:0;display:flex;align-items:center;gap:2px}
+.coach-steps li{display:flex;align-items:center;gap:9px;height:34px;padding:0 12px 0 5px;border-radius:var(--r-pill);font:550 13px/1 var(--f-ui);color:var(--ink);white-space:nowrap}
+.coach-steps li b{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--on-accent);font:700 11px/1 var(--f-mono)}
+.coach-steps li+li::before{content:"";width:14px;height:14px;margin:0 2px 0 -6px;flex:none;color:var(--ink-3);background:currentColor;
+ -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14M13 6l6 6-6 6'/%3E%3C/svg%3E") center/14px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14M13 6l6 6-6 6'/%3E%3C/svg%3E") center/14px no-repeat}
+.coach-close{width:34px;height:34px;background:var(--fill-1)}
+/* chat: the bottom-left column, under SUB-01's line; the "to SUB-01" chip lives in the panel */
+.chat{left:28px;right:auto;margin:0;bottom:24px;width:min(400px,calc(100% - 56px))}
+.chat-panel{left:28px;bottom:164px}
+.chat-sub01 .chat-to{margin-top:8px}
+/* the More sheet: a word, its value, the original control */
+.more-list{gap:6px}
+.more-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 8px 8px 14px;border-radius:var(--r-row);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.more-k{flex:1;min-width:0;display:grid;gap:4px}
+.more-k b{font:650 14px/1.2 var(--f-ui)}.more-k small{font:450 11.5px/1.35 var(--f-ui);color:var(--ink-2)}
+.more-row>.icon-button{background:var(--fill-2);color:var(--ink)}
+.more-row>.icon-button:hover{background:var(--fill-3)}
+.more-row>.icon-button[aria-pressed=true]{background:var(--accent);color:var(--on-accent)}
+.more-row #lite-mode{width:40px;min-width:0;padding:0;border-radius:50%;font:inherit}
+.more-row .daynight{flex-direction:row;padding:3px;border-radius:var(--r-pill);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.more-row .daynight .icon-button{display:inline-flex;align-items:center;gap:6px;width:auto;height:32px;padding:0 11px 0 8px;border-radius:var(--r-pill);background:transparent;color:var(--ink-2);font:600 12px/1 var(--f-ui);white-space:nowrap}
+.more-row .daynight .icon-button[aria-pressed=true]{background:var(--paper);color:var(--paper-ink)}
+.more-row .daynight svg.i{width:15px;height:15px}
+/* the Today sheet's footer: diary, shrine */
+.today-links{display:flex;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--stroke)}
+.idea-card .today-links .button{width:auto;flex:1}
+.is-photo .walk-dock,.is-photo .coach,.in-room .walk-dock,.in-room .coach{display:none!important}
+@media (max-width:1100px) and (min-width:601px){
+ .activity,.chat{left:20px;width:min(340px,calc(100% - 40px))}.chat-panel{left:20px;bottom:164px}.world-hint{display:flex}
+ .project-panel{max-height:calc(100dvh - 250px)}
+ .walk-dock{left:auto;right:20px;bottom:78px;transform:none}.world-hint,.coach{left:auto;right:20px;bottom:142px;transform:none}
+ .coach{align-items:flex-start;border-radius:var(--r-lg);padding:6px 6px 6px 8px}.coach-steps{flex-direction:column;align-items:stretch;gap:0}.coach-steps li{height:30px;padding:0 8px 0 4px;font-size:12.5px}.coach-steps li+li::before{display:none}
+ body:has(#coach:not([hidden])) .project-panel{max-height:calc(100dvh - 360px)}
+}
+@media (max-width:600px){
+ .lbl-s{display:inline}.lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+ .eki-side{display:flex}.eki-main{padding:2px 6px;max-width:160px}.eki-main .cd{display:none}
+ /* the dock: collapsed = handle + the Idea · Walk · SUB-01 bar; open = everything, scrolling */
+ .dock-handle{display:grid;justify-items:center;gap:7px;width:100%;margin:-2px 0 0;padding:2px 0 0;border:0;background:none;color:var(--ink-3);font:500 10px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase}
+ .dock-handle i{display:block;width:40px;height:5px;border-radius:3px;background:var(--stroke-2)}
+ .project-panel.is-open .dock-handle span{display:none}
+ .project-panel:not(.is-open)>:not(.dock-handle):not(.walk-dock){display:none!important}
+ .project-panel.is-open{max-height:calc(100dvh - 84px - var(--safe-t));overflow-y:auto;scrollbar-width:none}
+ .project-panel.is-open::-webkit-scrollbar{display:none}
+ .project-panel>.walk-dock{position:static;transform:none;display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:6px;width:100%}
+ .walk-dock .button{--h:50px;width:100%;margin:0;padding:0;justify-content:center;gap:7px;font-size:13.5px;border-radius:15px}
+ .walk-dock .button .arw{display:none}.walk-dock .button .lead{width:20px;height:20px}
+ .walk-dock #idea-button,.walk-dock #tour-button{--h:50px;width:100%;padding:0;color:var(--ink);background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--stroke-2)}
+ .walk-dock #idea-button .lead{color:var(--accent-hi)}
+ .explore-button[aria-pressed=true]{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--stroke-2);-webkit-backdrop-filter:none;backdrop-filter:none}
+ .project-panel .world-controls{position:static;flex-direction:row;justify-content:center;max-height:none;overflow:visible;padding:0;border:0;background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;border-radius:0}
+ .project-panel .world-controls .sep{display:none}
+ .project-panel .more-button{width:100%;height:42px;justify-content:center;border-radius:var(--r-row);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+ .project-panel .activity{order:0}
+ /* the coach under the topbar, one step per line */
+ .coach{top:calc(66px + var(--safe-t));bottom:auto;left:12px;right:12px;transform:none;align-items:flex-start;border-radius:var(--r-lg);padding:8px 6px 8px 8px}
+ .coach-steps{flex:1;flex-direction:column;align-items:stretch;gap:0}
+ .coach-steps li{height:32px;padding:0 8px 0 4px}.coach-steps li+li::before{display:none}
+ .chat-panel{bottom:calc(var(--dock-h,120px) + 20px + var(--safe-b))}
+ /* the More sheet's time-of-day control gets its own line, three equal segments */
+ #more-day{flex-wrap:wrap}#more-day .more-k{flex:1 1 100%}#more-day .daynight{flex:1 1 100%;flex-direction:row}#more-day .daynight .icon-button{flex:1;justify-content:center;padding:0 6px}
+}

@@ -27,6 +27,7 @@ import {createCityEvents,freshEvents} from './city-events.js';
 import {createExplorer,cityPois} from './explore.js';
 import {kanjiOf,codeOf,addressCode} from './districts-kanji.js';
 import {icon,cta,tile} from './icons.js';
+import {listCut,walkLabel,walkIcon,stopToast,hintFor,coachSteps,coachSeen,markCoach,valueOf,DAY_WORDS,liveText} from './hud.js'; // SIMPLIFY: HUD words
 import {coinVisuals,statusLine,onchainRows,sourceLabel,mockStats,DEFAULT_THRESHOLDS} from './coin-tier.js';
 import {createGuest} from './guest.js'; // guest:
 import {createCalendarUI} from './calendar-ui.js';
@@ -222,13 +223,18 @@ function crowdEnd(now){
     const s=cityRenderer?.stats();if(s)renderer.domElement.dataset.city=`${s.instances} ${s.detail?'detail':'core'} ${renderer.info.render.calls} ${renderer.info.render.triangles}`;}
 }
 
+// SIMPLIFY: the panel shows LIST_MAX rows; "All places (N)" (#list-more) unfolds the rest in place.
+let listAll=false;
+$('list-more').onclick=()=>{listAll=!listAll;renderList();if(!listAll)$('project-list').scrollTop=0;};
 function renderList() {
   $('project-list').replaceChildren();
   const district=$('district-select').value;
   const available=cityPlots.filter(p=>!p.reserved&&(!district||p.district===district)).map(placeFor);   // reserved tower-park plots are not addresses
   const mine=new Set(me?.plots?.map(p=>p.plotId)||[]),ideas=(me?.ideas||[]).filter(i=>i.status!=='cancelled').slice(0,5).map(i=>({id:'idea-'+i.id,name:i.title,color:i.status==='declined'?'#9a9d92':'#fb752b',kind:'YOUR IDEA',status:IDEA_STATUS[i.status]||i.status,description:i.status_note||'',slug:i.slug,ideaId:i.id})),landmarks=[...ideas,tower,...places];
   const yours=available.filter(p=>p.claimed&&mine.has(p.id)),others=available.filter(p=>p.claimed&&!mine.has(p.id));
-  for (const p of district?[...yours,...others,...landmarks,...available.filter(p=>!p.claimed)]:[...yours,...landmarks,...others]) {
+  const rows=district?[...yours,...others,...landmarks,...available.filter(p=>!p.claimed)]:[...yours,...landmarks,...others],cut=listCut(rows.length,{all:listAll});
+  $('list-more').hidden=!cut.button;$('list-more').setAttribute('aria-expanded',String(listAll));$('list-more').replaceChildren(cut.label,icon(listAll?'cd':'cr'));
+  for (const p of rows.slice(0,cut.shown)) {
     const button=document.createElement('button');button.className='project-row';button.setAttribute('aria-label',`Open ${p.name}`);
     const symbol=tile(tileSpec(p));
     const meta=document.createElement('span');meta.className='project-meta';
@@ -403,7 +409,7 @@ function accountChip(name){const b=$('account-button'),nm=Object.assign(document
 async function refreshMe(){const before=knownStatus;try{me=await getJSON('/api/me');if(typeof me?.user!=='object')me=null;}catch(err){if(!(err instanceof ApiError)&&me)return;me=null;}
   // Tell the author when SUB-01 decides or a stage changes; private ideas never reach the public news.
   knownStatus=Object.fromEntries((me?.ideas||[]).map(i=>[i.id,i.status]));
-  if(before)for(const i of me?.ideas||[])if(before[i.id]&&before[i.id]!==i.status)notify(i.status==='declined'?`SUB-01 passed on “${i.title}”. ${i.status_note?.split(' [')[0]||''}`:`“${i.title}”: ${IDEA_STATUS[i.status]||i.status}.`);accountChip(me?.user?(resident()?.name||short(me.user.wallet)):null);renderList();updateResident();if(!resident())stopExplore();rituals?.syncAccount();updateBuffs();}
+  if(before)for(const i of me?.ideas||[])if(before[i.id]&&before[i.id]!==i.status)notify(i.status==='declined'?`SUB-01 passed on “${i.title}”. ${i.status_note?.split(' [')[0]||''}`:`“${i.title}”: ${IDEA_STATUS[i.status]||i.status}.`);accountChip(me?.user?(resident()?.name||short(me.user.wallet)):null);renderList();updateResident();if(!resident())stopExplore();exploreUI();rituals?.syncAccount();updateBuffs();}
 function openCreator(next){
  if(!lookOptions){notify('The city server is offline.');return;}
  const r=resident(),look=r?.look||{};$('resident-name').value=r?.name||'';$('resident-error').textContent='';
@@ -498,7 +504,8 @@ function startVisit(){
 // Explore: "🚶 Explore" puts the resident's model (accessories, pet) at their apartment front; taps walk it, 8 s idle wanders.
 // "🏠 Go home" walks it back and disposes it; a second tap while it heads home ends at once.
 function toggleExplore(){
- if(explorer){if(explorer.state==='home'||explorer.state==='done'||!cityEvents.visitor)stopExplore();else explorer.home();return;}
+ // SIMPLIFY: "Stop walking" sends the model home (the toast says so); a second press while it heads home ends it there.
+ if(explorer){const who=resident()?.name||guest.guest?.name;if(explorer.state==='home'||explorer.state==='done'||!cityEvents.visitor){if(explorer.state==='home')notify(stopToast(who,{atOnce:true}));stopExplore();}else{notify(stopToast(who));explorer.home();}return;}
  if(!serverUp){notify('The city server is offline.');return;}
  if(!me?.user){openSignIn(toggleExplore);return;}
  if(!resident()){openCreator(toggleExplore);return;}
@@ -517,11 +524,16 @@ function toggleExplore(){
  exploreUI();
 }
 function stopExplore(){if(explorer)cityEvents.endRoam();}
-function exploreUI(){const s=explorer?.state,b=$('explore-button');b.replaceChildren(icon(explorer?'home':'walk','i lead'),!explorer?'Explore':s==='home'?'Home now':'Go home');b.setAttribute('aria-pressed',String(!!explorer));
- document.body.classList.toggle('is-exploring',!!explorer);
- // The hint pill: key caps for the gesture, mono words for the rest.
- const kbd=t=>Object.assign(document.createElement('span'),{className:'kbd',textContent:t}),dim=Object.assign(document.createElement('span'),{className:'dim',textContent:'·'});
- $('world-hint').replaceChildren(...(explorer?[kbd('TAP'),' A STREET TO WALK ',dim,' ',kbd('DOUBLE-TAP'),' TO RUN']:[kbd('DRAG'),' TO EXPLORE ',dim,' ',kbd('CLICK'),' A BUILDING']));}
+// SIMPLIFY: the one character control. "Walk as ‹name›" (resident or guest) / "Walk around" → "Stop walking"; phones: Walk / Stop.
+function exploreUI(){const walking=!!explorer,b=$('explore-button'),name=resident()?.name||guest.guest?.name||null;if(walking)dismissCoach();
+ b.replaceChildren(icon(walkIcon(walking),'i lead'),Object.assign(document.createElement('span'),{className:'lbl',textContent:walkLabel({walking,name})}),Object.assign(document.createElement('span'),{className:'lbl-s',textContent:walkLabel({walking,name,short:true})}));
+ b.setAttribute('aria-pressed',String(walking));b.title=walking?'Your character walks home and the outing ends':name?`Put ${name} on the street and walk around the city`:'Put your character on the street and walk around the city';
+ document.body.classList.toggle('is-exploring',walking);
+ if(walking!==hintWalking){hintWalking=walking;hint(hintFor(walking,{touch:mobile}));}}
+// The hint: one plain line, shown for its context until the first drag or click on the world (then gone until the context changes).
+let hintWalking=null,hintArmed=false;
+function hint(text){const h=$('world-hint');if(!text){h.hidden=true;return;}h.textContent=text;h.hidden=!!$('coach')&&!$('coach').hidden;   // the coach says it already
+ if(!hintArmed){hintArmed=true;const done=()=>{h.hidden=true;hintArmed=false;};for(const t of ['pointerup','wheel'])renderer.domElement.addEventListener(t,done,{once:true,passive:true});}}
 $('explore-button').onclick=toggleExplore;
 function party(plotId,e){
  const b=cityBuildings.find(x=>x.plotId===plotId),plot=cityPlots.find(c=>c.id===plotId),p=cityEvents.celebrate(plotId,{people:residents.people});if(!p||!plot)return;
@@ -546,11 +558,24 @@ renderer.domElement.addEventListener('pointerup',e=>{
 $('district-select').replaceChildren();const all=document.createElement('option');all.value='';all.textContent='Entire city';$('district-select').append(all);for(const d of districts){const option=document.createElement('option');option.value=d.id;option.textContent=d.name;$('district-select').append(option);}
 addEventListener('resize',()=>{resize();governor?.grace(GOV.grace.resize,performance.now());});resize();resetView();renderList();groundwork();cityRenderer=createCity(scene,interactive,showPlace,cityBuildings,{mobile,gpu:crowdGPU});cityGreen=addCityGreen(scene,{buildings:cityBuildings,mobile,extra:HERO_TREES});addLabel(tower,51);
 for(const d of districts){const element=document.createElement('button');element.className='world-label district-label';element.textContent=d.name.toUpperCase();element.dataset.kanji=kanjiOf(d.id);element.onclick=()=>{$('district-select').value=d.id;$('district-select').onchange();};$('labels').append(element);labels.push({element,district:true,position:new THREE.Vector3(d.x,.4,d.z+11.4)});}
-// Phone layout (style.css ≤ 600px): SUB-01's activity bar joins the project panel as one bottom dock; the world-control
-// rail sits above the dock, whose height is kept in --dock-h.
-{const phoneMQ=matchMedia('(max-width:600px)'),dock=()=>{const a=$('activity');if(phoneMQ.matches)$('project-panel').append(a);else $('project-panel').after(a);};
+// Phone layout (style.css ≤ 600px, SIMPLIFY): the project panel is a dock collapsed to a handle plus the Idea · Walk ·
+// SUB-01 bar (#walk-dock with the three primary buttons moved in). The handle pulls up the station board, Today, the
+// places, SUB-01's line, the chat bar and the view controls. Its height is kept in --dock-h (chat panel position).
+{const phoneMQ=matchMedia('(max-width:600px)'),panel=$('project-panel'),dock=()=>{const a=$('activity'),w=$('walk-dock'),wc=document.querySelector('.world-controls');
+  if(phoneMQ.matches){$('dock-handle').after(w);w.prepend($('idea-button'));w.append($('tour-button'));panel.append(a,wc);}
+  else{document.querySelector('.topbar').append($('idea-button'));$('list-more').after($('tour-button'));panel.after(a);a.after(w);w.after(wc);}};
  dock();phoneMQ.addEventListener?.('change',dock);
- if(typeof ResizeObserver==='function')new ResizeObserver(()=>document.documentElement.style.setProperty('--dock-h',$('project-panel').offsetHeight+'px')).observe($('project-panel'));}
+ const setOpen=v=>{panel.classList.toggle('is-open',v);$('dock-handle').setAttribute('aria-expanded',String(v));$('dock-handle').setAttribute('aria-label',v?'Close the city panel':'Open the city panel');};
+ $('dock-handle').onclick=()=>setOpen(!panel.classList.contains('is-open'));
+ // A swipe on the handle: up opens, down closes (a tap still toggles).
+ let swipeY=null;$('dock-handle').addEventListener('pointerdown',e=>{swipeY=e.clientY;},{passive:true});
+ $('dock-handle').addEventListener('pointerup',e=>{if(swipeY===null)return;const dy=e.clientY-swipeY;swipeY=null;if(dy<-24)setOpen(true);else if(dy>24)setOpen(false);},{passive:true});
+ if(typeof ResizeObserver==='function')new ResizeObserver(()=>document.documentElement.style.setProperty('--dock-h',panel.offsetHeight+'px')).observe(panel);}
+// First-visit coach (index.html #coach): three steps, once per browser; shown once the headline has faded, gone at × or at the first walk.
+const coachStore=(()=>{try{return localStorage;}catch{return null;}})();
+function dismissCoach(){const c=$('coach');if(c.hidden)return;c.hidden=true;markCoach(coachStore);if(hintWalking!==null)hint(hintFor(hintWalking,{touch:mobile}));}
+$('coach-close').onclick=dismissCoach;
+function showCoach(){if(coachSeen(coachStore)||roomView||photo?.on)return;[...$('coach').querySelectorAll('li')].forEach((li,i)=>{li.lastChild.textContent=coachSteps({touch:mobile})[i];});$('coach').hidden=false;$('world-hint').hidden=true;}
 
 // Shared world: the server is the source of truth; the city redraws only when something changed.
 const residents=addResidents(scene),worldLabels=[],cityEvents=createCityEvents(scene,{mobile,reducedMotion,gpu:crowdGPU});
@@ -565,7 +590,7 @@ attachRoomHost({template,notify,openIdea(){openBuildForm();},
   if(!view){roomPlot=null;photo?.exit();}roomView=view;controls.enabled=!view;governor?.grace(GOV.grace.room,performance.now());if(view)fuses.room.reset();else ratioDirty=true;
   document.body.classList.toggle('in-room',!!view);if(view)view.resize(innerWidth/innerHeight);}});
 function residentList(){return cityBuildings.filter(b=>b.type==='apartment').map(b=>{const f=frontOf(b.plotId);const look=b.resident.look||{};return f&&{x:f.x+1.2,z:f.z,look,key:b.plotId+JSON.stringify(look)};}).filter(Boolean);}
-function setServer(up){if(up===serverUp)return;serverUp=up;$('server-status').textContent=up?'LIVE CITY':'SERVER OFFLINE';$('activity-label').textContent=up?'SUB-01 · LIVE':'SUB-01 · OFFLINE';$('server-badge').classList.toggle('is-offline',!up);if(!up)$('activity-text').textContent='The city server is offline. Nothing here is live right now.';}
+function setServer(up){if(up===serverUp)return;serverUp=up;$('server-status').textContent=liveText(up);$('server-badge').title=up?'Live: what you see is the shared city right now':'The city server is offline';$('activity-label').textContent='SUB-01 · '+liveText(up);$('server-badge').classList.toggle('is-offline',!up);if(!up)$('activity-text').textContent='The city server is offline. Nothing here is live right now.';}
 // Polls (robustness pass): every fetch has an 8 s timeout, the next poll is scheduled only after the last one settled,
 // and a server that does not answer is retried at 8, 16, 32, 60 s instead of every 4 s. A hidden tab does not poll.
 const POLL={world:4e3,me:8e3,timeout:8e3};let worldFails=0;
@@ -604,19 +629,21 @@ const SUN_LOW=new THREE.Vector3(-.62,.22,.75).normalize(),GREY=new THREE.Color('
 const WX={mode:'auto',state:'clear',levels:{...LEVELS.clear},fast:0,flashAt:-1e9,nextFlash:0,dayMode:'day',clockOverride:null,n:0,isNight:false,sky:'',caption:'',amp:0,green:false,audioAt:0,statsAt:0};
 const wxView=createWeather(scene,{mobile}),ambience=createAmbience(),drift=new THREE.Vector3(),driftNext=new THREE.Vector3();let lastInput=performance.now();
 for(const type of ['pointerdown','wheel','keydown','touchstart'])addEventListener(type,()=>{lastInput=performance.now();},{passive:true,capture:true});
-// Buttons made here, in the rail's atmosphere group (before #sep-day): weather (cycles), sound (procedural, off), LITE.
-const control=(id,content,onclick)=>{const b=Object.assign(document.createElement('button'),{className:'icon-button',id,type:'button',onclick});b.append(content);$('sep-day').before(b);return b;};
-const label=(b,text)=>{b.title=text;b.setAttribute('aria-label',text);};
-const weatherButton=control('weather-mode',icon('umbrella'),()=>setWeather(nextMode(WX.mode),true));
-const soundButton=control('city-sound',icon('note'),()=>{const on=ambience.toggle();soundButton.setAttribute('aria-pressed',String(on));label(soundButton,on?'City sounds: on':'City sounds: off');notify(on?'City sounds on (made in the browser, quiet).':'City sounds off.');});
+// Buttons made here go into the More sheet's rows (index.html #more-*; SIMPLIFY): weather (cycles), sound (procedural, off),
+// low graphics (LITE). label() also prints the value after the colon in the row's small line.
+const control=(id,content,onclick,row)=>{const b=Object.assign(document.createElement('button'),{className:'icon-button',id,type:'button',onclick});b.append(content);($(row)||$('more-body')).append(b);return b;};
+const label=(b,text)=>{b.title=text;b.setAttribute('aria-label',text);const v=b.closest('.more-row')?.querySelector('.more-v');if(v)v.textContent=valueOf(text);};
+const weatherButton=control('weather-mode',icon('umbrella'),()=>setWeather(nextMode(WX.mode),true),'more-weather');
+const soundButton=control('city-sound',icon('note'),()=>{const on=ambience.toggle();soundButton.setAttribute('aria-pressed',String(on));label(soundButton,on?'City sounds: on':'City sounds: off');notify(on?'City sounds on (made in the browser, quiet).':'City sounds off.');},'more-sound');
 soundButton.setAttribute('aria-pressed','false');label(soundButton,'City sounds: off');
 const clockCaption=Object.assign(document.createElement('span'),{className:'tokyo-clock',hidden:true});$('activity-label').after(clockCaption);
 function setWeather(mode,announce=false){WX.mode=mode;WX.fast=announce?10:0;weatherButton.dataset.mode=mode;
-  label(weatherButton,mode==='auto'?'City weather: auto (a shared schedule, not real Tokyo weather)':`City weather: ${mode}`);
-  if(announce)notify(mode==='auto'?'City weather: auto. The same for everyone, changing every few minutes. Not real Tokyo weather.':`City weather: ${mode}.`);}
+  label(weatherButton,mode==='auto'?'Weather: auto (shared schedule, not real Tokyo weather)':`Weather: ${mode}`);
+  if(announce)notify(mode==='auto'?'Weather: auto. The same for everyone, changing every few minutes. Not real Tokyo weather.':`Weather: ${mode}.`);}
 const DAY_MODES=['auto','day','night'];
-// A segmented control (#day-night): day, night, or the Tokyo clock (auto); the pressed one is the mode in force.
-function setDayMode(mode){if(!DAY_MODES.includes(mode))mode='day';WX.dayMode=mode;for(const b of $('day-night').querySelectorAll('button'))b.setAttribute('aria-pressed',String(b.dataset.mode===mode));clockCaption.hidden=mode!=='auto';}
+// A segmented control (#day-night, in the More sheet): day, night, or the Tokyo clock (auto); the pressed one is the mode in force.
+function setDayMode(mode){if(!DAY_MODES.includes(mode))mode='day';WX.dayMode=mode;for(const b of $('day-night').querySelectorAll('button'))b.setAttribute('aria-pressed',String(b.dataset.mode===mode));clockCaption.hidden=mode!=='auto';
+  const v=$('more-day')?.querySelector('.more-v');if(v)v.textContent=DAY_WORDS[mode];}
 for(const b of $('day-night').querySelectorAll('button'))b.onclick=()=>setDayMode(b.dataset.mode);
 setWeather('auto');setDayMode('day');
 // Screenshot/debug hooks (rendering only): __cityWeather.set('rain'), .day('auto'), .clock(Date.parse(...)), .snap().
@@ -665,15 +692,15 @@ const phone=mobile||(matchMedia('(pointer:coarse)').matches&&Math.min(screen.wid
 const GPU=gpuName(renderer.getContext()),START=startLevel({phone,gpu:GPU,deviceMemory:navigator.deviceMemory,cores:navigator.hardwareConcurrency});
 const LITE_KEY='sub01-lite',liteStored=local.get(LITE_KEY)==='1';
 governor=createGovernor({level:liteStored?0:START,auto:!liteStored,now:performance.now(),onChange(level,{reason}){applyQuality();if(reason==='down')notify('Lighter mode for a smoother city');}});
-const liteButton=control('lite-mode','LITE',()=>setLite(governor.auto));
-function setLite(on){local.set(LITE_KEY,on?'1':'0');governor.auto=!on;governor.set(on?0:START,performance.now());applyQuality();notify(on?'Lite mode: the lightest city, always.':'Lite mode off: the city adjusts to this device.');}
+const liteButton=control('lite-mode',icon('check'),()=>setLite(governor.auto),'more-lite');
+function setLite(on){local.set(LITE_KEY,on?'1':'0');governor.auto=!on;governor.set(on?0:START,performance.now());applyQuality();notify(on?'Low graphics on: the lightest city, always.':'Low graphics off: the city adjusts to this device.');}
 function applyQuality(){
   const q=settingsFor(governor.level,{mobile,dpr:devicePixelRatio||1});Q=q;
   wxView.setQuality(q);crowdGPU.setLimits({cap:q.crowdCap,budget:q.crowdTris});cityEvents.setQuality(q);cityRenderer?.setQuality?.(q);setTrafficQuality(governor.level);
   if(q.shadow&&q.shadow!==SHADOW_MAP){SHADOW_MAP=q.shadow;sunlight.shadow.mapSize.set(SHADOW_MAP,SHADOW_MAP);sunlight.shadow.map?.dispose();sunlight.shadow.map=null;shadowHalf=0;}
   if(roomView)ratioDirty=true;else renderer.setPixelRatio(q.pixelRatio);
   renderer.domElement.dataset.quality=`${q.level} ${governor.auto?'auto':'manual'} ${q.name}`;document.documentElement.dataset.quality=String(q.level);   // ≤ 1: opaque glass, no blur (style.css)
-  const lite=!governor.auto&&q.level===0;liteButton.setAttribute('aria-pressed',String(lite));label(liteButton,lite?'Lite mode: on (tap for automatic quality)':'Lite mode: off (tap for the lightest city)');
+  const lite=!governor.auto&&q.level===0;liteButton.setAttribute('aria-pressed',String(lite));label(liteButton,lite?'Low graphics: on':'Low graphics: off');
 }
 applyQuality();
 for(const type of ['visibilitychange','pageshow','focus'])addEventListener(type,()=>governor.grace(GOV.grace.visible,performance.now()));
@@ -758,15 +785,22 @@ photo=createPhoto({openDialog,closeDialog,notify,
    if(near&&b?.type==='apartment')return {kind:'room',name:b.name,district:p.districtName?.split(' / ')[0],plotId:p.id};
    const d=districts.reduce((a,x)=>Math.hypot(x.x-t.x,x.z-t.z)<Math.hypot(a.x-t.x,a.z-t.z)?x:a,districts[0]);return {kind:'city',district:d?.name.split(' / ')[0]};},
   enter(){closeDialog();cityTour=null;cameraTween=null;},exit(){}});
-control('calendar-button',icon('cal'),()=>calendar.open()).title='City calendar';
-control('diary-button',icon('book'),()=>diary.open()).title="SUB-01's diary";
-control('photo-button',icon('camera'),()=>photo.toggle()).title='Photo mode: take a postcard';
-for(const [id,text] of [['calendar-button','City calendar'],['diary-button',"SUB-01's diary"],['photo-button','Photo mode: take a postcard']])label($(id),text);
+// SIMPLIFY: one "Today" chip in the panel opens the calendar sheet; the diary and the shrine are its footer; the postcard lives in More.
+$('today-button').onclick=()=>calendar.open();
+const diaryButton=Object.assign(document.createElement('button'),{className:'button button-ghost button-sm',id:'diary-button',type:'button',onclick:()=>diary.open()});diaryButton.append(icon('book','i lead'),"SUB-01's diary");$('today-links').prepend(diaryButton);
+$('shrine-button').onclick=()=>rituals.openShrine('omikuji');
+control('photo-button',icon('camera'),()=>photo.toggle(),'more-photo');
+for(const [id,text] of [['diary-button',"SUB-01's diary"],['photo-button','Postcard: frame the city, save a card']])label($(id),text);
 $('about-button').onclick=()=>rituals.openAbout();
+$('more-button').onclick=()=>openDialog('more-backdrop');
+// Rows in the More and Today sheets that open something else or move the camera close their sheet first (capture: before the row's own handler).
+for(const id of ['more-backdrop','calendar-backdrop'])$(id).addEventListener('click',e=>{if(e.target.closest('#city-tour,#reset-view,#photo-button,#about-button,#diary-button,#shrine-button'))closeDialog();},true);
+// The Today chip's small line: the week theme, then the next event (tickRituals keeps it fresh).
+function todayLine(){const theme=calendar.data?.weekTheme?.title,next=calendar.next();$('today-sub').textContent=[theme,next].filter(Boolean).join(' · ')||'Calendar · omikuji · diary';}
 $('detail-diary').onclick=()=>{closeDialog();diary.open();};
 // The activity bar names the next event; countdowns tick every 30 s; the calendar refreshes every minute, the ema board every 2.
 const nextCaption=Object.assign(document.createElement('span'),{className:'activity-next'});$('activity-label').after(nextCaption);
-function tickRituals(){calendar.render();const t=calendar.next();nextCaption.textContent=t?` · ${t}`:'';updateBuffs();
+function tickRituals(){calendar.render();const t=calendar.next();nextCaption.textContent=t?` · ${t}`:'';todayLine();updateBuffs();
   // 23:00 Tokyo: one quiet toast a day that SUB-01 wrote in his diary (not over a dialog, a room, photo mode or another toast).
   const c=tokyoClock(Date.now()),today=todayJST();
   if(shouldToastDiary({hours:c.hours,today,last:local.get('sub01.diary.toast'),busy:document.hidden||!!currentDialog||!!roomView||photo.on||!$('toast').hidden})){local.set('sub01.diary.toast',today);notify('SUB-01 wrote in his diary.');}}
@@ -824,7 +858,8 @@ function animate(now){
 // The headline ("Your idea. A whole city.") shows for INTRO_MS after the city is up, then fades (CSS .intro-gone).
 const INTRO_MS=5000;let introUp=true,introBoxCache=null,introBoxAt=0;
 function introBox(){const now=performance.now();if(!introBoxCache||now-introBoxAt>250){introBoxCache=document.querySelector('.intro')?.getBoundingClientRect()||null;introBoxAt=now;}return introBoxCache;}
-setTimeout(()=>{introUp=false;document.body.classList.add('intro-gone');},INTRO_MS);
+setTimeout(()=>{introUp=false;document.body.classList.add('intro-gone');showCoach();},INTRO_MS);
+hint(hintFor(false,{touch:mobile}));hintWalking=false;
 requestAnimationFrame(animate);
 async function initialize(){try{
   await Promise.all([makeHome(),makeBuildings(),makeCharacter()]);
