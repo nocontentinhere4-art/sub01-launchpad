@@ -2,8 +2,9 @@ import * as THREE from 'three';
 // Tokyo Tower (wave 5A, owner reference owner-tokyo-tower-aerial.webp; brief 3.11). Pure plan + one builder.
 // Proportions of the real 333 m tower, scaled to 50 units (≈ 2× the tallest slab, 23.6): main observatory centred at
 // 0.45 H (150 m), top deck at 0.75 H (250 m), the antenna mast above 0.81 H. Four legs splayed on a concave curve that
-// is nearly vertical above the main deck; their feet stand 2.95 off the axis (the widest the Shiba street band allows
-// between the lot fronts, z ±3.43), so the base reads narrower than the real 80 m.
+// is nearly vertical above the main deck; their feet stand 4.65 off the axis (owner 2026-10-10: the plots either side of
+// the street, shiba-2 and shiba-5, are the tower park now, so the base spans the lawn like the real 80 m one; the park
+// is 10.2 wide, so 4.65 keeps the legs' outer chords clear of the neighbours' walls at ±5.1).
 // Lattice: each leg is a 4-chord column with X-braced faces and a ring girder every panel; between the legs a bottom
 // arch, girders and X-bracing on the outer faces; above the deck one 4-chord shaft. Members are flat ribbons (2
 // triangles, in their face plane, double-sided) in ONE instanced batch, ≈ 1.25k instances / 2.5k triangles; the decks,
@@ -12,7 +13,7 @@ import * as THREE from 'three';
 // and around the top deck; at night the orange glows warm (per-instance nightLight), the white a little.
 // FootTown: a 4-storey light-grey podium straddling the street on pilotis (the road and sidewalks pass under it); the
 // legs come down through its roof corners.
-export const TOWER={height:50,feet:2.95,leg:.42,legTop:.3,panels:14,shaftPanel:1.3,
+export const TOWER={height:50,feet:4.65,leg:.42,legTop:.3,panels:14,shaftPanel:1.3,
  deck:{y0:21.4,y1:23.6,half:2.05},top:{y0:37.1,y1:38,half:.95},shaftDeck:1.35,shaftTop:.62,mastBase:40.5,
  footTown:{half:2.35,y0:3,storey:2.3,floors:3,parapet:.45,color:'#CDCFCA'},
  orange:'#F05A28',white:'#F4F1EA',glowOrange:'#FF7A36',glowWhite:'#FFE2B8',

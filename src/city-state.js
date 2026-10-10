@@ -47,16 +47,20 @@ export const SKYLINE_X=OUTER_EXTENT.minX+1.5;       // −129   west skyline edg
 export const FUJI_AT={x:-67,z:-161};                // no mountain any more (owner 2026-10-10); this line only fixes the north skyline gap at x ≈ −46 (the expressway's exit)
 // Overview camera (main.js resetView) for the bigger map, and the zoom-out floor it needs.
 export const OVERVIEW_ZOOM={desktop:.2,mobile:.093,min:.05};   // 2026-10-10: tighter, so no ground past the blocks shows; main.js clamps the pan and the zoom floor
-export const cityPlots=districts.flatMap((d,di)=>Array.from({length:6},(_,i)=>({
- id:`${d.id}-${i+1}`,district:d.id,districtName:d.name,name:`${d.name.split(' /')[0]} ${String(i+1).padStart(2,'0')}`,
+// Reserved plots (owner 2026-10-10): the two Shiba plots either side of Tokyo Tower are its park (lawn, trees, the
+// floodlit pitch). They keep their ids and positions (288 ids, nothing renumbered) but are never offered, listed,
+// counted, picked or labelled; the server refuses claims on them too (world.js RESERVED_PLOTS).
+export const RESERVED_PLOTS=['shiba-2','shiba-5'];
+export const cityPlots=districts.flatMap((d,di)=>Array.from({length:6},(_,i)=>{const id=`${d.id}-${i+1}`,reserved=RESERVED_PLOTS.includes(id);return {
+ id,district:d.id,districtName:d.name,name:`${d.name.split(' /')[0]} ${String(i+1).padStart(2,'0')}`,
  x:d.x+[-8,0,8][i%3],z:d.z+(i<3?-6:6),height:di<8?3+((di*3+i*7)%6):di<24?5+((di*3+i*7)%12):3+((di*3+i*7)%8),
- vacant:i===5,color:d.color,symbol:i===5?'+':'▥',kind:'TOKYO / AVAILABLE SPACE',status:i===5?'Open lot':'Available building',
- description:'Choose this address for an apartment, studio or project. Customize it in the local city preview. No purchase, global ownership or token launch.'
-})));
+ vacant:i===5,...(reserved?{reserved:true}:{}),color:d.color,symbol:reserved?'♣':i===5?'+':'▥',kind:reserved?'TOKYO / TOWER PARK':'TOKYO / AVAILABLE SPACE',status:reserved?'Tower park':i===5?'Open lot':'Available building',
+ description:reserved?'Part of the Tokyo Tower park: lawn, trees and the floodlit pitch under the tower. Not an address.':'Choose this address for an apartment, studio or project. Customize it in the local city preview. No purchase, global ownership or token launch.'
+};}));
 export const tower={id:'tower',name:'Tokyo Tower',x:-29,z:-28,height:32,color:'#f2773a',symbol:'△',kind:'TOKYO / LANDMARK',status:'City landmark',description:'The center of Shiba. An original, stylized Tokyo Tower made from lightweight shared geometry. This city is inspired by Tokyo, not an accurate map.'};
 export const buildingColors={orange:'#f4864e',mint:'#80a897',violet:'#a19bc4',sand:'#d4bf91'};
 export function createBuilding(plotId,name,idea,ticker,type,color,existing=[],id=crypto.randomUUID()){
- if(!cityPlots.some(p=>p.id===plotId))throw new Error('Choose an available city address.');
+ if(!cityPlots.some(p=>p.id===plotId&&!p.reserved))throw new Error('Choose an available city address.');
  if(existing.some(b=>b.plotId===plotId))throw new Error('This address already has your project. Choose another.');
  const content=validateIdea(name,idea),symbol=String(ticker??'').trim().toUpperCase();
  if(!/^[A-Z0-9]{1,10}$/.test(symbol))throw new Error('Use 1 to 10 letters or numbers for the concept ticker.');

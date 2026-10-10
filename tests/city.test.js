@@ -45,3 +45,16 @@ test('48 districts × 6 plots; the first 24 keep their ids, order and positions;
  for(const d of districts)assert.ok(Math.abs(d.x/29)<=3&&Math.abs((d.z-2)/30)<=3);
  assert.ok(districts.slice(24).every(d=>Math.abs(d.x)===87||Math.abs(d.z-2)===90),'the new ring is the outer one');
 });
+
+// Owner 2026-10-10: the tower park and the variety spots draw inside the same batches; reserved plots have no pick box.
+import {cityLayout} from '../src/lots.js';
+test('city: reserved plots get no pick box or height; the park, pitch and variety spots draw without new batches',()=>{
+ const scene=new THREE.Scene(),interactive=[],city=createCity(scene,interactive,()=>{},[]);
+ const m=new THREE.Matrix4(),pos=new THREE.Vector3(),q=new THREE.Quaternion(),sc=new THREE.Vector3();
+ for(const id of ['shiba-2','shiba-5']){interactive[0].getMatrixAt(cityPlots.findIndex(p=>p.id===id),m);m.decompose(pos,q,sc);
+  assert.ok(pos.y<-50&&sc.x<.1&&sc.y<.1,`${id} pick hidden`);assert.equal(city.heightOf(id),null);}
+ const st=city.stats();assert.equal(st.drawCalls,9,'no new batches');assert.ok(st.marks>2500&&st.walls>12500,'pitch lines, fences, boulevard furniture');
+ // the same drawing with a building saved on a reserved plot and with the ring-3 spots in every kind
+ const before=JSON.stringify(st);city.redraw([{plotId:'shiba-2',type:'project',color:'orange',phase:'open',progress:1}]);assert.equal(JSON.stringify(city.stats()),before);
+ const kinds=new Set(cityLayout([]).spots.map(s=>s.kind));for(const k of ['pitch','court','playground','park'])assert.ok(kinds.has(k),k);
+});

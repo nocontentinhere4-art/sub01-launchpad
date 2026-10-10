@@ -7,6 +7,7 @@
 // boulevards), junction boxes with one turn link per movement (conflicts, the crosswalk a turn cuts), mid-block stop
 // lines, coin-parking bays and bus stops. A* over the pedestrian graph with a binary heap and a small route cache.
 import {districts,BOULEVARD_X,ROAD_Z,CITY_EXTENT,CANAL_X} from './city-state.js';
+import {PARK_KINDS} from './lots.js';
 import {cityLayout,heightClass,isRing3,CATEGORY,sidewalkSides} from './lots.js';
 import {doorOf,stylePlan} from './tokyo-style.js';
 
@@ -136,7 +137,7 @@ function buildStreetWorld(){
    for(const sp of layout.spots){if(sp.district!==d.id||Math.abs(sp.frontZ-Z)>4)continue;const fz=sp.front==='+z'?1:-1;if((fz>0?-1:1)!==s)continue;
     const x=clampX(sp.x);
     if(sp.kind==='vending')pts.push({x,o:{act:ACT.vending,yaw:facing,district:di}});
-    else if(sp.kind==='park'||sp.kind==='shrine')pts.push({x,leaf:{x:sp.x,z:sp.frontZ-fz*1.4,o:{kind:'spot',act:sp.kind==='park'?ACT.park:ACT.shrine,yaw:facing,district:di}},o:{district:di}});}
+    else if(PARK_KINDS.has(sp.kind)||sp.kind==='shrine')pts.push({x,leaf:{x:sp.x,z:sp.frontZ-fz*1.4,o:{kind:'spot',act:sp.kind==='shrine'?ACT.shrine:ACT.park,yaw:facing,district:di}},o:{district:di}});}
    for(const v of vendProps)if(v.district===d.id&&Math.abs(v.z-zs)<1.6&&v.x>xw+.5&&v.x<xe-.5&&!pts.some(p=>p.o?.act===ACT.vending&&Math.abs(p.x-v.x)<1.5))pts.push({x:v.x,o:{act:ACT.vending,yaw:v.z>zs?0:Math.PI,district:di}});
    if(STATIONS[d.id])for(const dx of STATIONS[d.id]){const x=clampX(X+dx),lot=layout.lots.find(l=>l.district===d.id&&l.role!=='interior'&&(l.front==='+z'?-1:1)===s&&Math.abs(l.x-x)<l.width/2+.1);
     const fz=s<0?1:-1;pts.push({x,leaf:{x,z:(lot?lot.frontZ:Z+s*3.4)-fz*.35,o:{kind:'door',act:ACT.station,yaw:facing,district:di}},o:{district:di}});}

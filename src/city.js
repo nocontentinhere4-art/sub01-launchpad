@@ -9,7 +9,8 @@ import {facadeCode as fc,facadeAttribute,facadeDetail,prismGeometry,arcGeometry,
 import {TOWER,towerPlan,towerRibbons,footTownTop} from './tokyo-tower.js';
 import {cityPlots,districts,tower,plotView,BOULEVARD_X,ROAD_Z,CITY_EXTENT,OUTER_DISTRICTS,OUTER_EXTENT,OUTER_BOULEVARD_X} from './city-state.js';
 const ALL_BOULEVARDS=[...BOULEVARD_X,...OUTER_BOULEVARD_X];
-import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial,isRing3,builtHeight} from './lots.js';
+import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial,isRing3,builtHeight,TOWER_PITCH} from './lots.js';
+import {boulevardFurniture} from './city-street.js';
 const wallMaterial=params=>(T.wallMaterial||T.toon)(params);
 // Night multipliers are plain 0–1 factors (brief 3.9: walls ×#6F7D99, ground ×#55617A), not sRGB colours.
 const factor=hex=>new THREE.Color().setHex(parseInt(hex.slice(1),16),THREE.LinearSRGBColorSpace);
@@ -34,8 +35,11 @@ function nightLit(material){
 function shaped(x,y,z,pre,rot,post){const m=new THREE.Matrix4().makeScale(...pre);m.premultiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rot)));m.premultiply(new THREE.Matrix4().makeScale(...post));return m.premultiply(new THREE.Matrix4().makeTranslation(x,y,z));}
 // 2700 K homes, office white, a few cool stairwells, the rest dark (brief 3.9 night).
 const bandLight=(r,home)=>{const x=r();return x<.1?'#D8E6F0':x<(home?.48:.6)?(home?'#FFC27A':'#FFE6B8'):null;};
-// The street band under the tower (Shiba's street): a paved plaza replaces the zebra there.
-const TOWER_PLAZA={x0:tower.x-6.2,x1:tower.x+6.2,z0:tower.z-3.3,z1:tower.z+3.3};
+// The tower park (owner 2026-10-10, after the aerial photo): the Shiba street band under FootTown is a paved plaza
+// (x ±8), the reserved plots either side (shiba-2, shiba-5, lots.js) and the gaps beside them are lawn 10.2 wide, with
+// a paver pad under each of the four feet, gravel paths, benches, tree clumps (city-green.js) and the floodlit pitch south
+// of the tower (lots.js TOWER_PITCH). TOWER_PARK is the keep-out box for manholes and the like.
+const TOWER_PARK={x0:tower.x-8,x1:tower.x+8,z0:tower.z-9,z1:tower.z+12.2},LAWN_HALF=5.1,PLAZA_Z=3.3;
 const KEYS=['roads','marks','walls','windows','roofs','prisms','awnings'];
 
 export function createCity(scene,interactive,showPlace,buildings,options={}){
@@ -88,7 +92,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    // Manholes: two per district street, hashed along it, clear of the zebras and the tower plaza.
    const rm=rng(d.id+':manholes');
    for(let i=0;i<2;i++){const x=d.x+(rm()-.5)*20,z=d.z+(rm()<.5?-1:1)*(.55+rm()*.4);
-    if(Math.abs(x-d.x)<3.4&&[-29,29].includes(d.x)||x>TOWER_PLAZA.x0&&x<TOWER_PLAZA.x1&&z>TOWER_PLAZA.z0&&z<TOWER_PLAZA.z1)continue;
+    if(Math.abs(x-d.x)<3.4&&[-29,29].includes(d.x)||x>TOWER_PARK.x0&&x<TOWER_PARK.x1&&z>TOWER_PARK.z0&&z<TOWER_PARK.z1)continue;
     add('marks',x,.1945,z,.62,.01,.62,'#7A7F7C',{fac:F_MANHOLE});}
   }
   // Japanese zebras: bars only, 0.45 wide with 0.45 gaps (worn paint); a ◇ six units before each approach.
@@ -101,8 +105,64 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   // Boulevards run the whole built area (city-state.js CITY_EXTENT: z −101.5…105.5 for the 7×7 city); asphalt along z.
   for(const x of ALL_BOULEVARDS){add('roads',x,.17,(BLVD_Z0+BLVD_Z1)/2,2.6,.05,BLVD_Z1-BLVD_Z0,'#646B6C',{fac:fc('asphalt',{swap:true})});for(let z=BLVD_Z0+5.5;z<=BLVD_Z1-5.5;z+=6)if(!ROWS.some(r=>Math.abs(z-r)<3.6))add('marks',x,.198,z,.08,.01,.8,'#E6E4DC',{fac:F_PAINT});
    for(let z=BLVD_Z0+7.5;z<=BLVD_Z1-5.5;z+=12){add('marks',x+.6,.199,z,.6,.01,.6,'#646B6C',{fac:F_MANHOLE});}}
-  // The tower plaza: pavers over the Shiba street band under FootTown.
-  add('marks',tower.x,.1985,tower.z,TOWER_PLAZA.x1-TOWER_PLAZA.x0,.006,TOWER_PLAZA.z1-TOWER_PLAZA.z0,'#B9B4A8',{fac:fc('pavers')});
+  // The tower plaza: pavers over the Shiba street band under FootTown, the whole width of the park.
+  add('marks',tower.x,.1985,tower.z,TOWER_PARK.x1-TOWER_PARK.x0,.006,2*PLAZA_Z,'#B9B4A8',{fac:fc('pavers')});
+  boulevards();
+ }
+ // Boulevard furniture (city-street.js boulevardFurniture; owner 2026-10-10 "fill the empty strips between the streets"):
+ // kerbside parked cars, bus shelters, bike racks, hedges, planters, the cycle line and lane arrows. Small things are
+ // detail (hidden at the overview zoom); nothing here adds a draw call.
+ function boulevards(){
+  const f=boulevardFurniture(),y=BASE_Y;
+  for(const c of f.cars){const col=CARS[c.color];add('walls',c.x,y+.45,c.z,.95,.55,1.9,col);add('walls',c.x,y+.9,c.z-c.dir*.1,.85,.42,1.0,tint(col,-.12));}
+  for(const b of f.stops){const sd=b.side,x=b.x,z=b.z;
+   add('walls',x,y+2.55,z,1.1,.08,2.6,'#5B6466',{fac:fc('metal')});for(const e of [-1,1])add('walls',x+sd*.45,y+1.25,z+e*1.2,.08,2.5,.08,'#7E8789');
+   add('windows',x+sd*.5,y+1.5,z,.04,1.7,2.4,GLASS_LOW);add('walls',x,y+.45,z,.4,.08,1.7,'#9A7A60',{fac:fc('wood')});
+   fine(()=>{for(const e of [-1,1])add('walls',x,y+.2,z+e*.7,.3,.4,.06,'#7E8789');});
+   add('walls',x-sd*.8,y+1.45,z+1.55,.06,2.9,.06,'#7E8789');add('windows',x-sd*.8,y+2.65,z+1.55,.06,.5,.44,'#2F6FB5',{light:'#9FD0FF',glow:.5});}
+  fine(()=>{for(const k of f.racks){add('walls',k.x,y+.5,k.z,.05,.05,1.9,'#7E8789');for(const e of [-1,1])add('walls',k.x,y+.25,k.z+e*.9,.05,.5,.05,'#7E8789');
+    for(let i=0;i<k.n;i++){const z=k.z-.8+i*1.6/(k.n-1);add('walls',k.x,y+.45,z,1.45,.5,.06,['#2F3437','#9AA3A8','#B33A32','#1F2A44'][i%4]);}}
+   for(const p of f.planters)add('walls',p.x,y+.6,p.z,.62,.32,.62,p.color);});
+  for(const p of f.planters)add('walls',p.x,y+.22,p.z,.7,.45,.7,'#B4B1A7',{fac:fc('concrete')});
+  for(const h of f.hedges)add('walls',h.x,y+.28,h.z,.5,.55,h.len,h.color);
+  for(const d of f.dashes)add('marks',d.x,.1985,d.z,.07,.008,1.4,'#8FB0CF',{fac:F_PAINT});
+  for(const a of f.arrows){add('marks',a.x,.1995,a.z,.12,.01,1.1,'#E6E4DC',{fac:F_PAINT});for(const e of [-1,1])add('marks',a.x+e*.17,.1995,a.z+a.dir*.37,.1,.01,.52,'#E6E4DC',{fac:F_PAINT,ry:-e*a.dir*Math.PI/4});}
+ }
+ // A football pitch (long axis along x): turf, white lines (touch lines, halfway, centre circle, penalty boxes), goals,
+ // a green mesh fence with a gate on the `gate` z side, floodlights at the given corners and a white light pool at night.
+ function pitchAt(cx,cz,w,d,{gate=-1,lights=[[-1,-1],[1,-1],[-1,1],[1,1]],fence=2.2,pool=4.8}={}){
+  const y=BASE_Y,white='#F2F1EA',yl=y+.106,L=(x,z,lw,ld,ry)=>add('marks',x,yl,z,lw,.008,ld,white,ry?{fac:F_PAINT,ry}:{fac:F_PAINT});
+  add('roofs',cx,y+.05,cz,w,.1,d,'#5F9C4C');
+  for(const e of [-1,1]){L(cx,cz+e*(d/2-.12),w-.2,.08);L(cx+e*(w/2-.12),cz,.08,d-.2);}L(cx,cz,.08,d-.2);
+  const R=Math.min(d*.16,.9);for(let k=0;k<8;k++){const a=(k+.5)*Math.PI/4;L(cx+Math.cos(a)*R,cz+Math.sin(a)*R,.08,2*R*Math.sin(Math.PI/8)+.06,-a);}
+  const bw=Math.min(w*.2,1.7),bd=Math.min(d*.6,3.2);
+  for(const e of [-1,1]){for(const q of [-1,1])L(cx+e*(w/2-bw/2),cz+q*bd/2,bw,.08);L(cx+e*(w/2-bw),cz,.08,bd);}
+  fine(()=>{for(const e of [-1,1]){const gx=cx+e*(w/2+.06),gw=Math.min(d*.3,1.6);for(const q of [-1,1])add('walls',gx,y+.5,cz+q*gw/2,.06,1.0,.06,white);add('walls',gx,y+1.0,cz,.06,.06,gw,white);}});
+  fenceAround(cx,cz,w+.7,d+.7,fence,gate,'#3E7A5C');
+  for(const [sx,sz] of lights){const lx=cx+sx*(w/2+.75),lz=cz+sz*(d/2+.75);add('walls',lx,y+3.6,lz,.14,7.2,.14,'#8E9392');
+   add('walls',lx-sx*.25,y+7.05,lz-sz*.25,.7,.12,.7,'#5B6466');add('windows',lx-sx*.28,y+7.4,lz-sz*.28,1.0,.5,.5,'#E8E6DE',{light:'#FFF6DC',glow:1});}
+  pools.push([cx,cz,'#EAF4FF',pool,.5]);
+ }
+ // A mesh fence of height h around a w × d box, a 1.6 gate gap on the `gate` z side (0: none), posts as detail. The two
+ // sides facing the camera (+x and +z) stay a low rail: an opaque box there would hide the whole court.
+ function fenceAround(cx,cz,w,d,h,gate,color){const low=Math.min(h,.9);
+  for(const s of [-1,1]){const hz=s>0?low:h,zz=cz+s*d/2;
+   if(s===gate){const seg=w/2-.8;for(const e of [-1,1])add('walls',cx+e*(.8+seg/2),BASE_Y+hz/2,zz,seg,hz,.05,color);}else add('walls',cx,BASE_Y+hz/2,zz,w,hz,.05,color);
+   const hx=s>0?low:h;add('walls',cx+s*w/2,BASE_Y+hx/2,cz,.05,hx,d,color);}
+  fine(()=>{const n=Math.max(2,Math.round(w/2.1));for(let i=0;i<=n;i++)for(const s of [-1,1]){const hh=s>0?low:h;add('walls',cx-w/2+w*i/n,BASE_Y+hh/2,cz+s*d/2,.08,hh+.05,.08,tint(color,-.25));}});
+ }
+ // The tower park proper (ground() already paved the street band): lawns, the paver apron under the legs, gravel paths,
+ // benches and the floodlit pitch. Trees come from city-green.js (towerParkTrees).
+ function towerPark(){
+  const x=tower.x,z=tower.z,y=BASE_Y,lawn='#7E9A63',gravel='#C9C3B4',G={fac:fc('membrane')},wood={fac:fc('wood')};
+  add('roofs',x,y+.03,(TOWER_PARK.z0+z-PLAZA_Z)/2,2*LAWN_HALF,.06,z-PLAZA_Z-TOWER_PARK.z0,lawn);          // north lawn
+  add('roofs',x,y+.03,(z+PLAZA_Z+TOWER_PARK.z1)/2,2*LAWN_HALF,.06,TOWER_PARK.z1-z-PLAZA_Z,lawn);          // south lawn, to the back lane
+  for(const a of [-1,1])for(const b of [-1,1])add('marks',x+a*TOWER.feet,.1995,z+b*TOWER.feet,1.9,.006,1.9,'#B9B4A8',{fac:fc('pavers')});   // a paver pad under each foot
+  add('roofs',x,y+.065,z-7.1,1.1,.02,3.2,gravel,G);add('roofs',x,y+.065,z-6.6,2*LAWN_HALF-.6,.02,1.0,gravel,G);   // north path and cross path
+  add('roofs',x,y+.065,z+5.9,2*LAWN_HALF-.4,.02,.9,gravel,G);                                              // promenade between the legs and the pitch
+  const bench=(bx,bz,face)=>{add('walls',bx,y+.42,bz,1.3,.07,.42,'#9A7A60',wood);add('walls',bx,y+.68,bz-face*.19,1.3,.36,.06,'#9A7A60',wood);fine(()=>{for(const e of [-1,1])add('walls',bx+e*.55,y+.2,bz,.06,.4,.38,'#5B6466');});};
+  for(const e of [-1,1]){bench(x+e*3.4,z-7.35,1);bench(x+e*2.2,z+5.3,-1);}
+  pitchAt(TOWER_PITCH.x,TOWER_PITCH.z,TOWER_PITCH.w,TOWER_PITCH.d,{gate:-1,fence:2.0,pool:5.2});
  }
 
  // ---------- Buildings ----------
@@ -234,6 +294,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  function drawSpot(s){
   const fz=s.front==='+z'?1:-1,y0=BASE_Y,F=(key,u,y,v,w,h,d,c,o)=>add(key,s.x+u,y0+y,s.frontZ+fz*v,w,h,d,c,o),r=rng(s.id+':spot');
   const car=(u,v)=>{const c=CARS[Math.floor(r()*CARS.length)];F('walls',u,.45,v,.95,.55,1.9,c);F('walls',u,.9,v-.1,.85,.42,1.0,tint(c,-.12));};
+  if(s.reserved)return;   // the tower park: towerPark() draws it as one piece
   if(s.kind==='alley'){F('roofs',0,.01,-s.depth/2,s.width,.02,s.depth,'#8E8C84',{fac:fc('concrete')});if(s.pole)F('walls',0,3.5,-.35,.16,7,.16,'#B7B4AA');fine(()=>F('walls',s.acSide*(s.width/2-.17),2.2,-s.depth*.45,.3,.6,.8,AC,{fac:F_FAN_X}));}
   else if(s.kind==='vending'){F('roofs',0,.01,-s.depth/2,s.width,.02,s.depth,'#A6A398',{fac:fc('concrete')});const n=s.machines||2;for(let i=0;i<n;i++){const u=(i-(n-1)/2)*.95,c=['#EDEDE8','#C63B34','#2E6FB0'][Math.floor(r()*3)];F('walls',u,.875,-.4,.9,1.75,.65,c);F('windows',u,1.25,-.06,.7,.35,.04,'#CFE3EA',{light:'#EAF4FF'});}pools.push([s.x,s.frontZ+fz*.5,'#EAF4FF',1.6,.45]);F('walls',(n/2)*.95+.1,.4,-.4,.35,.8,.45,'#7D8B8E');}
   else if(s.kind==='parking'||s.kind==='coin-parking'){
@@ -248,6 +309,33 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    fine(()=>{for(const u of [-1,1])F('walls',u*(s.width/2-.2),.35,-.1,s.width/2-.9,.5,.08,'#8C8F86');});
    // Trees are drawn by city-green.js (real species with wind); the park keeps its lawn, path, fence and bench.
    F('walls',(r()<.5?-1:1)*1.4,.3,-.9,1.2,.12,.4,'#9A7A60',{fac:fc('wood')});
+  }else if(s.kind==='pitch'){
+   // Futsal court (third ring, owner 2026-10-10 variety): turf with lines and small goals, a fence with its gate to the
+   // street, two floodlights at the back corners.
+   pitchAt(s.x,s.frontZ-fz*s.depth/2,s.width-.6,s.depth-.9,{gate:fz,lights:[[-1,-fz],[1,-fz]],fence:2.0,pool:3.2});
+  }else if(s.kind==='court'){
+   // Tennis (ochre) or basketball (blue) court, lines, a net or two hoops, a tall fence with its gate to the street.
+   const cx=s.x,cz=s.frontZ-fz*s.depth/2,w=s.width-.6,d=s.depth-.9,tennis=r()<.5,white='#F2F1EA',yl=y0+.106;
+   const L=(x,z,lw,ld)=>add('marks',x,yl,z,lw,.008,ld,white,{fac:F_PAINT});
+   add('roofs',cx,y0+.05,cz,w,.1,d,tennis?'#C98A5A':'#3F6F9E');
+   for(const e of [-1,1]){L(cx,cz+e*(d/2-.15),w-.3,.07);L(cx+e*(w/2-.15),cz,.07,d-.3);}
+   if(tennis){for(const e of [-1,1]){L(cx,cz+e*(d/2-.6),w-.3,.06);L(cx+e*w*.22,cz,.06,d-1.2);}L(cx,cz,.06,d-.3);
+    add('walls',cx,y0+.45,cz,.03,.85,d-.3,'#2B2B2B');add('walls',cx,y0+.9,cz,.05,.05,d-.3,white);for(const e of [-1,1])add('walls',cx,y0+.5,cz+e*(d/2-.1),.08,1.0,.08,'#4B5A5E');}
+   else for(const e of [-1,1]){const kx=cx+e*(w/2-.9);for(const q of [-1,0,1])L(kx,cz+q*.75,1.5,.06);L(cx+e*(w/2-1.65),cz,.06,1.56);
+    const hx=cx+e*(w/2-.2);add('walls',hx,y0+1.5,cz,.1,3.0,.1,'#4B5A5E');add('walls',hx-e*.25,y0+2.75,cz,.05,.7,1.1,white);fine(()=>add('walls',hx-e*.5,y0+2.45,cz,.42,.04,.42,'#E0612B'));}
+   fenceAround(cx,cz,w+.5,d+.5,2.6,fz,'#3E7A5C');
+  }else if(s.kind==='playground'){
+   // Sand, a slide, a swing frame, a climbing cube, a bench; the park's low fence along the street.
+   const w=s.width-.3,d=s.depth-.3,red='#E0612B',blue='#4B6A8A',yellow='#E3BE3C',grey='#7E8789';
+   F('roofs',0,.03,-s.depth/2,w,.06,d,'#D9C9A3');
+   fine(()=>{for(const u of [-1,1])F('walls',u*(s.width/2-.2),.35,-.1,s.width/2-.9,.5,.08,'#8C8F86');});
+   const su=1.6,sv=-s.depth*.72;F('walls',su,1.45,sv,.7,.08,.7,blue);for(const e of [-1,1])F('walls',su+e*.3,.72,sv,.08,1.45,.08,grey);
+   F('walls',su-1.1,.85,sv,2.5,.08,.6,red,{rz:.6});fine(()=>{for(const e of [-1,1])F('walls',su-1.1,1.0,sv+e*.3,2.5,.22,.04,red,{rz:.6});for(let k=0;k<4;k++)F('walls',su+.45,.35+k*.32,sv,.4,.04,.04,grey);});
+   const wu=-1.6;for(const v of [-1.2,-3.4])F('walls',wu,1.1,v,.1,2.2,.1,blue);F('walls',wu,2.2,-2.3,.1,.1,2.4,blue);
+   fine(()=>{for(const v of [-1.7,-2.9]){for(const e of [-1,1])F('walls',wu+e*.2,1.4,v,.03,1.5,.03,'#2B2B2B');F('walls',wu,.6,v,.5,.05,.2,'#2B2B2B');}
+    const cu=1.1,cv=-s.depth*.3;for(const a of [-.6,.6])for(const b of [-.6,.6])F('walls',cu+a,.7,cv+b,.06,1.4,.06,yellow);
+    for(const a of [-.6,.6]){F('walls',cu+a,1.4,cv,.06,.06,1.26,yellow);F('walls',cu,1.4,cv+a,1.26,.06,.06,yellow);F('walls',cu,.75,cv+a,1.26,.06,.06,yellow);}});
+   F('walls',-1.4,.3,-.9,1.2,.12,.4,'#9A7A60',{fac:fc('wood')});
   }else if(s.kind==='shrine'){
    F('roofs',0,.02,-s.depth/2,s.width-.3,.04,s.depth-.3,'#C9C3B4',{fac:fc('membrane')});F('roofs',0,.05,-s.depth*.45,.9,.02,s.depth*.8,'#9C998F',{fac:fc('pavers')});
    for(const u of [-.9,.9])F('walls',u,1.6,-.6,.22,3.2,.22,'#C8452D');F('walls',0,3.25,-.6,2.7,.22,.32,'#C8452D');F('walls',0,3.4,-.6,2.9,.1,.36,'#2B2B2B');F('walls',0,2.65,-.6,2.1,.14,.18,'#C8452D');
@@ -286,7 +374,7 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  picks.userData.cityPlot=true;root.add(picks);interactive.push(picks);
  const setPick=(i,x,z,w,h,d)=>{dummy.position.set(x,BASE_Y+h/2,z);dummy.rotation.set(0,0,0);dummy.scale.set(w,h,d);dummy.updateMatrix();picks.setMatrixAt(i,dummy.matrix);};
  function redraw(next){buildings=next;for(const g of renderGroups){root.remove(g);g.dispose();g.geometry.dispose();}renderGroups=[];
-  batches=Object.fromEntries(KEYS.map(k=>[k,[]]));details=Object.fromEntries(KEYS.map(k=>[k,[]]));heights.clear();pools=[];ground();footTown();
+  batches=Object.fromEntries(KEYS.map(k=>[k,[]]));details=Object.fromEntries(KEYS.map(k=>[k,[]]));heights.clear();pools=[];ground();footTown();towerPark();
   const layout=cityLayout(buildings),userPlots=new Set(layout.lots.filter(l=>l.user).map(l=>l.plotId));
   for(const lot of layout.lots){
    const b=lot.user?buildings.find(x=>x.plotId===lot.plotId):null;
@@ -297,8 +385,9 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    if(lot.plotId){if(lot.user)heights.set(lot.plotId,lot.height);else if(!userPlots.has(lot.plotId))heights.set(lot.plotId,Math.max(heights.get(lot.plotId)||0,lot.height));}
   }
   for(const s of layout.spots)drawSpot(s);
-  cityPlots.forEach((p,i)=>{const user=layout.lots.find(l=>l.user&&l.plotId===p.id);
-   if(user)setPick(i,user.x,user.z,user.width+.1,Math.max(1.5,heights.get(p.id)),user.depth+.1);
+  cityPlots.forEach((p,i)=>{const user=p.reserved?null:layout.lots.find(l=>l.user&&l.plotId===p.id);
+   if(p.reserved){dummy.position.set(p.x,-60,p.z);dummy.rotation.set(0,0,0);dummy.scale.setScalar(.01);dummy.updateMatrix();picks.setMatrixAt(i,dummy.matrix);}   // no pick box: not an address
+   else if(user)setPick(i,user.x,user.z,user.width+.1,Math.max(1.5,heights.get(p.id)),user.depth+.1);
    else if(p.vacant){heights.set(p.id,.5);setPick(i,p.x,p.z,5.8,1,5.4);}
    else setPick(i,p.x,p.z,5.8,heights.get(p.id)||1,5.4);});
   picks.instanceMatrix.needsUpdate=true;picks.computeBoundingSphere();

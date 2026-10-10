@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import {toon,night,nightColor,weather} from './toon.js';
 import * as CS from './city-state.js';
-import {streetPlan,ROWS as STREET_ROWS,BOULEVARDS as STREET_BOULEVARDS,hash} from './city-street.js';
-import {cityLayout,BASE_Y,GROUND,STOREY} from './lots.js';
+import {streetPlan,ROWS as STREET_ROWS,BOULEVARDS as STREET_BOULEVARDS,hash,boulevardSide,boulevardTreeZ0,slotZ,BLVD} from './city-street.js';
+import {cityLayout,BASE_Y,GROUND,STOREY,PARK_KINDS} from './lots.js';
 import {canalLayout} from './city-life.js';
 // City greenery (art direction wave 4B, brief 3.7 trees + 3.9 greens; refs real-04, real-05, real-12).
 // Four tree species, each ONE instanced draw call of a merged low-poly tree (a trunk with branch stubs and 3–4
@@ -89,13 +89,31 @@ export function treeMaterial(name){
 const pick=(h,list)=>list[Math.min(list.length-1,Math.floor(h*list.length))];
 export function boulevardTrees(){
  const out=[],plan=streetPlan(),poles=plan.poles,lamps=plan.lamps,ext=EXT(),rows=ROAD_Z();
- for(const bx of BOULEVARD_X()){const pz=poles.find(p=>p.axis==='z'&&p.c===bx),side=pz?Math.sign(pz.x-bx):hash(bx,7)<.5?-1:1,x=bx+side*2.15;
-  // One species per boulevard stretch between two road rows (mostly zelkova, a ginkgo avenue now and then).
-  for(let z=ext.minZ+1.5+hash(bx,12)*3;z<ext.maxZ-1.5;z+=6){const zz=z+(hash(bx,z,13)-.5)*1.2;
+ for(const bx of BOULEVARD_X()){const side=boulevardSide(bx),x=bx+side*BLVD.treeX;
+  // One species per boulevard stretch between two road rows (mostly zelkova, a ginkgo avenue now and then). Every 4
+  // (owner 2026-10-10: the boulevards read as empty pale strips from above), the crowns closing into an avenue.
+  for(let z=boulevardTreeZ0(bx);z<ext.maxZ-1.5;z+=BLVD.treeStep){const zz=z+(hash(bx,z,13)-.5)*1.2;
    if(rows.some(r=>Math.abs(zz-r)<4.4)||central(x,zz)||Math.hypot(x-SCRAMBLE.x,zz-SCRAMBLE.z)<SCRAMBLE.r)continue;
    if(poles.some(p=>Math.abs(p.x-x)<2&&Math.abs(p.z-zz)<1.45)||lamps.some(l=>Math.abs(l.x-x)<1.2&&Math.abs(l.z-zz)<1.2))continue;
    const stretch=rows.findIndex(r=>r>zz),species=hash(bx,stretch,14)<.3?'ginkgo':'zelkova',h=hash(bx,zz,15);
-   out.push({species,x,y:.2,z:zz,ry:h*6.283,s:.88+.24*hash(bx,zz,16),hue:h});}}
+   out.push({species,x,y:.2,z:zz,ry:h*6.283,s:.88+.24*hash(bx,zz,16),hue:h});}
+  // A second, smaller row on the lamp side, behind the hedge: young ginkgos every 8, in the pole-side slot phase so
+  // they never share a z with that side's parked cars (city-street.js slotZ).
+  const x2=bx-side*BLVD.smallTreeX;
+  for(let k=1;;k+=2){const z=slotZ(bx,k);if(z>ext.maxZ-1.5)break;const zz=z+(hash(bx,z,17)-.5)*.8;
+   if(zz<ext.minZ+1.5||rows.some(r=>Math.abs(zz-r)<5)||central(x2,zz)||Math.hypot(x2-SCRAMBLE.x,zz-SCRAMBLE.z)<SCRAMBLE.r)continue;
+   if(lamps.some(l=>l.base&&Math.abs(l.base.x-x2)<1&&Math.abs(l.base.z-zz)<1.3))continue;
+   const h=hash(bx,zz,18);out.push({species:'ginkgo',x:x2,y:.2,z:zz,ry:h*6.283,s:.52+.14*hash(bx,zz,19),hue:h});}}
+ return out;
+}
+// The tower park (owner 2026-10-10, after the aerial photo): dense dark camphor clumps on the lawn north of the tower
+// and flanking the pitch south of it, two zelkovas by the cross path; nothing on the pitch, the paths or the legs.
+// [dx, dz, scale, species?] from the tower's axis (city-state.js tower).
+export const TOWER_CLUMPS=[[-4.3,-8.1,1.05],[-2.4,-8.3,.95],[0,-8.4,1.0],[2.4,-8.2,.95],[4.3,-8.0,1.05],[-4.5,-6.3,.8],[4.5,-6.2,.8],
+ [-2.2,-5.7,.85,'zelkova'],[2.2,-5.75,.85,'zelkova'],[-4.9,8.0,.75],[4.9,8.1,.75],[-4.9,11.2,.7],[4.9,11.1,.7]];
+export function towerParkTrees(){
+ const out=[];for(const [dx,dz,k,sp] of TOWER_CLUMPS){const x=CS.tower.x+dx,z=CS.tower.z+dz,h=hash(x,z,63);
+  out.push({species:sp||'grove',x,y:BASE_Y,z,ry:h*6.283,s:k*(.92+.16*hash(x,z,64)),hue:h});}
  return out;
 }
 export function canalTrees(){
@@ -108,10 +126,13 @@ export function canalTrees(){
  return out;
 }
 export function greenPlan(buildings=[],{extra=[],mobile=false}={}){
- const layout=cityLayout(buildings),trees=[...boulevardTrees(),...canalTrees(),...extra.map(t=>({hue:hash(t.x,t.z,31),ry:hash(t.x,t.z,32)*6.283,s:1,y:.2,...t}))];
+ const layout=cityLayout(buildings),trees=[...boulevardTrees(),...canalTrees(),...towerParkTrees(),...extra.map(t=>({hue:hash(t.x,t.z,31),ry:hash(t.x,t.z,32)*6.283,s:1,y:.2,...t}))];
  const boxes=[],detail=[],B=(list,x,y,z,w,h,d,color,ry=0)=>list.push({x,y,z,w,h,d,color,ry});
- for(const s of layout.spots){if(s.kind!=='shrine'&&s.kind!=='park')continue;const fz=s.front==='+z'?1:-1,P=(u,v)=>[s.x+u,s.frontZ+fz*v];
-  if(s.kind==='shrine'){   // a dense grove behind and beside the shrine (the torii path stays open)
+ for(const s of layout.spots){if(s.reserved||(s.kind!=='shrine'&&!PARK_KINDS.has(s.kind)))continue;const fz=s.front==='+z'?1:-1,P=(u,v)=>[s.x+u,s.frontZ+fz*v];
+  if(s.kind!=='shrine'&&s.kind!=='park'){   // a pitch, court or playground: one or two small groves at the street corners, nothing inside
+   const n=1+(hash(s.x,s.z,61)<.5?1:0),first=hash(s.x,s.z,62)<.5?-1:1;
+   for(let i=0;i<n;i++){const side=i?-first:first,[x,z]=P(side*(s.width/2-.3),-.3),h=hash(x,z,65);trees.push({species:'ginkgo',x,y:BASE_Y,z,ry:h*6.283,s:.6+.15*hash(x,z,66),hue:h});}}
+  else if(s.kind==='shrine'){   // a dense grove behind and beside the shrine (the torii path stays open)
    for(const [u,v,k] of [[-(s.width/2-.8),-(s.depth-.8),.95],[s.width/2-.8,-(s.depth-.7),1],[-(s.width/2-.5),-s.depth*.35,.7],[0,-(s.depth+.2),.8]]){
     const [x,z]=P(u,v),h=hash(x,z,33);trees.push({species:'grove',x,y:BASE_Y,z,ry:h*6.283,s:k*(.85+.25*hash(x,z,34)),hue:h});}}
   else{   // a pocket park: a ginkgo in a back corner, a shrub hedge along the back, a second bench by the path

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {CITY_EXTENT} from '../src/city-state.js';
 import {RAMP,gradientMap,toon,wallMaterial,night,nightColor} from '../src/toon.js';
-import {streetPlan,cablePositions,streetItems,addStreet,BOULEVARDS,ROWS} from '../src/city-street.js';
+import {streetPlan,cablePositions,streetItems,addStreet,BOULEVARDS,ROWS,boulevardFurniture,boulevardSide,boulevardTreeZ0,slotZ,BLVD} from '../src/city-street.js';
 import {skylinePlan,addCityLife,SKYLINE} from '../src/city-life.js';
 
 const spread=a=>{const m=a.reduce((s,v)=>s+v,0)/a.length;return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length);};
@@ -66,4 +66,24 @@ test('skyline: three clusters, three value layers, widths 2–6, skewed heights 
  assert.deepEqual([...colors()].sort(),SKYLINE.day.map(h=>new THREE.Color(h).getHexString()).sort());
  life.setNight(true);assert.deepEqual([...colors()].sort(),SKYLINE.night.map(h=>new THREE.Color(h).getHexString()).sort());
  assert.equal(typeof life.addLightPool,'function');
+});
+
+// Owner 2026-10-10 "fill the empty strips between the streets": boulevard furniture, planned once, hashed, never on a zebra.
+test('boulevard furniture: kerbside cars alternate sides clear of the zebras and the tree rows; stops, racks, hedges, paint',()=>{
+ const f=boulevardFurniture(),rows=ROWS,near=(z,m)=>rows.some(r=>Math.abs(z-r)<m);
+ assert.deepEqual(JSON.stringify(boulevardFurniture()),JSON.stringify(f),'deterministic');
+ assert.ok(f.cars.length>=60&&f.cars.length<=160,`cars ${f.cars.length}`);assert.ok(f.stops.length>=8&&f.stops.length<=30,`stops ${f.stops.length}`);
+ assert.ok(f.racks.length>=6&&f.hedges.length>=12&&f.planters.length>=20,'racks, hedges, planters');
+ for(const c of f.cars){const bx=BOULEVARDS.find(b=>Math.abs(c.x-b)<2);assert.ok(bx!==undefined,`car off a boulevard ${c.x}`);
+  assert.ok(!near(c.z,6.5),`car ${c.z} within 4 of a zebra`);assert.ok(Math.abs(Math.abs(c.x-bx)-BLVD.carX)<1e-9);assert.equal(c.dir,c.side);
+  // the big tree row sits at z0 + 4k (±0.6); a car on that side is midway between two trees
+  if(c.side===boulevardSide(bx)){const t=(c.z-boulevardTreeZ0(bx))/BLVD.treeStep;assert.ok(Math.abs(t-Math.round(t)-.5)<1e-6||Math.abs(t-Math.round(t)+.5)<1e-6,`car ${c.z} on the tree row`);}}
+ for(const bx of BOULEVARDS){const mine=f.cars.filter(c=>Math.abs(c.x-bx)<2);assert.ok(mine.some(c=>c.side>0)&&mine.some(c=>c.side<0),`${bx}: both sides`);}
+ for(const s of f.stops){assert.ok(!near(s.z,7.5));assert.ok(!f.stops.some(o=>o!==s&&o.x===s.x&&Math.abs(o.z-s.z)<20),'stops ≥ 20 apart');
+  assert.ok(!f.cars.some(c=>Math.abs(c.x-s.x)<1.5&&Math.abs(c.z-s.z)<2),'no car in a shelter');}
+ for(const d of f.dashes)assert.ok(!near(d.z,3.6)&&BOULEVARDS.some(b=>Math.abs(Math.abs(d.x-b)-BLVD.cycleX)<1e-6));
+ assert.equal(f.arrows.length,BOULEVARDS.length*rows.length*2,'one arrow per lane before every junction');
+ for(const a of f.arrows)assert.ok(rows.some(r=>Math.abs(a.z+a.dir*9-r)<1e-6)&&BOULEVARDS.some(b=>Math.abs(a.x-b-a.dir*BLVD.laneX)<1e-6));
+ for(const h of f.hedges)assert.ok(h.len>2&&!(Math.abs(h.x)<14.2&&h.z-h.len/2<15&&h.z+h.len/2>-11),'hedges stay out of the hero block');
+ assert.equal(slotZ(-43.5,1)-slotZ(-43.5,0),BLVD.treeStep);
 });

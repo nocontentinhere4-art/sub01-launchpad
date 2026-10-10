@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET,isRing3,builtHeight,CATEGORY,TOWER_PARKS} from '../src/lots.js';
-import {cityPlots,districts,buildingColors} from '../src/city-state.js';
+import {cityLayout,subLotsOf,frontFace,heightFor,heightClass,HEIGHTS,GROUND,STOREY,PARAPET,isRing3,builtHeight,CATEGORY,TOWER_PARKS,TOWER_PITCH,PARK_KINDS} from '../src/lots.js';
+import {cityPlots,districts,buildingColors,RESERVED_PLOTS,tower} from '../src/city-state.js';
 import {frontOf} from '../src/world-sync.js';
 import {createCity} from '../src/city.js';
 
@@ -26,14 +26,15 @@ test('lots: fronts face the district street (plots at d.z+6 face −z) and agree
 });
 test('lots: every plot is covered; vacant plots are T8 spots; the user takes the widest sub-lot in their colour',()=>{
  for(const p of cityPlots){const s=subLotsOf(p.id);
-  if(p.vacant){assert.equal(s.lots.length,0);assert.ok((isRing3(p.district)||TOWER_PARKS.includes(p.id)?['park','coin-parking','shrine']:['coin-parking','shrine']).includes(s.spots[0].kind));}
+  if(p.reserved){assert.equal(s.lots.length,0);assert.equal(s.spots.length,1);assert.equal(s.spots[0].kind,'park');assert.equal(s.spots[0].reserved,true);}
+  else if(p.vacant){assert.equal(s.lots.length,0);assert.ok((isRing3(p.district)?[...PARK_KINDS,'coin-parking','shrine']:TOWER_PARKS.includes(p.id)?['park','coin-parking','shrine']:['coin-parking','shrine']).includes(s.spots[0].kind));}
   else{assert.ok(s.lots.length>=1&&s.lots.length<=3);for(const l of s.lots)assert.ok(Math.abs(l.x-p.x)<=2.9&&l.width>1.5&&l.height>=3.5&&[l.x,l.z,l.width,l.depth,l.height].every(Number.isFinite));}}
  const u=subLotsOf('shibuya-2',user);assert.equal(u.user.wall,buildingColors.orange);assert.equal(u.user.type,'T1');
  assert.equal(u.user.width,Math.max(...u.lots.map(l=>l.width)));assert.equal(subLotsOf('shibuya-5',user).user.type,'T3');
 });
 test('lots: density per district stays in the brief range; roofs carry 1–5 off-centre items (2+ above two floors), no rails',()=>{
  const L=cityLayout([]);
- for(const d of districts){const lots=L.lots.filter(l=>l.district===d.id);assert.ok(lots.length>=12&&lots.length<=26,`${d.id} ${lots.length}`);
+ for(const d of districts){const lots=L.lots.filter(l=>l.district===d.id);assert.ok(lots.length>=(d.id==='shiba'?6:12)&&lots.length<=26,`${d.id} ${lots.length}`);   // Shiba: two plots and their gaps are the tower park
   assert.equal(L.spots.filter(s=>s.district===d.id&&s.kind==='coin-parking'&&!s.plotId).length,1);
   const houses=lots.filter(l=>l.role==='interior').length;assert.ok(houses>=3&&houses<=12,`${houses} interior houses`);}
  for(const l of L.lots)if(l.type!=='T5'){assert.ok(l.roofItems.length>=(l.floors<=2?1:2)&&l.roofItems.length<=5,l.id);
@@ -81,7 +82,7 @@ test('city: one batch per kind, picks cover the user sub-lot, heightOf follows t
  // canopies, stairs and roof clutter (second LOD), so it stays ≈ 1.65× the old 4.83k.
  // Wave 5A (facades, railings, frames, roof silhouettes): ≈ +5.3k boxes, all but the T5/pent/mansard prisms in the detail
  // tail, so the overview stays put; the triangle budget (≤ +15 % at district zoom) is the real limit.
- assert.ok(st.instances<33000,`city instances ${st.instances}`);   // 2026-10-10: + the outer ring of ghost districts
+ assert.ok(st.instances<35000,`city instances ${st.instances}`);   // 2026-10-10: + the outer ring of ghost districts; + boulevard furniture, the tower park and the variety spots (≈ 1.7k, mostly detail marks)
  city.setDetail(false);const far=city.stats();assert.ok(far.instances<15000&&far.instances<st.instances-4000&&!far.detail&&far.drawCalls===st.drawCalls,`overview ${far.instances}`);city.setDetail(true);
  assert.equal(city.stats().instances,st.instances);
  const u=subLotsOf('shibuya-2',user).user;assert.equal(city.heightOf('shibuya-2'),u.height);
@@ -110,4 +111,32 @@ test('lots: builtHeight follows the construction phase',()=>{
  const lot=subLotsOf('kichijoji-2',[{plotId:'kichijoji-2',type:'project',color:'mint'}]).user;assert.ok(lot);
  assert.equal(builtHeight(lot,{phase:'thinking'}),2);assert.equal(builtHeight(lot,{phase:'open'}),lot.height);
  assert.equal(builtHeight(lot,{phase:'scaffold',progress:.65}),lot.height);assert.equal(builtHeight(lot,{phase:'scaffold',progress:0}),1.2);assert.equal(builtHeight(null,{}),0);
+});
+
+// Owner 2026-10-10: the tower park. shiba-2 and shiba-5 are reserved (never an address), always a park spot whatever is
+// saved on them, with the gaps beside them open; the pitch south of the tower keeps the interior houses off it.
+test('lots: reserved plots are park spots with open gaps, ignore building records, and the tower pitch is clear',()=>{
+ assert.deepEqual(RESERVED_PLOTS,['shiba-2','shiba-5']);
+ for(const id of RESERVED_PLOTS){const p=cityPlots.find(c=>c.id===id);assert.equal(p.reserved,true);assert.equal(p.x,tower.x);assert.equal(Math.abs(p.z-tower.z),6);}
+ const L=cityLayout([]),park=L.spots.filter(s=>s.reserved);
+ assert.equal(park.length,6,'two plots and the four gaps beside them');assert.ok(park.every(s=>s.kind==='park'&&s.district==='shiba'));
+ assert.deepEqual(park.filter(s=>s.plotId).map(s=>s.plotId).sort(),['shiba-2','shiba-5']);
+ const xs=park.map(s=>[s.x-s.width/2,s.x+s.width/2]);assert.ok(xs.every(([a,b])=>a>=tower.x-5.11&&b<=tower.x+5.11),'the park is 10.2 wide');
+ // a saved building on a reserved plot changes nothing
+ const strip=L=>JSON.stringify(L.spots.filter(s=>s.district==='shiba'))+JSON.stringify(L.lots.filter(l=>l.district==='shiba').map(({building,...l})=>l));
+ const a=strip(cityLayout([]));assert.equal(strip(cityLayout([{plotId:'shiba-2',type:'project',color:'mint'}])),a);assert.equal(subLotsOf('shiba-5',[{plotId:'shiba-5',type:'apartment',color:'sand'}]).user,null);
+ assert.ok(L.sides.filter(s=>s.district==='shiba').every(s=>s.fill>=.85),'the street-fill rule still holds with the park excluded');
+ // the pitch: south of the tower, no lot (house or street lot) overlaps it
+ assert.ok(TOWER_PITCH.z>tower.z+6&&TOWER_PITCH.x===tower.x);
+ for(const l of L.lots)assert.ok(Math.abs(l.x-TOWER_PITCH.x)>=TOWER_PITCH.w/2+l.width/2||Math.abs(l.z-TOWER_PITCH.z)>=TOWER_PITCH.d/2+l.depth/2,`${l.id} overlaps the pitch`);
+ assert.ok(L.lots.filter(l=>l.district==='shiba'&&l.role==='interior').length>=3);
+});
+test('lots: ring-3 parks vary deterministically into pitches, courts and playgrounds',()=>{
+ const L=cityLayout([]),open=L.spots.filter(s=>s.plotId&&isRing3(s.district)&&PARK_KINDS.has(s.kind)),by=k=>open.filter(s=>s.kind===k).length;
+ assert.ok(open.length>=10,`${open.length} open ring-3 plots`);
+ assert.ok(by('park')>=4&&by('pitch')>=2&&by('court')>=2&&by('playground')>=2,JSON.stringify(Object.fromEntries([...PARK_KINDS].map(k=>[k,by(k)]))));
+ assert.ok(open.every(s=>s.width===5.8&&s.depth===5.4&&!s.reserved));
+ assert.ok(!L.spots.some(s=>!isRing3(s.district)&&s.kind!=='park'&&PARK_KINDS.has(s.kind)),'only the third ring varies');
+ const again=cityLayout([{plotId:'kichijoji-2',type:'project',color:'mint'}]);
+ assert.deepEqual(again.spots.filter(s=>s.plotId&&isRing3(s.district)&&PARK_KINDS.has(s.kind)).map(s=>[s.plotId,s.kind]),open.map(s=>[s.plotId,s.kind]),'the kinds do not move with other plots');
 });

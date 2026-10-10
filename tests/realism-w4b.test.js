@@ -45,7 +45,7 @@ test('age and wear: per-instance weathering in the wall material, one tileable 1
 test('greenery: species on boulevards, canal banks, shrines and parks; finite transforms; small things are detail-only',()=>{
  const plan=greenPlan([]),t=plan.trees;
  for(const k of ['zelkova','ginkgo','cherry','grove'])assert.ok(t[k]?.length>0,k);
- const bx=[...CS.BOULEVARD_X,...(CS.OUTER_BOULEVARD_X??[])];for(const tr of boulevardTrees())assert.ok(bx.some(x=>Math.abs(Math.abs(tr.x-x)-2.15)<1e-6),'on a boulevard sidewalk');
+ const bx=[...CS.BOULEVARD_X,...(CS.OUTER_BOULEVARD_X??[])];for(const tr of boulevardTrees())assert.ok(bx.some(x=>Math.abs(Math.abs(tr.x-x)-2.15)<1e-6||Math.abs(Math.abs(tr.x-x)-2.95)<1e-6),'on a boulevard sidewalk (the big row at 2.15, the small lamp-side row at 2.95)');
  const c=canalLayout();for(const tr of canalTrees()){assert.ok(Math.abs(Math.abs(tr.x-c.x)-c.treeOffset)<.2);assert.ok(!c.bridges.some(b=>Math.abs(tr.z-b)<4.4),'clear of bridges');}
  for(const list of Object.values(t))for(const tr of list)assert.ok([tr.x,tr.y,tr.z,tr.ry,tr.s].every(Number.isFinite));
  assert.ok(plan.counts.trees<700,'phone-friendly');assert.ok(plan.counts.planters>40&&plan.counts.ivy>5,JSON.stringify(plan.counts));

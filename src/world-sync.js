@@ -17,7 +17,7 @@ function hash(s){let h=0;for(const c of String(s))h=(h*31+c.charCodeAt(0))>>>0;r
 export function worldBuildings(world){
  const out=[];
  for(const p of world?.plots||[]){
-  if(!cityPlots.some(c=>c.id===p.plotId))continue;
+  if(!cityPlots.some(c=>c.id===p.plotId&&!c.reserved))continue;   // a row on a reserved (tower park) plot is ignored
   if(p.kind==='project'&&p.project){const phase=phaseOf(p.project.stage);if(!phase)continue;
    const x=p.project,priv=!x.slug&&!x.ticker&&x.name==='Private project';
    // Private ideas: the server sends only 'Private project' + stage; nothing else is carried (no ticker, art or mint).

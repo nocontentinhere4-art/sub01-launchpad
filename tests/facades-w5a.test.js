@@ -82,7 +82,7 @@ test('Tokyo Tower: real ratios (main deck 0.45 H, top deck 0.75 H), ≈ 2× the 
  // Concave legs: wide at the feet, nearly vertical just under the deck; the shaft continues from the legs' outer chords.
  const r0=legAt(0).r,r1=legAt(TOWER.deck.y0*.5).r,r2=legAt(TOWER.deck.y0).r;assert.ok(r0-r1>2*(r1-r2),'concave');
  assert.ok(Math.abs(legAt(TOWER.deck.y0).r+legAt(TOWER.deck.y0).h-shaftAt(TOWER.deck.y0))<1e-9);
- assert.ok(TOWER.feet+TOWER.leg<3.43,'feet stay inside the Shiba street band');
+ assert.ok(TOWER.feet+TOWER.leg>3.43&&TOWER.feet+TOWER.leg<5.1,'feet stand on the tower park lawn (owner 2026-10-10), inside its 10.2 width and clear of the neighbours at ±5.1');
  // Lattice budget: ≤ 2,500 ribbons (2 triangles each), each in one band; FootTown under the legs.
  const p=towerPlan(tower.x,tower.z);assert.ok(p.members.length>900&&p.members.length<=2500,`${p.members.length} members`);
  assert.ok(p.members.every(m=>m.band==='O'||m.band==='W'));const o=p.members.filter(m=>m.band==='O').length/p.members.length;assert.ok(o>.4&&o<.8,`orange share ${o}`);

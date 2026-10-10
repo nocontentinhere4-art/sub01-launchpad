@@ -10,6 +10,13 @@ const X0=CITY_EXTENT.minX+.5,X1=CITY_EXTENT.maxX,Z0=CITY_EXTENT.minZ+1.5,Z1=CITY
 export const POLE={h:10.5,w:.24,arms:[9.6,8.6],color:'#B7B4AA',metal:'#5B6466',sleeve:['#E3BE3C','#2B2B2B'],cable:'#2D3134'};
 export const LIGHT={led:'#FFF0D8',sodium:'#FF9E48',lantern:'#FFB066'};
 const STREET_OFFSET=2.3,BOULEVARD_OFFSET=3.3,GROUND=.2;
+// Boulevard section (owner 2026-10-10 "fill the empty strips between the streets"): asphalt ±1.3 (kerb), a 2.2 sidewalk
+// each side out to the facade line at 3.5. Pole side (boulevardSide): the big tree row at 2.15 every 4, parked cars /
+// bus shelters / bike racks in the slots between the trees. Lamp side: a hedge or planters at 2.5, small ginkgos at
+// 2.95 between the LED lamps, parked cars at 1.8. A dashed cycle line at 1.05 inside each kerb, lane arrows before every
+// junction. All planned here (pure, hashed), drawn by city.js and city-green.js as instances in the batches they own.
+export const BLVD={kerb:1.3,walk:3.5,treeX:2.15,treeStep:4,carX:1.8,hedgeX:2.5,smallTreeX:2.95,shelterX:2.7,cycleX:1.05,laneX:.65};
+export const CAR_COLORS=['#E8E6E0','#2F3437','#9AA3A8','#1F2A44','#B33A32','#D9D3C3'];
 // Hashed randomness: stable per position, no i%n rhythm anywhere.
 export function hash(...v){let h=2166136261;for(const x of v){h=Math.imul(h^(Math.round(x*997)|0),16777619);h^=h>>>13;}h=Math.imul(h,1540483477);h^=h>>>15;return (h>>>0)/4294967296;}
 // Places where nothing stands: the Shibuya scramble, the hero block's furniture, the Roppongi lantern alley, vending boxes.
@@ -18,6 +25,13 @@ const blocked=(x,z)=>KEEP_OUT.some(([kx,kz,r])=>Math.hypot(x-kx,z-kz)<r);
 const central=(x,z)=>Math.abs(x)<14.2&&z>-11&&z<15;
 // Is there a built plot here to run a drop wire to?
 const facadeAt=(x,z)=>cityPlots.some(p=>!p.vacant&&Math.abs(p.x-x)<2.6&&Math.abs(p.z-z)<2.6);
+
+// Which side of a boulevard carries its utility poles (and the big tree row): outward from the hero block, else hashed.
+export const boulevardSide=bx=>Math.abs(bx)===14.5?Math.sign(bx):hash(bx,7)<.5?-1:1;
+// The tree row's first z on a boulevard (city-green.js) and the furniture slots midway between the trees: slot k is at
+// z0 + 4k + 2; odd k are pole-side slots, even k lamp-side ones, so a parked car never shares a z with a tree row.
+export const boulevardTreeZ0=bx=>CITY_EXTENT.minZ+1.5+hash(bx,12)*3;
+export const slotZ=(bx,k)=>boulevardTreeZ0(bx)+BLVD.treeStep*k+2;
 
 // Pure plan (tested): poles, cable spans, lamps. axis = the street direction ('x' for the east-west district streets).
 export function streetPlan(){
@@ -43,6 +57,37 @@ export function streetPlan(){
    if(!ROWS.some(r=>Math.abs(z-r)<3.6)&&!blocked(x,z)&&!central(x,z))lamps.push({x:x+side*.95,z,y:5,base:{x,z},dir:side,kind:'led'});}
  }
  return {poles,spans,lamps};
+}
+
+// Boulevard furniture (pure, tested): kerbside parked cars (one per ~9, alternating sides, ≥ 6.5 from a row so never
+// within 4 of a zebra), bus shelters, bike racks, hedges or planters, cycle-line dashes and lane arrows.
+// cars {x,z,side,dir,color}  stops/racks {x,z,side,n?}  planters {x,z,color}  hedges {x,z,len,color}
+// arrows {x,z,dir}  dashes {x,z}
+export function boulevardFurniture(){
+ const out={cars:[],stops:[],racks:[],planters:[],hedges:[],arrows:[],dashes:[]},E=CITY_EXTENT,rows=ROWS;
+ const nearRow=(z,m)=>rows.some(r=>Math.abs(z-r)<m),GREENS=['#4F6B45','#5E7A4E','#46603F'];
+ for(const bx of BOULEVARDS){const sd=boulevardSide(bx);
+  // Slots between the trees: pole side (odd k) a car, a shelter or a rack; lamp side (even k) a car now and then.
+  for(let k=0;;k++){const z=slotZ(bx,k);if(z>E.maxZ-3)break;if(z<E.minZ+3)continue;
+   const pole=k%2===1,side=pole?sd:-sd,x=bx+side*(pole?BLVD.shelterX:BLVD.carX),h=hash(bx,k,30);
+   if(nearRow(z,6.5)||central(x,z)||blocked(x,z))continue;
+   if(h<.58)out.cars.push({x:bx+side*BLVD.carX,z,side,dir:side,color:Math.floor(hash(bx,k,32)*CAR_COLORS.length)});
+   else if(pole&&h<.68&&!nearRow(z,7.5)&&!out.stops.some(s=>s.x===x&&Math.abs(s.z-z)<20))out.stops.push({x,z,side});
+   else if(pole&&h<.82)out.racks.push({x,z,side,n:3+Math.floor(hash(bx,k,33)*3)});
+  }
+  // Lamp side, stretch by stretch: a hedge (clipped out of the hero block) or planters every 4.
+  const edges=[E.minZ+2,...rows,E.maxZ-2],x=bx-sd*BLVD.hedgeX;
+  for(let i=0;i+1<edges.length;i++){const a=(i?edges[i]+6.5:edges[i]),b=(i+1<edges.length-1?edges[i+1]-6.5:edges[i+1]);if(b-a<4)continue;
+   const segs=Math.abs(x)<14.2?[[a,Math.min(b,-11)],[Math.max(a,15),b]].filter(([p,q])=>q-p>2):[[a,b]];
+   if(hash(bx,i,31)<.6)for(const [p,q] of segs)out.hedges.push({x,z:(p+q)/2,len:q-p,color:GREENS[Math.floor(hash(bx,i,34)*3)]});
+   else for(let z=a+1+hash(bx,i,35)*2;z<b-1;z+=4)if(!central(x,z)&&!blocked(x,z))out.planters.push({x,z,color:GREENS[Math.floor(hash(bx,z,36)*3)]});
+  }
+  // Paint: a dashed cycle line inside each kerb, an arrow in each lane 9 before every junction (left-hand traffic:
+  // the +z lane on the east side).
+  for(const e of [-1,1])for(let z=E.minZ+2.5;z<E.maxZ-2.5;z+=2.8)if(!nearRow(z,3.6))out.dashes.push({x:bx+e*BLVD.cycleX,z});
+  for(const r of rows)for(const dir of [1,-1]){const z=r-dir*9;if(z>E.minZ+2&&z<E.maxZ-2)out.arrows.push({x:bx+dir*BLVD.laneX,z,dir});}
+ }
+ return out;
 }
 
 // Cable web: 4–6 catenaries per span hung off the crossarms (3 segments, sag ~0.35) plus 1–2 drop wires per span.

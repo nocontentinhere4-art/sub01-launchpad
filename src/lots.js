@@ -35,11 +35,14 @@
 //    laundryRoof     T2/T3/T4 flat roofs ≈ 22 %: {len} a laundry pole line across the back of the roof, else null }
 //
 // Spot (open ground, from cityLayout().spots): { id, plotId|null, district, kind:'alley'|'vending'|'parking'|
-//    'coin-parking'|'shrine'|'park', x, z, width, depth, front, frontZ, bays?, cars? }   vacant plots → T8 coin parking or
-//    shrine; in the third ring mostly a pocket park or shrine.
+//    'coin-parking'|'shrine'|'park'|'pitch'|'court'|'playground', x, z, width, depth, front, frontZ, bays?, cars?,
+//    reserved? }   vacant plots → T8 coin parking or shrine; in the third ring mostly a pocket park or shrine, and
+//    (owner 2026-10-10 "something to vary things") some parks are a futsal pitch, a tennis/basketball court or a
+//    playground instead (PARK_KINDS; hashed per plot). Reserved plots (city-state RESERVED_PLOTS, the tower park) are
+//    always a park spot, with the gaps beside them open lawn too (reserved:true, no plotId on the gap ones).
 //
 // frontFace(plotId) → '+z'|'-z'.  subLotsOf(plotId,buildings) → {front, lots, spots, user} for that plot.
-import {cityPlots,districts,buildingColors,ROAD_Z,OUTER_DISTRICTS,outerPlots} from './city-state.js';
+import {cityPlots,districts,buildingColors,ROAD_Z,OUTER_DISTRICTS,outerPlots,tower} from './city-state.js';
 const plotsOf=d=>(d.ghost?outerPlots:cityPlots).filter(p=>p.district===d.id);
 const OUTER_SET=new Set(OUTER_DISTRICTS.map(d=>d.id));
 
@@ -151,6 +154,15 @@ export function skin5a(lot){
 
 // Wave 5A: the vacant plot beside Tokyo Tower is a small park (city-green.js plants its trees).
 export const TOWER_PARKS=['shiba-6'];
+// The tower park's floodlit football pitch (owner 2026-10-10, after the aerial photo: a green pitch with white lines
+// just south of the tower): on the reserved south plot and the block interior behind it, long axis along the street.
+// lots.js keeps the interior houses off it; city.js draws it, city-green.js plants only around it.
+export const TOWER_PITCH={x:tower.x,z:tower.z+8.95,w:8.4,d:5.4};
+const TOWER_DISTRICT=districts.find(d=>d.x===tower.x&&d.z===tower.z)?.id;
+const onPitch=(d,s,x,width)=>d.id===TOWER_DISTRICT&&s>0&&Math.abs(x-TOWER_PITCH.x)<TOWER_PITCH.w/2+width/2+.5;
+// Open-ground kinds a vacant plot can take besides parking (city-green plants inside a park, only around the others).
+export const PARK_KINDS=new Set(['park','pitch','court','playground']);
+const parkKind=id=>{const v=rng(id+':spot-kind')();return v<.5?'park':v<.68?'pitch':v<.84?'court':'playground';};
 // Shrines (owner 2026-10-10: "too many in the same place, put a few around the city"): only districts on one diagonal of
 // the grid (col + 2·row ≡ 2 mod 7 → 7 of 49) get one, on their first vacant plot (north row first, west to east).
 export const shrineDistrict=d=>(((Math.round(d.x/29)+2*Math.round((d.z-2)/30))%7)+7)%7===2;
@@ -164,8 +176,9 @@ function sideElements(d,s,buildings){
  const front=s<0?'+z':'-z',plots=plotsOf(d).filter(p=>s<0?p.z<d.z:p.z>d.z).sort((a,b)=>a.x-b.x);
  const el=[];
  plots.forEach((p,k)=>{
-  const b=buildings.find(b=>b.plotId===p.id),r=rng(p.id+':split');
-  if(p.vacant&&!b){const x=r(),kind=TOWER_PARKS.includes(p.id)?'park':shrinePlot(d,buildings)===p.id?'shrine':isRing3(d.id)?(x<.72?'park':'coin-parking'):'coin-parking';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
+  const b=p.reserved?null:buildings.find(b=>b.plotId===p.id),r=rng(p.id+':split');   // a building record on a reserved plot is ignored
+  if(p.reserved)el.push({kind:'spot',spot:'park',plotId:p.id,x:p.x,width:5.8,vacant:true,reserved:true,cars:[]});
+  else if(p.vacant&&!b){const x=r(),kind=TOWER_PARKS.includes(p.id)?'park':shrinePlot(d,buildings)===p.id?'shrine':isRing3(d.id)?(x<.72?parkKind(p.id):'coin-parking'):'coin-parking';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
   else{
    let split=pick(r,SPLITS).slice();
    if(b&&split.length===3)split=[1.8,4];
@@ -179,6 +192,8 @@ function sideElements(d,s,buildings){
   }
   const next=plots[k+1];if(!next)return;
   const g0=p.x+2.9,g1=next.x-2.9,gr=rng(`${d.id}:${s}:gap${k}`),roll=gr();
+  // The gaps beside a reserved plot are open lawn too (excluded from the street-fill rule like a vacant plot).
+  if(p.reserved||next.reserved){el.push({kind:'spot',spot:'park',x:(g0+g1)/2,width:g1-g0,vacant:true,reserved:true,cars:[]});return;}
   if(roll<.6){const w=between(gr,1.6,2.0),x0=g0+.1+(g1-g0-.2-w)*gr();el.push({kind:'building',role:'filler',x:x0+w/2,width:w,seed:`${d.id}:${s}:gap${k}`,gap:'pencil'});}
   else if(roll<.85){const left=gr()<.5,pw=1.2;
    const px=left?g0+.1+pw/2:g1-.1-pw/2,ax=left?g1-.1-.35:g0+.1+.35;
@@ -296,7 +311,7 @@ function layoutDistrict(d,buildings,out){
   for(const e of el)if(e.kind==='spot'){
    const depth=e.vacant?5.4:e.spot==='alley'?4.6:4.8,frontZ=lotLine,z=frontZ-fz*depth/2;
    out.spots.push({id:`${d.id}:${s}:${e.spot}:${e.x.toFixed(2)}`,plotId:e.plotId||null,district:d.id,kind:e.spot,x:e.x,z,width:e.width,depth,front,frontZ,
-    cars:e.cars||[],machines:e.machines||0,acSide:e.acSide||0,pole:!!e.pole,bays:e.spot==='coin-parking'?3:e.spot==='parking'?1:0});
+    cars:e.cars||[],machines:e.machines||0,acSide:e.acSide||0,pole:!!e.pole,bays:e.spot==='coin-parking'?3:e.spot==='parking'?1:0,...(e.reserved?{reserved:true}:{})});
   }
   out.sides.push({district:d.id,front,fill:streetFill(el,d),sequence:el.filter(e=>e.kind==='building').map(e=>e.lot)});
  }
@@ -304,7 +319,7 @@ function layoutDistrict(d,buildings,out){
  // (city.js ground, z = d.z ± 15), and low houses face it from nearly every slot, with one coin parking and one or two
  // vacant lots. INNER is the lane's building line (lane half 1.5 + a 1.1 walk; faces at 12.4 after the 0.8 setback).
  const INNER=13.2,slots=[];
- for(const s of [-1,1]){let x=d.x-EDGE+.2;const r=rng(`${d.id}:interior:${s}`);while(true){const w=between(r,3.4,4.8),gap=between(r,.6,2.4);if(x+w>d.x+EDGE-.2)break;slots.push({s,x:x+w/2,width:w});x+=w+gap;}}
+ for(const s of [-1,1]){let x=d.x-EDGE+.2;const r=rng(`${d.id}:interior:${s}`);while(true){const w=between(r,3.4,4.8),gap=between(r,.6,2.4);if(x+w>d.x+EDGE-.2)break;if(!onPitch(d,s,x+w/2,w))slots.push({s,x:x+w/2,width:w});x+=w+gap;}}
  const order=slots.map(v=>({v,k:dr()})).sort((a,b)=>a.k-b.k).map(o=>o.v);
  const parking=order.shift(),houses=order.slice(0,Math.max(3,order.length-1-Math.floor(dr()*2)));
  if(parking){const front=parking.s<0?'-z':'+z',fz=fzOf(front),zc=d.z+parking.s*11.4;
