@@ -104,7 +104,7 @@ test('reviewModel: the server review drives Sign; a foreign payer or a non-launc
   accountsWritable:9,signers:2,launchProgramsOnly:true,estimate:{networkFeeLamports:10000,accountsLamports:20000000,simulation:{ok:true},signerBalanceLamports:3e9},txBytes:1100,lastValidBlockHeight:500};
  const r=reviewModel(good,v,me);assert.equal(r.canSign,true);assert.equal(r.you,true);assert.equal(r.flagged,false);assert.deepEqual(r.warnings,[]);assert.equal(r.network,'mainnet');
  assert.deepEqual(r.programs.map(p=>[p.name,p.direct,p.flag]),[['pump.fun (bonding curve)',true,false],['pump.fun fee sharing',true,false],['Token-2022',false,false]]);
- assert.deepEqual(r.cost,{fee:'0.00001 SOL',rent:'0.02 SOL',buy:null,total:'0.02001 SOL',simulated:true,balance:'3 SOL'});assert.equal(r.writable,9);assert.equal(r.signers,2);
+ assert.deepEqual(r.cost,{fee:'0.00001 SOL',rent:'0.02 SOL',buy:null,buyMax:null,total:'0.02001 SOL',simulated:true,balance:'3 SOL'});assert.equal(r.writable,9);assert.equal(r.signers,2);
  assert.deepEqual(r.split.rows.map(x=>x.pct),['80%','20%']);assert.equal(r.split.locked,true);assert.match(r.doesNot.join(' '),/No initial buy.*network fee and the rent/);
  const foreign=reviewModel({...good,feePayer:'SOMEONEelse'},v,me);assert.equal(foreign.canSign,false);assert.equal(foreign.you,false);assert.match(foreign.warnings[0],/not your signed-in wallet/);
  const rogue=reviewModel({...good,launchProgramsOnly:false,programs:[...good.programs,{id:'Drain111',name:'unknown program',direct:true}]},v,me);
@@ -113,7 +113,7 @@ test('reviewModel: the server review drives Sign; a foreign payer or a non-launc
  const sim=reviewModel({...good,estimate:{simulation:{ok:false,err:'insufficient funds'}}},v,me);assert.equal(sim.canSign,false);assert.match(sim.warnings[0],/simulation failed: insufficient funds/);assert.equal(sim.cost.total,'unknown');
  const mock=reviewModel({network:'mock',feePayer:me,mint:'MOCK1',mock:true,messageHash:'abcd',programs:[{id:'MockLaunch',name:'MockLaunch',direct:true}],accountsWritable:0,signers:1,launchProgramsOnly:true,estimate:{networkFeeLamports:0,accountsLamports:0,simulation:{ok:true,mock:true}},resumed:true},v,me);
  assert.equal(mock.canSign,true);assert.equal(mock.mock,true);assert.equal(mock.resumed,true);assert.equal(mock.cost.total,'0 SOL');assert.equal(mock.cost.simulated,false);assert.match(mock.doesNot.at(-1),/text message/);
- const buy=reviewModel(good,view('launch_prepared',{launchConfig:{initialBuyLamports:5e8}}),me);assert.equal(buy.cost.buy,'0.5 SOL');assert.equal(buy.cost.total,'0.52001 SOL');assert.match(buy.doesNot[2],/initial buy of 0.5 SOL is included/);
+ const buy=reviewModel(good,view('launch_prepared',{launchConfig:{initialBuyLamports:5e8}}),me);assert.equal(buy.cost.buy,'0.5 SOL');assert.equal(buy.cost.total,'0.52001 SOL');assert.match(buy.doesNot[2],/dev buy of 0.5 SOL is included/);
  assert.equal(reviewModel(null,v,me),null);assert.equal(reviewModel({...good,txBase64:''},v,me).canSign,false,'nothing to sign');
  assert.equal(solText(0),'0 SOL');assert.equal(solText(1234567),'0.001235 SOL');assert.equal(solText('x'),null);assert.deepEqual(splitRows(null).rows,[]);
 });
@@ -152,4 +152,52 @@ test('profileKit: logo + header files and bio/site texts for the owner; nothing 
  assert.deepEqual(kit.texts.map(t=>t.label),['Bio','Website']);
  assert.equal(profileKit({slug:'x',logoUrl:null},{bio:'b'}),null);
  assert.deepEqual(profileKit({slug:'x',logoUrl:'/meta/x/logo-v1.png'},{}).texts,[]);
+});
+
+// ---------------------------------------------------------------- the dev buy (desk-flows.js devBuyModel/parseDevBuy, desk.js renderDevBuy)
+import {devBuyModel,parseDevBuy,renderDevBuy} from '../src/desk.js';
+const OPTS={initialBuyLamports:0,maxInitialBuyLamports:5e9,locked:false,editable:true};
+test('devBuyModel: owner at the launch step only; cap from the server (never above 5); locked while a transaction exists',()=>{
+ assert.equal(devBuyModel(null),null);assert.equal(devBuyModel(view('preview_ready',{launchOptions:OPTS})),null,'not before the launch step');
+ assert.equal(devBuyModel(view('launch_prepared')),null,'no launchOptions (visitor payload)');assert.equal(devBuyModel(view('launch_prepared',{owner:false,launchOptions:OPTS})),null);
+ const a=devBuyModel(view('approved',{launchOptions:OPTS}));assert.deepEqual([a.sol,a.text,a.max,a.step,a.locked,a.editable,a.reprepares],[0,'0 SOL',5,0.01,false,true,false]);assert.match(a.note,/at most 5 SOL/);assert.equal(a.lockNote,'');
+ const lp=devBuyModel(view('launch_prepared',{launchOptions:{...OPTS,initialBuyLamports:250000000,maxInitialBuyLamports:2e9}}));assert.deepEqual([lp.sol,lp.text,lp.max,lp.reprepares],[0.25,'0.25 SOL',2,true]);
+ assert.equal(devBuyModel(view('launch_prepared',{launchOptions:{...OPTS,maxInitialBuyLamports:50e9}})).max,5,'the client cap is 5 whatever the server says');
+ const s=devBuyModel(view('awaiting_signature',{launchOptions:{...OPTS,initialBuyLamports:1e7,locked:true,editable:false}}));assert.deepEqual([s.locked,s.editable,s.text],[true,false,'0.01 SOL']);assert.match(s.lockNote,/Cancel the transaction/);
+ const c=devBuyModel(view('confirming',{launchOptions:OPTS}));assert.equal(c.locked,true);assert.match(c.lockNote,/in flight/);
+ assert.equal(devBuyModel(view('launched',{launchOptions:OPTS})),null);
+ assert.deepEqual(parseDevBuy(''),{sol:0});assert.deepEqual(parseDevBuy('0,5'),{sol:0.5});assert.deepEqual(parseDevBuy(0.123456789123),{sol:0.123456789});
+ assert.match(parseDevBuy('-1').error,/0 or more/);assert.match(parseDevBuy('abc').error,/amount of SOL/);assert.match(parseDevBuy('5.01').error,/At most 5 SOL/);assert.match(parseDevBuy(3,2).error,/At most 2 SOL/);
+});
+test('reviewModel: the dev buy is its own row, in the total and in the plain-words lines; the ATA program is green',()=>{
+ const me=ME_OWNER.user.wallet,v=view('launch_prepared',{launchConfig:{feeSharing:{locked:true,recipients:alloc.recipients},initialBuyLamports:1e7}});
+ const tx={network:'devnet',feePayer:me,mint:'M1NT',txBase64:'AQID',programs:[{id:'6EF8',name:'pump.fun (bonding curve)',direct:true},{id:'pfee',name:'pump.fun fee sharing',direct:true},{id:'AToken',name:'Associated Token Account',direct:true},{id:'Tokenz',name:'Token-2022',direct:false},{id:'Tokenkeg',name:'SPL Token',direct:false}],
+  accountsWritable:14,signers:2,launchProgramsOnly:true,estimate:{networkFeeLamports:10000,accountsLamports:20000000,initialBuyLamports:1e7,initialBuyMaxLamports:10500000,simulation:{ok:true},signerBalanceLamports:1e9},txBytes:1186};
+ const r=reviewModel(tx,v,me);assert.equal(r.canSign,true);assert.equal(r.flagged,false);assert.deepEqual(r.programs.map(p=>p.flag),[false,false,false,false,false]);
+ assert.deepEqual(r.cost,{fee:'0.00001 SOL',rent:'0.02 SOL',buy:'0.01 SOL',buyMax:'0.0105 SOL',total:'0.03001 SOL',simulated:true,balance:'1 SOL'});
+ assert.match(r.doesNot[2],/dev buy of 0\.01 SOL is included.*tokens land in your wallet/);assert.match(r.doesNot[3],/network fee, the rent.*and the dev buy \(capped at 0\.0105 SOL/);
+ // resumed intent: no estimate, the configuration's value counts; no buy: the old lines
+ const resumed=reviewModel({...tx,estimate:null,resumed:true},v,me);assert.equal(resumed.cost.buy,'0.01 SOL');assert.equal(resumed.cost.buyMax,null);assert.equal(resumed.cost.total,'unknown');
+ const none=reviewModel({...tx,estimate:{...tx.estimate,initialBuyLamports:0}},v,me);assert.equal(none.cost.buy,null);assert.equal(none.doesNot[2],'No initial buy.');assert.match(none.doesNot[3],/only SOL that leaves/);
+ assert.equal(reviewModel({...tx,programs:[{id:'AToken',name:'Associated Token Account',direct:true}],launchProgramsOnly:false},v,me).canSign,false,'the server verdict still rules');
+});
+test('renderDevBuy: the field carries min/max/step/value, is disabled with the reason when locked, and Save sends what was typed',async()=>{
+ // the smallest DOM the field needs
+ class El{constructor(tag){this.tagName=tag.toUpperCase();this.children=[];this.attrs={};this.classList={toggle(){}};this.textContent='';}
+  append(...k){for(const c of k){if(c==null||c===false)throw new Error('append(null)');this.children.push(typeof c==='string'?{text:c}:c);}}
+  setAttribute(k,v){this.attrs[k]=v;}
+  all(){const out=[],walk=n=>{for(const c of n.children||[]){out.push(c);walk(c);}};walk(this);return out;}
+  find(tag){return this.all().find(c=>c.tagName===tag.toUpperCase());}}
+ globalThis.document={createElement:t=>new El(t),createElementNS:(_ns,t)=>new El(t)};
+ try{
+  const m=devBuyModel(view('launch_prepared',{launchOptions:{...OPTS,initialBuyLamports:250000000,maxInitialBuyLamports:2e9}}));
+  const saved=[];const box=renderDevBuy(m,{onSave:async sol=>{saved.push(sol);}});
+  const input=box.find('input'),button=box.find('button');
+  assert.equal(box.className,'pc-devbuy');assert.deepEqual([input.type,input.min,input.max,input.step,input.value,input.disabled],['number','0','2','0.01','0.25',false]);assert.equal(input.attrs['aria-label'],'Dev buy in SOL');
+  assert.equal(button.disabled,false);assert.match(box.children[1].textContent,/Optional: SOL you spend on your own coin/);
+  input.value='0.5';await button.onclick();assert.deepEqual(saved,[0.5]);assert.equal(box.children[2].textContent,'');
+  input.value='9';await button.onclick();assert.deepEqual(saved,[0.5],'over the cap: not sent');assert.match(box.children[2].textContent,/At most 2 SOL/);
+  const locked=renderDevBuy(devBuyModel(view('awaiting_signature',{launchOptions:{...OPTS,initialBuyLamports:1e7,locked:true,editable:false}})),{});
+  assert.equal(locked.className,'pc-devbuy is-locked');assert.equal(locked.find('input').disabled,true);assert.equal(locked.find('button').disabled,true);assert.match(locked.children[1].textContent,/0\.01 SOL · Cancel the transaction to change it\./);
+ }finally{delete globalThis.document;}
 });

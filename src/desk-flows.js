@@ -79,16 +79,47 @@ export function launchSteps(view,me){
 }
 export const stepIndex=id=>Math.max(0,STEP_IDS.indexOf(id));
 
+// ---------------------------------------------------------------- the dev buy (launch options)
+// The author's optional buy of their own coin inside the creation transaction. Server: launchOptions on the owner's
+// GET /api/projects/:slug ({initialBuyLamports, maxInitialBuyLamports, locked, editable}), PUT …/launch/options
+// {initialBuySol}; 409 intent_exists while a transaction exists (cancel it first); a change after the configuration was
+// prepared makes the server prepare it again (approved → launch_prepared), so the stepper shows "preparing" for a moment.
+export const DEV_BUY_MAX_SOL=5,DEV_BUY_STEP=0.01;
+const DEV_BUY_STATES=new Set(['approved','launch_prepared','awaiting_signature','confirming']);
+/** devBuyModel(view) -> null (not the owner's, or not at the launch step) | {sol, text, max, step, locked, editable, note, lockNote, reprepares} */
+export function devBuyModel(view){
+ const v=view&&typeof view==='object'?view:null,o=v?.launchOptions&&typeof v.launchOptions==='object'?v.launchOptions:null;
+ if(!o||v.owner!==true||!DEV_BUY_STATES.has(str(v.status)))return null;
+ const status=str(v.status),lamports=Math.max(0,num(o.initialBuyLamports)||0),maxL=num(o.maxInitialBuyLamports);
+ const max=Math.min(DEV_BUY_MAX_SOL,maxL==null?DEV_BUY_MAX_SOL:Math.max(0,maxL/1e9));
+ const inFlight=status==='awaiting_signature'||status==='confirming',locked=o.locked===true||inFlight,editable=o.editable!==false&&!locked;
+ return {sol:lamports/1e9,text:solText(lamports),max,step:DEV_BUY_STEP,locked,editable,
+  note:`Optional: SOL you spend on your own coin in the same transaction that creates it. pump.fun's trading fee applies; the tokens land in your wallet. 0 = no buy, at most ${max} SOL.`,
+  lockNote:locked?(status==='confirming'?'A transaction is in flight; it cannot change now.':'Cancel the transaction to change it.'):'',
+  reprepares:status==='launch_prepared'};
+}
+/** What the author typed -> {sol} (rounded to a lamport) or {error}. Empty = 0. */
+export function parseDevBuy(value,max=DEV_BUY_MAX_SOL){
+ const s=typeof value==='number'?value:str(value)===''?0:Number(str(value).replace(',','.'));
+ if(!Number.isFinite(s)||s<0)return {error:'Enter an amount of SOL, 0 or more.'};
+ const sol=Math.round(s*1e9)/1e9;
+ if(sol>max)return {error:`At most ${max} SOL.`};
+ return {sol};
+}
+
 // ---------------------------------------------------------------- review before sign
 // The directly called programs a launch may use (server LAUNCH_DIRECT, by name); anything else direct is flagged red.
-export const LAUNCH_PROGRAMS=new Set(['pump.fun (bonding curve)','pump.fun fee sharing','Compute Budget','MockLaunch']);
+// 'Associated Token Account': the dev buy creates the author's own token account (the SPL/Token-2022 programs are only
+// ever passed inside, never called directly).
+export const LAUNCH_PROGRAMS=new Set(['pump.fun (bonding curve)','pump.fun fee sharing','Compute Budget','Associated Token Account','MockLaunch']);
 /** reviewModel(tx, view, wallet) -> the card: rows, flagged programs, cost, split, canSign and the warnings that disable Sign. */
 export function reviewModel(tx,view,wallet){
  if(!tx||typeof tx!=='object')return null;
  const only=tx.launchProgramsOnly===true,you=!!str(wallet)&&str(tx.feePayer)===str(wallet),mock=tx.mock===true;
  const programs=(Array.isArray(tx.programs)?tx.programs:[]).map(p=>{const name=str(p?.name)||'unknown program',direct=p?.direct!==false;
   return {id:str(p?.id),name,direct,flag:/unknown/i.test(name)||(direct&&!LAUNCH_PROGRAMS.has(name))};});
- const e=tx.estimate&&typeof tx.estimate==='object'?tx.estimate:{},fee=num(e.networkFeeLamports),rent=num(e.accountsLamports),buy=num(view?.launchConfig?.initialBuyLamports)||0;
+ // the dev buy: the built transaction's estimate (quoted cost, fees included) or, on a resumed intent, the configuration
+ const e=tx.estimate&&typeof tx.estimate==='object'?tx.estimate:{},fee=num(e.networkFeeLamports),rent=num(e.accountsLamports),eb=num(e.initialBuyLamports),buy=Math.max(0,(eb!=null?eb:num(view?.launchConfig?.initialBuyLamports))||0),buyMax=num(e.initialBuyMaxLamports);
  const total=fee!=null&&rent!=null?fee+rent+buy:mock?0:null;
  const warnings=[];
  if(!you)warnings.push('The fee payer is not your signed-in wallet. Do not sign.');
@@ -97,10 +128,10 @@ export function reviewModel(tx,view,wallet){
  const split=splitRows(view);
  return {mock,resumed:tx.resumed===true,network:str(tx.network)||(mock?'mock':'unknown'),feePayer:str(tx.feePayer),you,mint:str(tx.mint),programs,flagged:programs.some(p=>p.flag)||!only,
   writable:num(tx.accountsWritable)??0,signers:num(tx.signers)??1,bytes:num(tx.txBytes),validUntil:num(tx.lastValidBlockHeight),
-  cost:{fee:solText(fee),rent:solText(rent),buy:buy>0?solText(buy):null,total:solText(total)??(mock?'0 SOL':'unknown'),simulated:e.simulation?.ok===true&&!e.simulation?.mock,balance:solText(e.signerBalanceLamports)},
+  cost:{fee:solText(fee),rent:solText(rent),buy:buy>0?solText(buy):null,buyMax:buy>0&&buyMax!=null&&buyMax>buy?solText(buyMax):null,total:solText(total)??(mock?'0 SOL':'unknown'),simulated:e.simulation?.ok===true&&!e.simulation?.mock,balance:solText(e.signerBalanceLamports)},
   split,canSign:you&&only&&warnings.length===0&&!!(mock?tx.messageHash:tx.txBase64),warnings,
-  doesNot:['No token approvals or delegations.','No token transfers from your wallet.',buy>0?`An initial buy of ${solText(buy)} is included.`:'No initial buy.',
-   mock?'Nothing leaves your wallet: you sign a labelled text message.':'The only SOL that leaves your wallet is the network fee and the rent for the new accounts.']};
+  doesNot:['No token approvals or delegations.','No token transfers from your wallet.',buy>0?`Your dev buy of ${solText(buy)} is included: you pay it and the tokens land in your wallet.`:'No initial buy.',
+   mock?'Nothing leaves your wallet: you sign a labelled text message.':buy>0?`The SOL that leaves your wallet: the network fee, the rent for the new accounts and the dev buy${buyMax!=null&&buyMax>buy?` (capped at ${solText(buyMax)} in the transaction)`:''}.`:'The only SOL that leaves your wallet is the network fee and the rent for the new accounts.']};
 }
 
 // ---------------------------------------------------------------- the X account

@@ -655,6 +655,15 @@ button.pc-link{border:0;background:none;padding:0;cursor:pointer}
 .pc-more summary{display:inline-flex;align-items:center;gap:4px;cursor:pointer;list-style:none;color:var(--ink-2)}.pc-more summary::-webkit-details-marker{display:none}
 .pc-more summary svg.i{width:13px;height:13px;transition:transform var(--d-2)}.pc-more[open] summary svg.i{transform:rotate(180deg)}
 .pc-statement{margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font:450 11.5px/1.5 var(--f-mono);color:var(--ink-2)}
+/* The dev buy: one small field above "Prepare the transaction"; read-only once a transaction exists. */
+.pc-devbuy{display:grid;gap:6px;padding:10px;border-radius:var(--r-sm);background:rgba(0,0,0,.18);box-shadow:inset 0 0 0 1px var(--stroke)}
+.pc-devbuy-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pc-devbuy-k{font:500 10.5px/1.5 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.pc-devbuy-in{width:110px;height:32px;padding:0 10px;border:0;border-radius:var(--r-sm);background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--stroke-2);color:var(--ink);font:600 13px/32px var(--f-mono)}
+.pc-devbuy-in:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.pc-devbuy-in:disabled{opacity:.6}
+.pc-devbuy .button{width:auto}
+.pc-devbuy.is-locked .pc-note{color:#FFD27A}
 /* Review before sign. */
 .pc-review{display:grid;gap:8px;padding:14px;border-radius:var(--r-md);background:rgba(0,0,0,.22);box-shadow:inset 0 0 0 1px var(--accent-line)}
 .pc-review.is-flagged{box-shadow:inset 0 0 0 1.5px var(--danger)}

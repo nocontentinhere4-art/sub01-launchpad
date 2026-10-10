@@ -3,8 +3,8 @@ import {icon,tile} from './icons.js';
 import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
 import {verdictModel,renderVerdict} from './verdict.js';
-import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit} from './desk-flows.js';
-export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows} from './desk-flows.js';
+import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy} from './desk-flows.js';
+export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
 // the Computer overlay: the project's site, its X account, the launch stepper and (owner only) the ideas in flight.
@@ -109,6 +109,18 @@ const frame=(src,sandbox,title)=>{const f=el('iframe',{className:'pc-frame',src,
 // (the label is a plain span: the city's .lbl is the dock's long label, hidden on phones)
 const btn=(cls,text,onclick,lead=null)=>{const b=el('button',{className:'button '+cls,type:'button',onclick},lead?icon(lead,'i lead'):null,el('span',{className:'pc-lbl',textContent:text}));return b;};
 const busy=(b,on)=>{b.disabled=on;b.classList.toggle('is-busy',on);};
+// The dev buy field (desk-flows.js devBuyModel): one number input + Save above "Prepare the transaction"; read-only with
+// the reason once a transaction exists. onSave(sol) does the PUT and the refresh; errors stay under the field.
+export function renderDevBuy(m,{onSave}={}){
+ const input=el('input',{className:'pc-devbuy-in',type:'number',min:'0',max:String(m.max),step:String(m.step),value:String(m.sol),disabled:!m.editable,inputMode:'decimal'});
+ input.setAttribute('aria-label','Dev buy in SOL');
+ const err=el('p',{className:'pc-err'});
+ const save=btn('button-dark button-sm pc-devbuy-save','Save',async()=>{const r=parseDevBuy(input.value,m.max);if(r.error){err.textContent=r.error;return;}err.textContent='';busy(save,true);
+  try{await onSave?.(r.sol);}catch(x){err.textContent=explainError(x);busy(save,false);}});
+ save.disabled=!m.editable;
+ return el('div',{className:'pc-devbuy'+(m.locked?' is-locked':'')},el('label',{className:'pc-devbuy-row'},el('span',{className:'pc-devbuy-k',textContent:'Dev buy (SOL)'}),input,save),
+  el('p',{className:'pc-note',textContent:m.locked?`${m.text} · ${m.lockNote}`:m.note}),err);
+}
 // The banner is an SVG; X wants PNG/JPG for the header: draw it on a canvas at 1500×500 (same-origin, so the canvas stays clean).
 async function savePng(url,name,{w,h}){
  const svg=await (await fetch(url,{credentials:'same-origin'})).text();
@@ -249,6 +261,9 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    const open=s.state==='current'||s.state==='blocked'||(s.id==='live'&&m.live);
    if(!open){if(s.id==='site'&&s.action)main.append(el('div',{className:'pc-step-acts'},el('button',{className:'pc-link',type:'button',textContent:s.action.label,onclick:()=>show('site')})));continue;}
    if(s.id==='approve'&&m.split.rows.length)main.append(splitBox(m.split,m.approve?.statement));
+   // the dev buy sits above "Prepare the transaction"; while the review card is open its row is on the card instead
+   const dev=s.id==='launch'&&!flight?.tx?devBuyModel(view):null;
+   if(dev)main.append(renderDevBuy(dev,{onSave:async sol=>{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/options`,{method:'PUT',body:{initialBuySol:sol}});await refresh();}}));
    if(s.id==='launch'&&flight?.tx)main.append(reviewCard(root,view,m,flight,refresh));
    else if(s.id==='launch'&&(m.phase==='preparing'||m.phase==='confirming')){main.append(el('div',{className:'pc-wait'},el('i',{className:'pulse'}),el('span',{textContent:m.phase==='confirming'?`Signed · ${short(view.intent?.tx_signature||'',6)||'broadcast'} · waiting for the network…`:'The configuration is prepared by a job; this updates by itself.'})));
     later(3000,()=>{if(tab==='launch')refresh();});}
@@ -325,7 +340,8 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    kv('New mint',el('code',{textContent:short(r.mint,6)||'—'})),
    kv('Programs',el('span',{className:'pc-programs'},...r.programs.map(p=>el('span',{className:'pc-program'+(p.flag?' is-bad':'')},p.flag?icon('x'):icon('check'),p.name,p.direct?'':el('small',{textContent:' (inside the one above)'}))))),
    kv('Can write',el('b',{textContent:String(r.writable)}),el('small',{textContent:` accounts · ${r.signers} signature${r.signers>1?'s (yours + the new mint, already signed)':' (yours)'}`})),
-   kv('Cost',el('b',{textContent:r.cost.total}),el('small',{textContent:r.cost.fee!=null?` · fee ${r.cost.fee} + rent ${r.cost.rent}${r.cost.buy?' + buy '+r.cost.buy:''}${r.cost.simulated?' (from a simulation)':''}`:r.mock?' · mock':' · the wallet shows the exact amount'}),r.cost.balance?el('small',{textContent:` · your balance ${r.cost.balance}`}):null));
+   kv('Cost',el('b',{textContent:r.cost.total}),el('small',{textContent:r.cost.fee!=null?` · fee ${r.cost.fee} + rent ${r.cost.rent}${r.cost.buy?' + dev buy '+r.cost.buy:''}${r.cost.simulated?' (from a simulation)':''}`:r.mock?' · mock':' · the wallet shows the exact amount'}),r.cost.balance?el('small',{textContent:` · your balance ${r.cost.balance}`}):null));
+  if(r.cost.buy)card.append(kv('Dev buy',el('b',{textContent:r.cost.buy}),el('small',{textContent:`${r.cost.buyMax?` · capped at ${r.cost.buyMax} in the transaction`:''} · tokens land in your wallet`})));
   card.append(el('span',{className:'eyebrow',textContent:'Creator-fee split'+(r.split.locked?' · locked at launch':'')}),splitBox(r.split,null));
   card.append(el('span',{className:'eyebrow',textContent:'What this does NOT do'}),el('ul',{className:'pc-doesnot'},...r.doesNot.map(t=>el('li',{textContent:t}))));
   card.append(el('p',{className:'pc-note',textContent:r.mock?'The wallet asks you to sign a labelled text message; no transaction exists.':'Your wallet shows the transaction again before you sign. Check it shows the same network, fee payer and amount.'}));
