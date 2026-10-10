@@ -151,7 +151,7 @@ let heroHome=null;
 let horizon=null;
 // Owner 2026-10-10: nothing outside the city. The plate stops just past the blocks and a ring fades it into the fog
 // colour (vertex aFade, mixed in after lighting so it matches the horizon plane exactly): no edge, no suburbs, mist.
-const GROUND_PLANE={near:'#8E8E88',margin:8,fadeRing:38,far_:600,y:-.02,farY:-.06,renderOrder:-10};
+const GROUND_PLANE={near:'#8E8E88',margin:8,fadeRing:38,far_:600,y:-.02,farY:-1.6,renderOrder:-10};
 function cityGround(){
   const E=CS.OUTER_EXTENT??CS.CITY_EXTENT,M=GROUND_PLANE.margin,x0=E.minX-M,x1=E.maxX+M,z0=E.minZ-M,z1=E.maxZ+M,F=GROUND_PLANE.far_,h=CS.CANAL_X==null?null:riverHole();
   const rects=[],R=(a,b,c,d,y,col)=>{if(b-a>.01&&d-c>.01)rects.push([a,b,c,d,y,col]);},Y=GROUND_PLANE.y,N=GROUND_PLANE.near;
@@ -175,6 +175,7 @@ function cityGround(){
   m.customProgramCacheKey=()=>'ground-plane-fade';
   const mesh=new THREE.Mesh(g,m);mesh.name='city ground';mesh.renderOrder=GROUND_PLANE.renderOrder;mesh.receiveShadow=true;mesh.raycast=()=>{};mesh.frustumCulled=false;scene.add(mesh);
   // Horizon: a far plane in the fog colour (unlit, unfogged) under everything, so the ring's outer edge meets haze.
+  // It must stay BELOW the river water (−1.05): at −0.06 it hid the whole river (owner 2026-10-10: "the water broke").
   horizon=new THREE.Mesh(new THREE.PlaneGeometry(F*2,F*2).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:scene.fog?.color||'#E6DFD2',fog:false}));horizon.position.y=GROUND_PLANE.farY;horizon.renderOrder=GROUND_PLANE.renderOrder-1;horizon.raycast=()=>{};horizon.frustumCulled=false;scene.add(horizon);
   return mesh;
 }
