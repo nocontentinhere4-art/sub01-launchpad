@@ -56,7 +56,7 @@ test('cable web: one LineSegments of ~3–5k sagging segments between 5.5 and 9.
 });
 
 test('skyline: three clusters, three value layers, widths 2–6, skewed heights 8–30, ~1 in 6 crowned, no fixed pitch',()=>{
- const s=skylinePlan();assert.ok(s.length>=40&&s.length<=100,s.length+' buildings');
+ const s=skylinePlan();assert.ok(s.length>=40&&s.length<=130,s.length+' buildings');   // spans the outer ring since 2026-10-10
  for(const b of s){assert.ok(Math.min(b.w,b.d)>=2&&Math.max(b.w,b.d)<=6.01);assert.ok(b.h>=8&&b.h<=30);assert.ok(b.x<-71||b.z<-71,'outside the city');}
  assert.deepEqual([...new Set(s.map(b=>b.layer))].sort(),[0,1,2]);
  const heights=s.map(b=>b.h).sort((a,b)=>a-b);assert.ok(heights[s.length>>1]<19,'skewed toward low');

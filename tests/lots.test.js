@@ -14,7 +14,7 @@ test('lots: the layout is a pure function of plot ids and the user buildings',()
  assert.equal(heightFor(1),GROUND+PARAPET);assert.equal(heightFor(4),GROUND+3*STOREY+PARAPET);
 });
 test('lots: no two touching neighbours share a height; ≥85 % of every street edge is building face',()=>{
- for(const buildings of [[],user]){const L=cityLayout(buildings);assert.equal(L.sides.length,districts.length*2);
+ for(const buildings of [[],user]){const L=cityLayout(buildings);assert.equal(L.sides.filter(s=>!s.ghost).length,districts.length*2);
   for(const s of L.sides){assert.ok(s.fill>=.85,`${s.district} ${s.front} fill ${s.fill.toFixed(3)}`);
    for(let i=1;i<s.sequence.length;i++)assert.notEqual(s.sequence[i].floors,s.sequence[i-1].floors,`${s.district} ${s.sequence[i].id}`);}}
 });
@@ -81,8 +81,8 @@ test('city: one batch per kind, picks cover the user sub-lot, heightOf follows t
  // canopies, stairs and roof clutter (second LOD), so it stays ≈ 1.65× the old 4.83k.
  // Wave 5A (facades, railings, frames, roof silhouettes): ≈ +5.3k boxes, all but the T5/pent/mansard prisms in the detail
  // tail, so the overview stays put; the triangle budget (≤ +15 % at district zoom) is the real limit.
- assert.ok(st.instances<19500,`city instances ${st.instances}`);
- city.setDetail(false);const far=city.stats();assert.ok(far.instances<8600&&far.instances<st.instances-4000&&!far.detail&&far.drawCalls===st.drawCalls,`overview ${far.instances}`);city.setDetail(true);
+ assert.ok(st.instances<33000,`city instances ${st.instances}`);   // 2026-10-10: + the outer ring of ghost districts
+ city.setDetail(false);const far=city.stats();assert.ok(far.instances<15000&&far.instances<st.instances-4000&&!far.detail&&far.drawCalls===st.drawCalls,`overview ${far.instances}`);city.setDetail(true);
  assert.equal(city.stats().instances,st.instances);
  const u=subLotsOf('shibuya-2',user).user;assert.equal(city.heightOf('shibuya-2'),u.height);
  const m=new THREE.Matrix4(),pos=new THREE.Vector3(),q=new THREE.Quaternion(),sc=new THREE.Vector3();
@@ -103,7 +103,7 @@ test('lots: the third ring is low and old, with two mid sub-centres, greener vac
  assert.ok(share(outer,'T5')>share(inner,'T5')*1.3,`T5 ${share(outer,'T5').toFixed(3)} vs ${share(inner,'T5').toFixed(3)}`);
  const vacant=L.spots.filter(s=>s.plotId&&isRing3(s.district)&&cityPlots.find(p=>p.id===s.plotId).vacant);
  assert.equal(vacant.length,24);assert.ok(vacant.filter(s=>s.kind!=='coin-parking').length>=14,'mostly parks and shrines');assert.ok(vacant.some(s=>s.kind==='park'));
- const a=strip(cityLayout([])),n=L.lots.length;assert.equal(strip(cityLayout([{plotId:'kichijoji-2',type:'project',color:'mint'}])).length>0,true);assert.equal(strip(cityLayout([])),a,'deterministic');
+ const a=strip(cityLayout([])),n=L.lots.filter(l=>!l.ghost).length;   // the outer ring's ghost lots are not countedassert.equal(strip(cityLayout([{plotId:'kichijoji-2',type:'project',color:'mint'}])).length>0,true);assert.equal(strip(cityLayout([])),a,'deterministic');
  assert.ok(n>780&&n<920,`lots ${n} ≈ 2× the 24-district 426`);
 });
 test('lots: builtHeight follows the construction phase',()=>{

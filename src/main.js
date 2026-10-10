@@ -153,9 +153,9 @@ let horizon=null;
 // colour (vertex aFade, mixed in after lighting so it matches the horizon plane exactly): no edge, no suburbs, mist.
 const GROUND_PLANE={near:'#8E8E88',margin:8,fadeRing:38,far_:600,y:-.02,farY:-.06,renderOrder:-10};
 function cityGround(){
-  const E=CS.CITY_EXTENT,M=GROUND_PLANE.margin,x0=E.minX-M,x1=E.maxX+M,z0=E.minZ-M,z1=E.maxZ+M,F=GROUND_PLANE.far_,h=CS.CANAL_X==null?null:riverHole();
+  const E=CS.OUTER_EXTENT??CS.CITY_EXTENT,M=GROUND_PLANE.margin,x0=E.minX-M,x1=E.maxX+M,z0=E.minZ-M,z1=E.maxZ+M,F=GROUND_PLANE.far_,h=CS.CANAL_X==null?null:riverHole();
   const rects=[],R=(a,b,c,d,y,col)=>{if(b-a>.01&&d-c>.01)rects.push([a,b,c,d,y,col]);},Y=GROUND_PLANE.y,N=GROUND_PLANE.near;
-  if(h&&h.x0>x0&&h.x1<x1){const cz0=Math.max(z0,E.minZ-3),cz1=Math.min(z1,E.maxZ+3);
+  if(h&&h.x0>x0&&h.x1<x1){const C=CS.CITY_EXTENT,cz0=Math.max(z0,C.minZ-3),cz1=Math.min(z1,C.maxZ+3);
     R(x0,h.x0,z0,z1,Y,N);R(h.x1,x1,z0,z1,Y,N);R(h.x0,h.x1,z0,cz0,Y,N);R(h.x0,h.x1,cz1,z1,Y,N);}
   else R(x0,x1,z0,z1,Y,N);
   const pos=[],nor=[],col=[],fade=[],c=new THREE.Color();c.set(N);
@@ -303,9 +303,9 @@ const OVERVIEW_TARGET=new THREE.Vector3(-45,8,-66);   // north of centre: the cl
 // CITY_EXTENT (+ VIEW_PAD). If it sticks out, target and camera shift together (pitch and zoom untouched); if it is
 // wider than the city, the zoom floor rises to the zoom at which it just fits (controls.minZoom follows, so the wheel,
 // the pinch and the −/+ buttons stop there). Runs after controls.update(), so drags, tweens, follows and tours obey it.
-// Per-side allowance: the frame may run past the blocks only where the edge is dressed (north: skyline + Fuji; west:
-// skyline; east: the river; south: the metro track), never onto bare ground.
-const VIEW_PAD=2,VIEW_ALLOW={north:62,west:26,east:22,south:6},_fr=new THREE.Vector3(),_fu=new THREE.Vector3(),_fd=new THREE.Vector3(),_fp=new THREE.Vector3(),_clampD=new THREE.Vector3();
+// Per-side allowance: the frame may run one pitch past the blocks, into the outer ring of ghost districts (east: river
+// and expressway first), never onto bare ground. The target itself never leaves the 7x7.
+const VIEW_PAD=2,VIEW_ALLOW={north:34,west:34,east:52,south:34},_fr=new THREE.Vector3(),_fu=new THREE.Vector3(),_fd=new THREE.Vector3(),_fp=new THREE.Vector3(),_clampD=new THREE.Vector3();
 function viewFootprint(out={minX:0,maxX:0,minZ:0,maxZ:0}){
   camera.matrixWorld.extractBasis(_fr,_fu,_fd);_fd.negate();if(_fd.y>-.05)return null;   // _fd = view direction (−local z)
   const W=(camera.right-camera.left)/(2*camera.zoom),H=(camera.top-camera.bottom)/(2*camera.zoom);

@@ -17,7 +17,7 @@ export const riverHole=()=>{const r=riverEdges();return {x0:r.x0-.5,x1:r.x1+.5};
 // Same scale as the 333 m Tokyo Tower (tokyo-tower.js TOWER.height 50): 50 × 634/333 ≈ 95. Stands in the north skyline
 // just right of Fuji as seen from the overview camera, so it reads like the photo: Fuji, then the needle.
 export const TOKYO_TOWER_HEIGHT=50;
-export const SKYTREE={x:-10,z:-114,height:95,clear:7,
+export const SKYTREE={x:-10,z:-147,height:95,clear:7,
  // Body: [y, radius, triangle-ness] — a triangular base (68 m sides → circumradius 5.9) that turns circular by 300 m.
  body:[[0,5.9,1],[7.5,4.9,.9],[22.5,3.7,.55],[37.4,2.85,.2],[45,2.55,0],[57,2.1,0],[66,1.65,0],[74.4,1.05,0]],
  // Tembo Deck (350 m, two tiers) and Tembo Galleria (450 m): [radius, y0, y1]; window bands lit at night.

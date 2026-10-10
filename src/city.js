@@ -7,7 +7,7 @@ import {addCityTraffic} from './city-traffic.js';
 import {addTokyoStyle} from './tokyo-style.js';
 import {facadeCode as fc,facadeAttribute,facadeDetail,prismGeometry,arcGeometry,withFacade} from './facades.js';
 import {TOWER,towerPlan,towerRibbons,footTownTop} from './tokyo-tower.js';
-import {cityPlots,districts,tower,plotView,BOULEVARD_X,ROAD_Z,CITY_EXTENT} from './city-state.js';
+import {cityPlots,districts,tower,plotView,BOULEVARD_X,ROAD_Z,CITY_EXTENT,OUTER_DISTRICTS,OUTER_EXTENT} from './city-state.js';
 import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial,isRing3,builtHeight} from './lots.js';
 const wallMaterial=params=>(T.wallMaterial||T.toon)(params);
 // Night multipliers are plain 0–1 factors (brief 3.9: walls ×#6F7D99, ground ×#55617A), not sRGB colours.
@@ -16,7 +16,7 @@ const NIGHT_WALL=T.nightColor?T.nightColor('walls'):factor('#6F7D99'),NIGHT_GROU
 const WHITE=new THREE.Color('#ffffff'),BLACK=new THREE.Color('#000000');
 const tint=(hex,f)=>{const c=new THREE.Color(hex);return f>0?c.lerp(WHITE,f):c.lerp(BLACK,-f);};
 const GLASS_LOW='#3D525B',GLASS_HIGH='#5E7881',AC='#E5E1D6';
-const ROWS=ROAD_Z,BLVD_Z0=CITY_EXTENT.minZ,BLVD_Z1=CITY_EXTENT.maxZ;
+const ROWS=ROAD_Z,BLVD_Z0=OUTER_EXTENT.minZ,BLVD_Z1=OUTER_EXTENT.maxZ;   // boulevards run on through the outer ring
 const CARS=['#E8E6E0','#2F3437','#9AA3A8','#1F2A44','#B33A32','#D9D3C3'];
 // Wave 5A facade codes used below (facades.js): plain surfaces per lot.facade, decals, flags.
 const F_FAN=fc('fan'),F_FAN_X=fc('fan',{swap:true}),F_DOOR=fc('door'),F_PAINT=fc('paint'),F_MANHOLE=fc('manhole'),F_ROOF=fc('membrane',{inset:true});
@@ -67,8 +67,8 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  // District pads cover the whole 29 × 30 pitch (the half-strips to the boulevards and between rows included), clamped
  // to the city extent at the outer edge, so no sky shows between districts whatever lies under the city.
  function ground(){
-  const E=CITY_EXTENT,ASPH=fc('asphalt'),PAVE=fc('pavers');
-  for(const d of districts){
+  const E=OUTER_EXTENT,ASPH=fc('asphalt'),PAVE=fc('pavers');
+  for(const d of [...districts,...OUTER_DISTRICTS]){
    const walks=sidewalkSides(d.id),commercial=isCommercial(d.id),half=s=>walks.includes(s)?2.25:3.25;
    const x0=Math.max(d.x-14.5,E.minX-.4),x1=Math.min(d.x+14.5,E.maxX+.4),pz0=Math.max(d.z-15,E.minZ-.4),pz1=Math.min(d.z+15,E.maxZ+.4);
    add('roads',(x0+x1)/2,.03,(pz0+pz1)/2,x1-x0,.18,pz1-pz0,'#A9A79D');

@@ -510,11 +510,12 @@ export function addTokyoStyle(parent,buildings=[]){
  // Faces the camera every frame (it is radially symmetric), squashed in depth, a bit smaller when zoomed in.
  const face=(m,camera)=>{const s=Math.min(1,Math.max(.42,Math.pow(FUJI.overviewZoom/Math.max(1e-3,camera.zoom||1),.6)));camera.matrixWorld.extractBasis(fr,fu2,fb);
   FM.makeBasis(fr.multiplyScalar(s),fu2.multiplyScalar(s),fb.multiplyScalar(s*FUJI.squash)).setPosition(anchor);m.matrixWorld.multiplyMatrices(m.parent.matrixWorld,FM);};
- for(const m of [mountain,haze]){m.matrixAutoUpdate=false;m.frustumCulled=false;m.raycast=()=>{};m.onBeforeRender=(r,sc,camera)=>face(m,camera);root.add(m);}
+ // Owner 2026-10-10: no mountain. The meshes are built (tests, stats) but never added to the scene.
+ for(const m of [mountain,haze]){m.matrixAutoUpdate=false;m.frustumCulled=false;m.raycast=()=>{};m.onBeforeRender=(r,sc,camera)=>face(m,camera);}
  mountain.matrixWorld.makeBasis(new THREE.Vector3(1,0,0),up,new THREE.Vector3().crossVectors(new THREE.Vector3(1,0,0),up)).setPosition(anchor);
  const white=new THREE.Color('#ffffff');let life=null;
  return {signMesh,propMesh,mountain,haze,plan,lightPools:plan.pools,
-  stats:()=>({props:props.length,wheels:wheels.length,propsCore:propMesh.userData.lod.core,signs:signs.length,signsCore:signMesh.userData.lod.core,fujiTriangles:fm.triangles+fh.triangles,drawCalls:5,atlasBytes:atlas?512*512:0}),
+  stats:()=>({props:props.length,wheels:wheels.length,propsCore:propMesh.userData.lod.core,signs:signs.length,signsCore:signMesh.userData.lod.core,fujiTriangles:0,drawCalls:3,atlasBytes:atlas?512*512:0}),
   // Vending pools need city-life's light-pool batch; city.js can hand it over (style.bindLife(life)) after each redraw.
   bindLife(l){life=l;if(!l?.addLightPool)return;l.clearLightPools('props');for(const [x,z,c,r,s] of plan.pools)l.addLightPool(x,z,c,r,{group:'props',strength:s});},
   setNight(value){night.value=value?1:0;const f=value?nightColor('walls'):white;propMat.color.copy(f);signMat.color.copy(f);},

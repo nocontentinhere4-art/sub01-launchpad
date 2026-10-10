@@ -70,7 +70,7 @@ export function duckPosition(t,i,c=canalLayout()){const side=i%2?1:-1,zc=c.z0+12
 export const SKYLINE={day:['#7D8E98','#9AA8B0','#B7C1C4'],night:['#24304A','#202B43','#1B263C']};
 // The north gap sits where Fuji stands in the overview (the line from Fuji toward the camera, yaw 36°, crosses the edge).
 export function skylinePlan(){
- const e=cityExtent(),SZ=CS.SKYLINE_Z??-71,SX=CS.SKYLINE_X??-71,fuji=CS.FUJI_AT??{x:-60.5,z:-131},cross=fuji.x+Math.tan(36*Math.PI/180)*(SZ-fuji.z);
+ const e=CS.OUTER_EXTENT??cityExtent(),SZ=CS.SKYLINE_Z??-71,SX=CS.SKYLINE_X??-71,fuji=CS.FUJI_AT??{x:-60.5,z:-131},cross=fuji.x+Math.tan(36*Math.PI/180)*(SZ-fuji.z);
  const out=[],groups=[['n',e.minX-2.5,cross-34],['n',cross+6,e.maxX-22.5],['w',e.minZ+5.5,e.minZ+41.5]];
  groups.forEach(([edge,from,to],g)=>{for(let layer=0;layer<3;layer++){let u=from+hash(g,layer,1)*3;
   while(u<to){const r=k=>hash(g,layer,u,k),w=2+4*r(1),d=2.4+2.6*r(2),h=Math.min(30,8+22*r(3)**1.8+layer*2*r(4));

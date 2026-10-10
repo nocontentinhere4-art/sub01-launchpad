@@ -29,11 +29,19 @@ export const BOULEVARD_X=COLS.slice(1).map((x,i)=>(COLS[i]+x)/2);           // [
 // Built area (district blocks are 27.8 × 27.8 around their centre; boulevards run 13.5 past the outer row roads).
 export const CITY_EXTENT={minX:COLS[0]-14.5,maxX:COLS.at(-1)+14.5,minZ:ROAD_Z[0]-13.5,maxZ:ROAD_Z.at(-1)+13.5};
 // Scenery outside the city, moved out by one ring (+29 in x, +30 in z) from the 5×5 values in brackets.
+// Outer ring (owner 2026-10-10: "outside the map the city must go on, but not be reachable"): 32 ghost districts one
+// pitch beyond the 7x7, built by the same lots/city pipeline (facades, roads, back lanes) but with no addresses, labels,
+// picks or props. The east column sits past the river and the expressway, the south row past the metro track.
+export const OUTER_DISTRICTS=[];
+for(let row=-4;row<=4;row++)for(let col=-4;col<=4;col++)if(Math.abs(row)===4||Math.abs(col)===4)
+ OUTER_DISTRICTS.push({id:`outer-${row+4}-${col+4}`,name:'',x:col*29+(col===4?29:0),z:row*30+2+(row===4?6:0),ring:4,ghost:true,color:'#8a9a8c'});
+export const outerPlots=OUTER_DISTRICTS.flatMap((d,di)=>Array.from({length:6},(_,i)=>({id:`${d.id}-${i+1}`,district:d.id,x:d.x+[-8,0,8][i%3],z:d.z+(i<3?-6:6),height:3+((di*3+i*7)%8),vacant:false,ghost:true})));
+export const OUTER_EXTENT={minX:-4*29-14.5,maxX:5*29+14.5,minZ:-4*30+2-15,maxZ:4*30+8+15};
 export const CANAL_X=CITY_EXTENT.maxX+6.5;          // 108   [79]   canal centre; banks at ±6.25, bridges at z −38, 2, 42
 export const METRO_Z=CITY_EXTENT.maxZ+2.5;          // 108   [78]   elevated metro track (express 2.25 north of it)
-export const SKYLINE_Z=CITY_EXTENT.minZ+.5;         // −101  [−71]  north skyline edge (buildings at SKYLINE_Z − offset)
-export const SKYLINE_X=CITY_EXTENT.minX+1.5;        // −100  [−71]  west skyline edge
-export const FUJI_AT={x:-89.5,z:-161};              //       [−60.5, −131]  (owner 2026-10-10: back to the first placement)
+export const SKYLINE_Z=OUTER_EXTENT.minZ+.5;        // −132.5 north skyline edge, beyond the outer ring (buildings at SKYLINE_Z − offset)
+export const SKYLINE_X=OUTER_EXTENT.minX+1.5;       // −129   west skyline edge, beyond the outer ring
+export const FUJI_AT={x:-67,z:-161};                // no mountain any more (owner 2026-10-10); this line only fixes the north skyline gap at x ≈ −46 (the expressway's exit)
 // Overview camera (main.js resetView) for the bigger map, and the zoom-out floor it needs.
 export const OVERVIEW_ZOOM={desktop:.2,mobile:.093,min:.05};   // 2026-10-10: tighter, so no ground past the blocks shows; main.js clamps the pan and the zoom floor
 export const cityPlots=districts.flatMap((d,di)=>Array.from({length:6},(_,i)=>({

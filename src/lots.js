@@ -39,7 +39,9 @@
 //    shrine; in the third ring mostly a pocket park or shrine.
 //
 // frontFace(plotId) → '+z'|'-z'.  subLotsOf(plotId,buildings) → {front, lots, spots, user} for that plot.
-import {cityPlots,districts,buildingColors,ROAD_Z} from './city-state.js';
+import {cityPlots,districts,buildingColors,ROAD_Z,OUTER_DISTRICTS,outerPlots} from './city-state.js';
+const plotsOf=d=>(d.ghost?outerPlots:cityPlots).filter(p=>p.district===d.id);
+const OUTER_SET=new Set(OUTER_DISTRICTS.map(d=>d.id));
 
 export const GROUND=3.0,STOREY=2.5,PARAPET=.6,BASE_Y=.12,JOINT=.08,LOT_LINE=3.3,EDGE=11.0;
 // EDGE: facades stop 3.5 short of the boulevard centres (14.5 from a district centre), clear of 1A's boulevard poles at 3.3.
@@ -70,7 +72,7 @@ const PROFILE={
 export const HEIGHT_CLASS={shinjuku:'high',shibuya:'high',ginza:'high',shinagawa:'high',odaiba:'high',
  akihabara:'mid',roppongi:'mid',harajuku:'mid',nihonbashi:'mid',kanda:'mid',ikebukuro:'mid',kichijoji:'mid',gotanda:'mid'};
 // The third ring: districts appended after the first 24 (city-state.js RING3). Low, more old houses, greener vacant plots.
-const RING3_SET=new Set(districts.filter(d=>d.ring===3).map(d=>d.id));
+const RING3_SET=new Set([...districts,...OUTER_DISTRICTS].filter(d=>d.ring>=3).map(d=>d.id));   // the outer ring is low too
 export const isRing3=id=>RING3_SET.has(id);
 export const HEIGHTS={low:{floors:[2,3],slab:[5,6]},mid:{floors:[3,5],slab:[7,7]},high:{floors:[4,7],slab:[8,9]}};
 export const heightClass=districtId=>HEIGHT_CLASS[districtId]||'low';
@@ -153,13 +155,13 @@ export const TOWER_PARKS=['shiba-6'];
 // the grid (col + 2·row ≡ 2 mod 7 → 7 of 49) get one, on their first vacant plot (north row first, west to east).
 export const shrineDistrict=d=>(((Math.round(d.x/29)+2*Math.round((d.z-2)/30))%7)+7)%7===2;
 export function shrinePlot(d,buildings=[]){
- if(!shrineDistrict(d))return null;
+ if(d.ghost||!shrineDistrict(d))return null;
  const q=cityPlots.filter(p=>p.district===d.id&&p.vacant&&!buildings.some(b=>b.plotId===p.id)).sort((a,b)=>(a.z<d.z?0:1)-(b.z<d.z?0:1)||a.x-b.x)[0];
  return q?q.id:null;
 }
 function sideElements(d,s,buildings){
  // s = -1: the row at d.z-6 (fronts face +z); s = 1: the row at d.z+6 (fronts face −z).
- const front=s<0?'+z':'-z',plots=cityPlots.filter(p=>p.district===d.id&&(s<0?p.z<d.z:p.z>d.z)).sort((a,b)=>a.x-b.x);
+ const front=s<0?'+z':'-z',plots=plotsOf(d).filter(p=>s<0?p.z<d.z:p.z>d.z).sort((a,b)=>a.x-b.x);
  const el=[];
  plots.forEach((p,k)=>{
   const b=buildings.find(b=>b.plotId===p.id),r=rng(p.id+':split');
@@ -330,6 +332,10 @@ export function cityLayout(buildings=[]){
  if(key===cacheKey)return cache;
  const out={lots:[],spots:[],sides:[]};
  for(const d of districts)layoutDistrict(d,buildings,out);
+ for(const d of OUTER_DISTRICTS)layoutDistrict(d,buildings,out);
+ for(const l of out.lots)if(OUTER_SET.has(l.district))l.ghost=true;
+ for(const s of out.spots)if(OUTER_SET.has(s.district))s.ghost=true;
+ for(const s of out.sides)if(OUTER_SET.has(s.district))s.ghost=true;
  cacheKey=key;cache=out;return out;
 }
 export function subLotsOf(plotId,buildings=[]){
