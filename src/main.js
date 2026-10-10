@@ -81,7 +81,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 2);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
 const OVERVIEW = CS.OVERVIEW_ZOOM ?? { desktop: .19, mobile: .09, min: .07 };
-controls.minZoom = mobile?OVERVIEW.mobile:OVERVIEW.desktop; controls.maxZoom = 2.8;   // 2026-10-10: never further out than the overview
+controls.minZoom = OVERVIEW.min; controls.maxZoom = 2.8;   // 2026-10-10: clampToCity() raises minZoom every frame to the zoom at which the frame fits the city
 controls.minPolarAngle = .3; controls.maxPolarAngle = 1.1;
 controls.enablePan = true;
 controls.addEventListener('start', () => { cityTour=null;follow = false; cameraTween = null; followObj=null; });
@@ -297,13 +297,35 @@ const CAMERA={pitch:40,yaw:36,distance:168};
 function aimCamera(target){const p=THREE.MathUtils.degToRad(CAMERA.pitch),y=THREE.MathUtils.degToRad(CAMERA.yaw),d=CAMERA.distance;
   controls.target.copy(target);camera.position.set(target.x+d*Math.cos(p)*Math.sin(y),target.y+d*Math.sin(p),target.z+d*Math.cos(p)*Math.cos(y));}
 // 2026-10-10: the overview target sits north of the city centre, so Fuji (foot on the ground) clears the header.
-const OVERVIEW_TARGET=new THREE.Vector3(-38,8,-59);   // north of centre: the north edge + Fuji in frame, the south edge off it
-// The view never leaves the city (owner 2026-10-10): the orbit target stays inside CITY_EXTENT + VIEW_PAD, and the
-// camera moves with it so the pitch and the zoom are untouched. Runs after controls.update() every frame, so drags,
-// tweens, follows and tours all obey it.
-const VIEW_PAD=10,_clampD=new THREE.Vector3();
-function clampToCity(){const E=CS.CITY_EXTENT,t=controls.target;_clampD.set(THREE.MathUtils.clamp(t.x,E.minX-VIEW_PAD,E.maxX+VIEW_PAD)-t.x,0,THREE.MathUtils.clamp(t.z,E.minZ-VIEW_PAD,E.maxZ+VIEW_PAD)-t.z);
-  if(_clampD.x||_clampD.z){t.add(_clampD);camera.position.add(_clampD);}}
+const OVERVIEW_TARGET=new THREE.Vector3(-45,8,-66);   // north of centre: the clamp slides it so the frame ends at the north edge, with Fuji above it
+// The view never leaves the city (owner 2026-10-10, twice): the WHOLE frame has to lie over the blocks. Each frame the
+// four corners of the orthographic frustum are cast onto the ground (y = 0); their bounding box must sit inside
+// CITY_EXTENT (+ VIEW_PAD). If it sticks out, target and camera shift together (pitch and zoom untouched); if it is
+// wider than the city, the zoom floor rises to the zoom at which it just fits (controls.minZoom follows, so the wheel,
+// the pinch and the −/+ buttons stop there). Runs after controls.update(), so drags, tweens, follows and tours obey it.
+// Per-side allowance: the frame may run past the blocks only where the edge is dressed (north: skyline + Fuji; west:
+// skyline; east: the river; south: the metro track), never onto bare ground.
+const VIEW_PAD=2,VIEW_ALLOW={north:62,west:26,east:22,south:6},_fr=new THREE.Vector3(),_fu=new THREE.Vector3(),_fd=new THREE.Vector3(),_fp=new THREE.Vector3(),_clampD=new THREE.Vector3();
+function viewFootprint(out={minX:0,maxX:0,minZ:0,maxZ:0}){
+  camera.matrixWorld.extractBasis(_fr,_fu,_fd);_fd.negate();if(_fd.y>-.05)return null;   // _fd = view direction (−local z)
+  const W=(camera.right-camera.left)/(2*camera.zoom),H=(camera.top-camera.bottom)/(2*camera.zoom);
+  out.minX=out.minZ=Infinity;out.maxX=out.maxZ=-Infinity;
+  for(const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){_fp.copy(camera.position).addScaledVector(_fr,sx*W).addScaledVector(_fu,sy*H);const t=-_fp.y/_fd.y;_fp.addScaledVector(_fd,t);
+    out.minX=Math.min(out.minX,_fp.x);out.maxX=Math.max(out.maxX,_fp.x);out.minZ=Math.min(out.minZ,_fp.z);out.maxZ=Math.max(out.maxZ,_fp.z);}
+  return out;
+}
+const _foot={minX:0,maxX:0,minZ:0,maxZ:0};
+function clampToCity(){
+  const E=CS.CITY_EXTENT,f=viewFootprint(_foot);if(!f)return;
+  const minX=E.minX-VIEW_PAD-VIEW_ALLOW.west,maxX=E.maxX+VIEW_PAD+VIEW_ALLOW.east,minZ=E.minZ-VIEW_PAD-VIEW_ALLOW.north,maxZ=E.maxZ+VIEW_PAD+VIEW_ALLOW.south;
+  const cityW=maxX-minX,cityD=maxZ-minZ,w=f.maxX-f.minX,d=f.maxZ-f.minZ;
+  // Zoom floor: the frame fits the city in both axes. OVERVIEW.min stays only as a sanity bound.
+  const fit=camera.zoom*Math.max(w/cityW,d/cityD,1e-6);controls.minZoom=Math.max(OVERVIEW.min,fit*1.002);
+  if(camera.zoom<controls.minZoom){camera.zoom=controls.minZoom;camera.updateProjectionMatrix();if(!viewFootprint(f))return;}
+  const fix=(lo,hi,min,max)=>hi-lo>=max-min?((min+max)-(lo+hi))/2:lo<min?min-lo:hi>max?max-hi:0;
+  _clampD.set(fix(f.minX,f.maxX,minX,maxX),0,fix(f.minZ,f.maxZ,minZ,maxZ));
+  if(_clampD.x||_clampD.z){controls.target.add(_clampD);camera.position.add(_clampD);}
+}
 function resetView(){cityTour=null;follow=false;cameraTween=null;aimCamera(OVERVIEW_TARGET.clone());camera.zoom=mobile?OVERVIEW.mobile:OVERVIEW.desktop;camera.updateProjectionMatrix();controls.update();}
 
 // The mailbox needs a signed-in resident. Each step opens the next one.

@@ -477,7 +477,9 @@ export function addTokyoStyle(parent,buildings=[]){
  // over it and the haze still tests against it. Without a depth test the body cannot sort itself: the fragment shader
  // drops the back half (it always faces the camera, so the front half is sin(angle) > 0 and never overlaps itself in a
  // side view), and the Tanzawa ridge comes last in the buffer, so it covers the foot.
- const fujiMat=new THREE.MeshBasicMaterial({toneMapped:false,side:THREE.DoubleSide,depthTest:false,depthWrite:true});
+ // fog:false (owner 2026-10-10): the scene fog thickens with rain and snow and was whiting the mountain out entirely;
+ // its own haze bands (fujiHaze) carry the atmosphere instead, so it stays readable in every weather.
+ const fujiMat=new THREE.MeshBasicMaterial({toneMapped:false,side:THREE.DoubleSide,depthTest:false,depthWrite:true,fog:false});
  fujiMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,fu);
   sh.vertexShader='attribute float aLit,aF,aAng,aLayer;varying float vLit,vF,vAng,vLayer;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vLit=aLit;vF=aF;vAng=aAng;vLayer=aLayer;');
   sh.fragmentShader=FU+'varying float vLit,vF,vAng,vLayer;\n'+sh.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
@@ -504,8 +506,9 @@ export function addTokyoStyle(parent,buildings=[]){
  // Base anchor: the foot ring on the ground at FUJI_AT.
  const fp=THREE.MathUtils.degToRad(FUJI.view.pitch),fy=THREE.MathUtils.degToRad(FUJI.view.yaw),up=new THREE.Vector3(-Math.sin(fp)*Math.sin(fy),Math.cos(fp),-Math.sin(fp)*Math.cos(fy));
  const anchor=new THREE.Vector3(FUJI.x,FUJI.baseY,FUJI.z),FM=new THREE.Matrix4(),fr=new THREE.Vector3(),fu2=new THREE.Vector3(),fb=new THREE.Vector3();
- // Faces the camera every frame (it is radially symmetric), squashed in depth, a bit smaller when zoomed in.
- const face=(m,camera)=>{const s=Math.min(1,Math.max(.42,Math.pow(FUJI.overviewZoom/Math.max(1e-3,camera.zoom||1),.6)));camera.matrixWorld.extractBasis(fr,fu2,fb);
+ // Faces the camera every frame (it is radially symmetric), squashed in depth. Constant size (owner 2026-10-10): the
+ // old zoom shrink made it slide against the skyline while zooming.
+ const face=(m,camera)=>{const s=1;camera.matrixWorld.extractBasis(fr,fu2,fb);
   FM.makeBasis(fr.multiplyScalar(s),fu2.multiplyScalar(s),fb.multiplyScalar(s*FUJI.squash)).setPosition(anchor);m.matrixWorld.multiplyMatrices(m.parent.matrixWorld,FM);};
  for(const m of [mountain,haze]){m.matrixAutoUpdate=false;m.frustumCulled=false;m.raycast=()=>{};m.onBeforeRender=(r,sc,camera)=>face(m,camera);root.add(m);}
  mountain.matrixWorld.makeBasis(new THREE.Vector3(1,0,0),up,new THREE.Vector3().crossVectors(new THREE.Vector3(1,0,0),up)).setPosition(anchor);
