@@ -10,10 +10,13 @@ import {facadeCode,facadeAttribute} from './facades.js';
 // example places + Orange Apartments rebuilt as hand-placed variants of the city's typed facades (lots.js / city.js).
 //
 // The house: a double-height office (fukinuke) on the east, a loft bedroom over the kitchen/living on the west reached by an
-// open stair; the back walls (north, west) are whole. Doll-house (owner 2026-10-10 "the workshop is buggy"): the pent
+// solid stair; the back walls (north, west) are whole. Doll-house (owner 2026-10-10 "the workshop is buggy"): the pent
 // roof and the camera-side walls are whole while the city is looked at from outside; when the viewer looks inside
-// (roofOpen: zoom ≥ 1.1 with the view centred within 9 of the desk, or setRoof(false)) the `lid` pieces lift away in
-// 0.4 s and the house shows its section: walls cut at sill height with real frames, the loft slab's dark cut edge.
+// (roofOpen: zoom ≥ 1.1 with the view centred within 9 of the desk, or setRoof(false)) the `lid` pieces — the WHOLE
+// roof, the office's south wall above the door head, the east wall above the sill, the loft's south wall above its
+// floor — lift away in 0.4 s and the house shows its section: walls cut at sill height with real frames, the loft
+// slab's dark cut edge, plaster balustrades on the loft, a solid stepped stair. Second pass (owner: "still buggy
+// inside"): no roof stub over the bed, no eave over the balcony, no black railings, no hexagon bikes, no loose cushions.
 //
 // Draw calls: walls · props · glass (nightLight) · Kenney furniture merged into ONE vertex-coloured mesh · sign atlas ·
 // monitor · glows (additive billboards: lamps, LEDs, bulbs). Pure plan + build; nothing here needs WebGL.
@@ -122,17 +125,19 @@ const _m=new THREE.Matrix4(),_q=new THREE.Quaternion(),_v=new THREE.Vector3(),_s
 // A thin box from a to b (cables, rails, pipes).
 function seg(a,b,t,color){const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),d=B.clone().sub(A),len=d.length();
  _q.setFromUnitVectors(_up,d.normalize());return {m:new THREE.Matrix4().compose(A.add(B).multiplyScalar(.5),_q.clone(),new THREE.Vector3(t,len,t)),color,x:(a[0]+b[0])/2,y:(a[1]+b[1])/2,z:(a[2]+b[2])/2};}
-// A bicycle as boxes (owner 2026-10-10: the old solid-slab bikes read as black panels): hollow hexagon wheels of six rim
-// segments, four frame tubes and a fork, a saddle and a handlebar. `along`: true = it points along x (wheels in the
-// x–y plane), false = along z. y: the ground it stands on. ~19 boxes.
+// A bicycle as boxes, the city's mamachari silhouette (tokyo-style.js) in the props batch. Owner 2026-10-10: solid-slab
+// bikes read as black panels, and the hollow hexagon rims that replaced them read as broken geometry from the 40°
+// camera — so the wheels are two SOLID discs (a square and the same square turned 45° about the axle: an octagon),
+// with a seat stay, top tube, down tube and fork, a saddle and a handlebar. `along`: true = it points along x (wheels
+// in the x–y plane), false = along z. y: the ground it stands on. 10 boxes.
+export const WHEEL=.29;
 export function bicycle(P,x,z,y,along,color='#2B2B2B'){
- const r=.3,t=.045,yc=y+r,rim='#3A3F42',pt=(u,v)=>along?[x+u,v,z]:[x,v,z+u];
- for(const s of [-1,1])for(let k=0;k<6;k++){const f=k*Math.PI/3+Math.PI/6,a=r*.866*Math.cos(f),b=r*.866*Math.sin(f),ang=f+Math.PI/2,[cx,,cz]=pt(s*.46,0);
-  if(along)P.push({x:cx+a,y:yc+b,z:cz,w:r+t,h:t,d:.06,rz:ang,color:rim});else P.push({x:cx,y:yc+b,z:cz+a,w:.06,h:t,d:r+t,rx:-ang,color:rim});}
- const bb=pt(-.08,yc-.02),seat=pt(-.22,yc+.5),head=pt(.28,yc+.48),headLo=pt(.3,yc+.12);
- P.push(seg(bb,seat,.035,color),seg(bb,headLo,.035,color),seg(seat,head,.035,color),seg(pt(-.46,yc),pt(-.2,yc+.45),.03,color),seg(headLo,pt(.46,yc),.03,color));
- const [sx,,sz]=pt(-.24,0),[hx,,hz]=pt(.32,0);
- P.push(along?{x:sx,y:yc+.55,z:sz,w:.26,h:.05,d:.1,color:'#2B2B2B'}:{x:sx,y:yc+.55,z:sz,w:.1,h:.05,d:.26,color:'#2B2B2B'},along?{x:hx,y:yc+.56,z:hz,w:.04,h:.04,d:.42,color:'#5B6466'}:{x:hx,y:yc+.56,z:hz,w:.42,h:.04,d:.04,color:'#5B6466'});
+ const r=WHEEL,yc=y+r,dark='#2B2B2B',pt=(u,v)=>along?[x+u,v,z]:[x,v,z+u];   // u along the bike, v up
+ for(const s of [-1,1]){const [wx,,wz]=pt(s*.45,0);for(const a of [0,Math.PI/4])P.push(along?{x:wx,y:yc,z:wz,w:2*r,h:2*r,d:.05,rz:a,color:dark,wheel:1}:{x:wx,y:yc,z:wz,w:.05,h:2*r,d:2*r,rx:a,color:dark,wheel:1});}
+ const seat=pt(-.2,yc+.55),head=pt(.32,yc+.6);
+ P.push(seg(pt(-.45,yc),seat,.055,color),seg(seat,head,.055,color),seg(pt(-.1,yc-.04),head,.055,color),seg(head,pt(.45,yc),.045,color));
+ const [sx,,sz]=pt(-.24,0),[hx,,hz]=pt(.34,0);
+ P.push(along?{x:sx,y:yc+.72,z:sz,w:.26,h:.06,d:.11,color:dark}:{x:sx,y:yc+.72,z:sz,w:.11,h:.06,d:.26,color:dark},along?{x:hx,y:yc+.72,z:hz,w:.04,h:.04,d:.44,color:'#5B6466'}:{x:hx,y:yc+.72,z:hz,w:.44,h:.04,d:.04,color:'#5B6466'});
 }
 // A box sloped about x (pent roofs): its top edge runs from (z0,yTop0) to (z1,yTop1).
 function slopeX(x0,x1,z0,y0,z1,y1,t,color){const a=Math.atan2(y0-y1,z1-z0),L=Math.hypot(z1-z0,y1-y0),cz=(z0+z1)/2,cy=(y0+y1)/2;
@@ -156,7 +161,7 @@ export function planHero(){
  p(-13.85,13.85,.1475,.1825,-.15,3.35,'#7A7F7C');p(-13.85,13.85,.1475,.2025,-.66,-.14,'#B4B1A7');p(-13.85,13.85,.1475,.2025,3.34,3.86,'#B4B1A7');
  for(const z of [.2,2.88])p(-13.85,13.85,.1825,.19,z,z+.12,'#E6E4DC');
  for(const x of [-7.8,1.2,9.5]){p(x-.3,x+.3,.1825,.188,-.12,.12,'#4B5153');for(const dz of [-.06,0,.06])p(x-.26,x+.26,.188,.19,dz-.012,dz+.012,'#2F3437');}
- // ----- SUB-01's lot: pad, block walls (front with the gate, east with the cat), the side passage
+ // ----- SUB-01's lot: pad, block walls (front with the gate), the side passage
  p(LOT.x0,LOT.x1,TOP,.3,LOT.z0,LOT.z1,C.concrete);
  const bw=(x0,x1,z0,z1)=>{p(x0,x1,.3,1.4,z0,z1,C.block);p(x0-.02,x1+.02,1.4,1.46,z0-.02,z1+.02,C.cap);};
  bw(-9.63,-5.4,-.88,-.72);bw(-3.6,-2.3,-.88,-.72);bw(-2.38,-2.22,-7.3,-.88);bw(-9.71,-9.55,-7.3,-.88);
@@ -174,15 +179,15 @@ export function planHero(){
  [[-9.15,-1.3],[-8.55,-1.25],[-7.8,-1.32],[-7.2,-1.27],[-6.6,-1.3]].forEach(([x,z],i)=>{p(x-.22,x+.22,.3,.42+.06*(i%2),z-.18,z+.18,i%2?C.green:C.green2,{ry:i*.5});});
  [[-9.3,-.5],[-8.75,-.48],[-8.2,-.5],[-7.65,-.47],[-7.1,-.5],[-3.35,-.48],[-2.8,-.5]].forEach(([x,z],i)=>{const h=.22+.07*(i%3);
   p(x-.16,x+.16,.2025,.2025+h,z-.14,z+.14,['#9A7A60','#B9C6C4','#7D8B8E'][i%3]);P.push({...ext(x-.22,x+.22,.2025+h,.2025+h+.3,z-.2,z+.2,i%2?C.green:C.green2),ry:i*.7});P.push({...ext(x-.12,x+.16,.2025+h+.2,.2025+h+.42,z-.15,z+.1,'#7A955F'),ry:i*.3});});
- // A bicycle in the side passage mouth (along z), the AC outdoor units, a meter box, the cat on the wall.
- bicycle(P,-2.8,-1.45,.3,false,'#E0612A');p(-2.93,-2.67,.92,1.08,-1.2,-.96,'#7D8B8E');   // SUB-01's bike, its basket
+ // SUB-01's orange mamachari with its basket, parked on the sidewalk west of his gate (second pass: in the side passage
+ // the 1.46 block wall hid its wheels from the 40° camera and only the frame peeked over as an orange box).
+ bicycle(P,-6.2,-.42,.2025,true,'#E0612A');p(-5.98,-5.72,1.06,1.22,-.55,-.29,'#7D8B8E');
+ // The AC outdoor units, a meter box.
  const acUnit=(x0,x1,y0,z0,z1)=>{p(x0,x1,y0,y0+.55,z0,z1,C.ac);p(x0-.01,x1+.01,y0+.12,y0+.45,(z0+z1)/2-.18,(z0+z1)/2+.18,'#5B6466');p(x0,x1,y0+.55,y0+.58,z0,z1,'#CFCBC0');};
  acUnit(-3.1,-2.55,.3,-5.1,-4.3);p(-3.18,-3.08,.3,1.05,-4.75,-4.6,'#D9D3C3');
  acUnit(-3.1,-2.55,.3,-6.6,-5.8);p(-3.18,-3.08,.3,1.05,-6.25,-6.1,'#D9D3C3');
  p(-3.2,-3.12,.9,1.25,-3.0,-2.75,'#CFCBC0');
- {const cx=-2.3,cy=1.46,cz=-3.4,cat='#D9893E';p(cx-.07,cx+.07,cy,cy+.13,cz-.17,cz+.15,cat);p(cx-.065,cx+.065,cy+.06,cy+.18,cz+.13,cz+.26,cat);
-  for(const s of [-1,1])p(cx+s*.045-.02,cx+s*.045+.02,cy+.18,cy+.23,cz+.18,cz+.22,'#B86E2E');p(cx+.07,cx+.1,cy-.3,cy+.02,cz-.15,cz-.12,cat);p(cx-.068,cx+.068,cy+.04,cy+.09,cz-.05,cz+.02,'#F2EEE6');
-  for(const s of [-1,1])glow(cx+s*.03,cy+.14,cz+.265,.07,'#9BFF7A','eyes');}
+ // (The cat that sat on the east wall is gone — second pass: a 0.14 × 0.32 orange body is an orange box from the 40° camera.)
  // ----- the house: foundation, floors, walls, frames
  const H=HOUSE;w(H.x0-.05,H.x1+.05,TOP,.3,H.z0-.05,H.z1+.05,C.found);
  p(H.x0,H.x1,.3,F0,H.z0,H.z1,C.wood);
@@ -208,23 +213,26 @@ export function planHero(){
  p(H.x0+.16,-6.4,F1-.22,F1-.02,H.z0+.16,H.z1,C.cut);p(H.x0+.16,-6.4,F1-.02,F1,H.z0+.16,H.z1,C.wood);
  p(LANDING.x0,LANDING.x1,F1-.22,F1-.02,LANDING.z0+.16,LANDING.z1,C.cut);p(LANDING.x0,LANDING.x1,F1-.02,F1,LANDING.z0+.16,LANDING.z1,C.wood);
  for(let x=H.x0+.6;x<-6.5;x+=.45)p(x,x+.014,F1,F1+.002,H.z0+.2,H.z1-.05,'#A9794A');
- const rail=(x0,x1,z0,z1,n)=>{p(x0,x1,F1+.95,F1+1.0,z0,z1,C.woodDark);const along=Math.abs(x1-x0)>Math.abs(z1-z0);
-  for(let i=0;i<=n;i++){const t=i/n,x=x0+(x1-x0)*t,z=z0+(z1-z0)*t;p(x-.02,x+.02,F1,F1+.95,z-.02,z+.02,C.woodDark);}if(along)return;};
- rail(-6.44,-6.4,-4.59,H.z1,8);rail(-5.64,-5.6,LANDING.z0+.16,LANDING.z1,5);
+ // Loft guard rails as solid plaster balustrade panels with a wood cap (owner 2026-10-10: the thin dark posts over the
+ // slab's dark cut edge read as a black fence floating across the room).
+ const rail=(x0,x1,z0,z1)=>{p(x0,x1,F1,F1+.9,z0,z1,C.plaster);p(x0-.03,x1+.03,F1+.9,F1+.96,z0-.03,z1+.03,C.woodDark);};
+ rail(-6.46,-6.4,-4.59,H.z1-.16);rail(-5.66,-5.6,LANDING.z0+.16,LANDING.z1);
+ // The stair: a solid stepped wedge from the floor to the landing (one box per step from the floor to its tread, a dark
+ // nosing on top), so it stands on the floor and meets the loft instead of floating as slats on a black stringer.
  const n=12,rise=STOREY0/n,run=(STAIR.zBottom-STAIR.zTop)/(n-1);
- for(let i=1;i<n;i++){const z1=STAIR.zBottom-(i-1)*run,z0=z1-run;p(STAIR.x0+.04,STAIR.x1,F0+i*rise-.05,F0+i*rise,z0,z1+.02,C.woodDark);}
- P.push(seg([STAIR.x1-.03,F0+.1,STAIR.zBottom+.05],[STAIR.x1-.03,F1-.1,STAIR.zTop],.07,C.woodDark));
- P.push(seg([STAIR.x1-.02,F0+.95,STAIR.zBottom],[STAIR.x1-.02,F1+1.0,STAIR.zTop],.04,'#3E4447'));
- for(const z of [STAIR.zBottom,STAIR.zTop])p(STAIR.x1-.04,STAIR.x1,F0+(z===STAIR.zTop?STOREY0:0),F0+(z===STAIR.zTop?STOREY0:0)+.98,z-.02,z+.02,'#3E4447');
- // Loft south: balcony doors (frames), the wall strip under the eave, the balcony with railing, laundry and its AC unit.
- for(const x of [H.x0,-7.9,-6.48])p(x,x+.08,F1,F1+2.0,H.z1-.12,H.z1-.02,C.frame);p(H.x0,-6.4,F1+1.95,F1+2.05,H.z1-.14,H.z1,C.frame);
- w(H.x0,-6.4,F1+2.05,EAVE,H.z1-.16,H.z1,C.ext);
+ for(let i=1;i<n;i++){const z1=STAIR.zBottom-(i-1)*run,z0=z1-run;p(STAIR.x0+.04,STAIR.x1-.04,F0,F0+i*rise-.04,z0,z1,C.wood);p(STAIR.x0+.04,STAIR.x1-.04,F0+i*rise-.04,F0+i*rise,z0,z1+.02,C.woodDark);}
+ // Loft south: balcony doors (frames), the wall strip under the eave — all lid pieces, so the open house shows the loft
+ // cut at its floor like the office at its door head — then the balcony with railing, laundry and its AC unit.
+ for(const x of [H.x0,-7.9,-6.48])P.push(lid(ext(x,x+.08,F1,F1+2.0,H.z1-.12,H.z1-.02,C.frame)));P.push(lid(ext(H.x0,-6.4,F1+1.95,F1+2.05,H.z1-.14,H.z1,C.frame)));
+ W.push(lid(ext(H.x0,-6.4,F1+2.05,EAVE,H.z1-.16,H.z1,C.ext)));
  p(-9.3,-6.5,F1-.2,F1,H.z1,-.85,C.ext);p(-9.3,-6.5,F1-.22,F1-.2,H.z1,-.83,C.cut);
  p(-9.3,-6.5,F1+.95,F1+1.0,-.93,-.87,C.frame);p(-9.3,-6.5,F1+.06,F1+.1,-.92,-.88,C.frame);
  for(let x=-9.25;x<-6.5;x+=.25)p(x-.015,x+.015,F1+.1,F1+.95,-.915,-.885,C.frame);
  for(const x of [-9.3,-6.54])p(x,x+.04,F1+.95,F1+1.0,H.z1,-.87,C.frame);
- p(-9.25,-6.55,F1+1.72,F1+1.76,-1.12,-1.08,C.metal);for(const x of [-9.25,-6.59])p(x,x+.04,F1+1.72,F1+1.76,H.z1,-1.08,C.metal);
- [[-8.9,.5,.62,'#F2EEE6'],[-8.25,.46,.55,'#7FA3C8'],[-7.7,.38,.42,'#E0612A'],[-7.3,.2,.22,'#F2EEE6'],[-7.05,.2,.22,'#3E4447']].forEach(([x,ww,hh,c])=>p(x-ww/2,x+ww/2,F1+1.72-hh,F1+1.72,-1.115,-1.085,c));
+ // The laundry pole hangs from the wall band under the eave, so it and the laundry are lid pieces too (second pass:
+ // once the roof lifted they hung in the air as coloured rectangles).
+ P.push(lid(ext(-9.25,-6.55,F1+1.72,F1+1.76,-1.12,-1.08,C.metal)));for(const x of [-9.25,-6.59])P.push(lid(ext(x,x+.04,F1+1.72,F1+1.76,H.z1,-1.08,C.metal)));
+ [[-8.9,.5,.62,'#F2EEE6'],[-8.25,.46,.55,'#7FA3C8'],[-7.7,.38,.42,'#E0612A'],[-7.3,.2,.22,'#F2EEE6'],[-7.05,.2,.22,'#3E4447']].forEach(([x,ww,hh,c])=>P.push(lid(ext(x-ww/2,x+ww/2,F1+1.72-hh,F1+1.72,-1.115,-1.085,c))));
  acUnit(-9.25,-8.6,F1,H.z1+.08,H.z1+.42);
  // Drainpipe at the south-west corner, gutters, the AC indoor unit and the bedroom window with curtains.
  p(H.x0-.08,H.x0,.3,EAVE+.05,H.z1-.06,H.z1+.02,C.pipe);p(H.x1-.02,H.x1+.06,.3,RIDGE,H.z0-.08,H.z0,C.pipe);
@@ -232,17 +240,16 @@ export function planHero(){
  {const x=H.x0+.16,z0=-4.1,z1=-2.7,y0=F1+.8,y1=F1+2.0;p(x,x+.02,y0,y1,z0,z1,C.sky);
   for(const [a,b,c,d] of [[y0-.05,y0,z0,z1],[y1,y1+.05,z0,z1],[y0,y1,z0-.05,z0],[y0,y1,z1,z1+.05],[y0,y1,(z0+z1)/2-.02,(z0+z1)/2+.02]])p(x,x+.04,a,b,c,d,C.frame);
   p(x+.03,x+.09,y0-.1,y1+.12,z0-.3,z0+.08,'#EFE6D6');p(x+.03,x+.09,y0-.1,y1+.12,z1-.08,z1+.3,'#EFE6D6');p(x+.08,x+.11,y1+.14,y1+.17,z0-.4,z1+.4,C.woodDark);}
- // Roof: the back stub (pent, sloping to the south) and the eave over the balcony; barge boards; the front gutter.
- W.push(slopeX(H.x0-.45,H.x1+.4,H.z0-.45,roofY(H.z0-.45),-5.95,roofY(-5.95),.12,C.roof));
- W.push(slopeX(H.x0-.45,-6.3,-2.6,roofY(-2.6),-.65,roofY(-.65),.12,C.roof));
- P.push(slopeX(H.x1+.38,H.x1+.44,H.z0-.45,roofY(H.z0-.45)+.04,-5.95,roofY(-5.95)+.04,.22,C.fascia));
- P.push(cut(slopeX(-6.32,-6.26,-2.6,roofY(-2.6)+.04,-.65,roofY(-.65)+.04,.22,C.fascia)));   // the eave's inner barge board: only in the section
- p(H.x0-.45,-6.3,roofY(-.65)-.2,roofY(-.65)-.08,-.67,-.57,C.pipe);
- // ----- the lid (doll-house): the rest of the pent roof with its east barge board and gutter; the office's south wall
- // above the door head with a high window; the east wall above the sill head (flat part + a sloped band under the
- // roof), its glass behind the posts and a high window; the west block's window and balcony-door glass.
- W.push(lid(slopeX(H.x0-.45,H.x1+.4,-5.95,roofY(-5.95),-2.6,roofY(-2.6),.12,C.roof)),lid(slopeX(-6.3,H.x1+.4,-2.6,roofY(-2.6),-.65,roofY(-.65),.12,C.roof)));
- P.push(lid(slopeX(H.x1+.38,H.x1+.44,-5.95,roofY(-5.95)+.04,-.65,roofY(-.65)+.04,.22,C.fascia)),lid(ext(-6.3,H.x1+.4,roofY(-.65)-.2,roofY(-.65)-.08,-.67,-.57,C.pipe)));
+ // ----- the lid (doll-house): the WHOLE pent roof in three slopes (back stub, middle, the eaves over the balcony and the
+ // office) with its east barge board and the front gutters — owner 2026-10-10: a stub left over the bed and the eave
+ // over the balcony sliced the loft in two; the office's south wall above the door head with a high window; the east
+ // wall above the sill head (flat part + a sloped band under the roof), its glass behind the posts and a high window;
+ // the west block's window and balcony-door glass.
+ W.push(lid(slopeX(H.x0-.45,H.x1+.4,H.z0-.45,roofY(H.z0-.45),-5.95,roofY(-5.95),.12,C.roof)));
+ W.push(lid(slopeX(H.x0-.45,H.x1+.4,-5.95,roofY(-5.95),-2.6,roofY(-2.6),.12,C.roof)));
+ W.push(lid(slopeX(H.x0-.45,-6.3,-2.6,roofY(-2.6),-.65,roofY(-.65),.12,C.roof)),lid(slopeX(-6.3,H.x1+.4,-2.6,roofY(-2.6),-.65,roofY(-.65),.12,C.roof)));
+ P.push(lid(slopeX(H.x1+.38,H.x1+.44,H.z0-.45,roofY(H.z0-.45)+.04,-.65,roofY(-.65)+.04,.22,C.fascia)));
+ P.push(lid(ext(H.x0-.45,H.x1+.4,roofY(-.65)-.2,roofY(-.65)-.08,-.67,-.57,C.pipe)));
  {const top=roofY(H.z1)-.13;
   W.push(lid(ext(-6.4,H.x1,F0+2.27,top,H.z1-.16,H.z1,C.ext)));
   G.push(lid(ext(-5.5,-3.7,F0+3.3,F0+4.4,H.z1-.02,H.z1+.03,GLASS_LOW,{light:'#FFC27A'})));
@@ -258,7 +265,6 @@ export function planHero(){
   p(-3.9,-3.74,F0,F0+.01,-6.3,-6.26,'#22252a');}
  p(-9.24,-8.64,F0,F0+.86,-4.0,-2.6,'#E8E4DA');p(-9.26,-8.6,F0+.86,F0+.9,-4.02,-2.58,'#7D8B8E');p(-9.1,-8.78,F0+.89,F0+.905,-3.3,-3.05,'#B9C0C8');
  p(-9.24,-8.94,F0+1.5,F0+2.1,-4.0,-2.6,'#E8E4DA');p(-8.95,-8.93,F0+1.55,F0+2.05,-3.32,-3.28,'#9C998F');
- for(const z of [-3.1]) for(const x of [-8.15,-6.95])p(x-.22,x+.22,F0,F0+.07,z-.22,z+.22,'#E0612A');
  p(-5.25,-3.75,F0+1.6,F0+2.55,H.z0+.16,H.z0+.19,'#C9CCC6');sign('whiteboard',-4.5,F0+2.075,H.z0+.196,1.36,.83,'+z');
  p(-5.0,-4.0,F0+1.52,F0+1.56,H.z0+.16,H.z0+.24,'#9C998F');
  {const x0=-5.8,x1=-3.6,y0=F0+4.3,y1=F0+5.2,z=H.z0+.16;p(x0,x1,y0,y1,z,z+.02,C.sky);for(const [a,b,c,d] of [[x0,x1,y0-.05,y0],[x0,x1,y1,y1+.05],[x0-.05,x0,y0,y1],[x1,x1+.05,y0,y1],[-4.72,-4.68,y0,y1]])p(a,b,c,d,z,z+.05,C.frame);}
@@ -435,7 +441,7 @@ export function fillers(){
  const tank=(x,z)=>{for(const a of [0,Math.PI/4])P.push({...ext(x-.48,x+.48,y,y+1.6,z-.48,z+.48,'#B9C6C4'),ry:a});};
  const planter=(x,z,i)=>{p(x-.3,x+.3,y,y+.4,z-.3,z+.3,['#9A7A60','#B9C6C4','#7D8B8E'][i%3]);P.push({...ext(x-.36,x+.36,y+.4,y+.72,z-.36,z+.36,i%2?C.green:C.green2),ry:i*.7});};
  // ----- south strip
- shed(-13.4,-9.4,11.0,14.2,6);
+ shed(-13.4,-9.4,11.0,14.2,4);   // bikes ≥ 0.9 apart everywhere (second pass): closer rows merged into one dark jumble
  pad(-8.9,-6.1,13.4,14.7,'#B4B1A7');p(-8.9,-6.1,y,y+1.6,14.45,14.7,C.block);
  [[-8.4,'#EDEDE8'],[-7.5,'#C63B34'],[-6.6,'#2E6FB0']].forEach(([x,c])=>{p(x-.43,x+.43,y,y+1.75,13.75,14.4,c);g({light:'#EAF4FF'},x-.34,x+.34,y+.95,y+1.3,14.4,14.43,'#CFE3EA');});
  p(-8.75,-8.4,y,y+.8,13.2,13.6,'#7D8B8E');pools.push([-7.5,14.9,'#EAF4FF',1.6,.45,.21]);
@@ -452,7 +458,7 @@ export function fillers(){
   W.push(slopeX(3.7,10.3,12.5,y+4.9,14.3,y+3.4,.14,C.roof),slopeX(3.7,10.3,10.7,y+3.4,12.5,y+4.9,.14,C.roof));p(3.7,10.3,y+4.86,y+4.96,12.4,12.6,'#3A414A');
   p(6.3,8.1,y+2.3,y+3.0,14.0,14.05,'#2F4F8A');g({light:'#FFC27A'},6.5,7.9,y+.1,y+2.2,14.0,14.04,GLASS_LOW);p(6.2,8.2,y+3.0,y+3.08,13.95,14.12,'#4A3A2E');
   p(9.4,10.1,y,y+10.0,11.0,11.7,'#9C998F');p(9.35,10.15,y+10.0,y+10.3,10.95,11.75,'#4F5658');
-  for(let i=0;i<4;i++)bike(4.5+i*.6,14.4,false,i);post(3.9,14.3,3.4);g({light:'#FF9E7A'},3.55,4.25,y+3.4,y+4.1,14.24,14.36,C.red);
+  for(let i=0;i<3;i++)bike(4.6+i*.9,14.4,false,i);post(3.9,14.3,3.4);g({light:'#FF9E7A'},3.55,4.25,y+3.4,y+4.1,14.24,14.36,C.red);
   pools.push([7.2,14.9,'#FFD9A0',2.4,.5,.21]);}
  // ----- east pad: the kōban on the corner, the apron behind it
  {const x0=11.3,x1=13.3,z0=4.5,z1=6.7,H=5.6;pad(10.6,13.85,4.4,14.6,'#B4B1A7');w(x0,x1,y,y+H,z0,z1,'#EAE6DD');p(x0+.1,x1-.1,y+H,y+H+.03,z0+.1,z1-.1,'#7C8A80');
@@ -467,8 +473,8 @@ export function fillers(){
  {pad(-9.4,-6.4,-10.5,-7.6,'#6F8F5E');for(const x of [-9.1,-6.7])post(x,-9.0,1.95,'#B9B6AE');p(-9.1,-6.7,y+1.9,y+1.93,-9.015,-8.985,'#B9B6AE');
   [[-8.7,'#E8E4DA'],[-8.2,'#9DB4C8'],[-7.7,'#D9A5A0'],[-7.2,'#F2E6B8']].forEach(([x,c],i)=>P.push({...ext(x-.17,x+.17,y+1.37,y+1.87,-9.01,-8.99,c),ry:(i%2?.15:-.12)}));
   P.push({...ext(-7.2,-6.6,y,y+.6,-10.3,-9.7,'#5E7A4E'),ry:.4});}
- shed(-6.0,-2.4,-10.5,-7.8,5);
- {pad(-2.2,.4,-6.3,-.8,'#C9C5BA');for(const z of [-5.8,-5.0,-4.2,-3.4,-2.6,-1.8])p(-1.9,-.1,y+.045,y+.05,z-.02,z+.02,'#ECEAE2');p(-1.04,-.96,y+.28,y+.33,-5.8,-1.8,'#8E9392');for(let i=0;i<5;i++)bike(-1.0,-5.4+i*.8,true,i);planter(-1.7,-1.1,0);planter(-.1,-1.1,1);}
+ shed(-6.0,-2.4,-10.5,-7.8,3);
+ {pad(-2.2,.4,-6.3,-.8,'#C9C5BA');for(const z of [-5.8,-4.8,-3.8,-2.8,-1.8])p(-1.9,-.1,y+.045,y+.05,z-.02,z+.02,'#ECEAE2');p(-1.04,-.96,y+.28,y+.33,-5.8,-1.8,'#8E9392');for(let i=0;i<4;i++)bike(-1.0,-5.3+i*1.0,true,i);planter(-1.7,-1.1,0);planter(-.1,-1.1,1);}
  {pad(1.0,5.8,-10.5,-7.3,'#6B5443');[-9.9,-9.1,-8.3].forEach((z,i)=>{p(1.3,4.8,y+.04,y+.26,z-.21,z+.21,'#5A4634');p(1.4,4.7,y+.26,y+.54,z-.17,z+.17,['#7FA66B','#3E7A5C','#5E8F3E'][i]);});
   p(5.0,5.7,y,y+1.7,-10.4,-9.5,'#8E9392');p(4.94,5.76,y+1.7,y+1.76,-10.46,-9.44,'#6E7774');post(1.3,-7.6,.9,'#8E9392',.06);}
  {const x0=6.6,x1=13.4,z0=-10.5,z1=-6.1,H=5.5,net='#3E7A5C';pad(x0,x1,z0,z1,'#5F9C4C');

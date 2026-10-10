@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {buildHeroHome,planHero,homeRoute,floorAt,mailboxFlag,lightsFor,deskProject,boardText,FURNITURE,HOUSE,OFFICE,BEDROOM,LIVING,LOT,GATE,STAIR,DESK_POINT,BED_POINT,F0,F1,EXAMPLES,heightOf,roofOpen,ROOF_RULE,fillers,bicycle} from '../src/hero-home.js';
+import {buildHeroHome,planHero,homeRoute,floorAt,mailboxFlag,lightsFor,deskProject,boardText,FURNITURE,HOUSE,OFFICE,BEDROOM,LIVING,LOT,GATE,STAIR,DESK_POINT,BED_POINT,F0,F1,EAVE,EXAMPLES,heightOf,roofOpen,ROOF_RULE,fillers,bicycle,WHEEL} from '../src/hero-home.js';
 import {HOME_DESK,HOME_BED,sub01Goal,planRoute} from '../src/world-sync.js';
 import {places} from '../src/state.js';
 
@@ -111,22 +111,55 @@ test('hero-home doll-house: the roof rule (zoom ≥ 1.1, view centred within 9 o
  // Following SUB-01 indoors (main.js: zoom 1.5 / 1.1 on mobile, target on him) opens it by the same rule.
  assert.equal(roofOpen({zoom:1.1,target:BED_POINT}),true);
  const plan=planHero(),all=[...plan.walls,...plan.props,...plan.glass],lid=all.filter(b=>b.lid),cut=all.filter(b=>b.cut);
- assert.ok(lid.length>=15&&lid.length<=40,`lid pieces ${lid.length}`);assert.equal(cut.length,1,'the balcony eave barge board shows only in the section');
+ assert.ok(lid.length>=15&&lid.length<=40,`lid pieces ${lid.length}`);assert.equal(cut.length,0,'nothing is section-only: the open house is the closed one minus the lid');
  for(const b of lid)assert.ok(b.y>F0+1,'lid pieces sit above the sill cut');
- const roof=plan.walls.filter(b=>b.lid&&b.rx);assert.ok(roof.length>=2,'two more roof slopes');
- assert.ok(roof.some(b=>b.z<-3&&b.z>-5.95),'the middle of the roof is covered');assert.ok(roof.some(b=>b.z>-2.6&&b.x>-6.3),'the eave over the office');
+ // The WHOLE roof lifts (second pass: a stub left over the bed and the eave over the balcony sliced the loft): every
+ // sloped roof-coloured wall of the house is a lid piece, and the slopes cover the plan from the back to the eave.
+ const house=b=>b.z<0&&b.x>HOUSE.x0-1&&b.x<HOUSE.x1+1,roof=plan.walls.filter(b=>house(b)&&b.rx&&b.color==='#4E5864');
+ assert.ok(roof.length>=4,`roof slopes ${roof.length}`);assert.ok(roof.every(b=>b.lid),'no roof piece stays over the open house');
+ assert.ok(roof.some(b=>b.z<-5.95),'the back stub');assert.ok(roof.some(b=>b.z<-3&&b.z>-5.95),'the middle of the roof is covered');
+ assert.ok(roof.some(b=>b.z>-2.6&&b.x>-6.3),'the eave over the office');assert.ok(roof.some(b=>b.z>-2.6&&b.x<-6.3),'the eave over the balcony');
  assert.ok(lid.some(b=>b.light),'the lid carries lit glass for the night');
+ // The loft's south wall above its floor (the band under the eave, the balcony door frames) lifts with the roof.
+ assert.ok(plan.walls.some(b=>b.lid&&b.y>F1+2&&b.y<F1+2.6&&b.x<-6.4&&b.z>HOUSE.z1-.2),'the band over the balcony doors is lid');
+ assert.ok(plan.props.filter(b=>b.lid&&b.y>F1&&b.y<F1+1.2&&b.z>HOUSE.z1-.2&&b.x<-6.4).length>=3,'the balcony door frames are lid');
+ // No barge board (sloped prop at roof level) and no front gutter (pipe-coloured, on the south eave) stays behind without the roof.
+ for(const b of plan.props)if(house(b)&&!b.m&&((b.rx&&b.y>EAVE-.3)||(b.color==='#8D918C'&&b.y>EAVE-.5&&b.z>-1)))assert.ok(b.lid,`a roof-level prop stays: ${JSON.stringify(b)}`);
+});
+
+test('hero-home interior: a solid stepped stair on the floor meeting the landing, plaster balustrades instead of black posts',()=>{
+ const plan=planHero(),onStair=b=>b.w<1&&b.x>STAIR.x0&&b.x<STAIR.x1&&b.z<STAIR.zBottom+.05&&b.z>STAIR.zTop-.05;   // w<1: not the floor slab
+ const steps=plan.props.filter(b=>onStair(b)&&b.color==='#C9965E'),nosings=plan.props.filter(b=>onStair(b)&&b.color==='#8E6A45');
+ assert.equal(steps.length,11,'eleven step blocks');assert.equal(nosings.length,11,'a nosing on each');
+ for(const s of steps)assert.ok(Math.abs(s.y-s.h/2-F0)<1e-9,'every step block stands on the floor');
+ const top=Math.max(...nosings.map(b=>b.y+b.h/2)),rise=(F1-F0)/12;assert.ok(Math.abs(top-(F1-rise))<1e-9,'the last tread is one rise under the landing');
+ assert.ok(Math.abs(Math.min(...steps.map(b=>b.z-b.d/2))-STAIR.zTop)<1e-9,'the top step reaches the landing edge');
+ // No thin dark rails or posts are left inside the house (the window and door frames on the walls are not inside).
+ const dark=plan.props.filter(b=>!b.m&&b.color==='#3E4447'&&b.x>HOUSE.x0+.3&&b.x<HOUSE.x1-.3&&b.z>HOUSE.z0+.3&&b.z<HOUSE.z1-.3&&b.y>F0&&b.y<F1+1.2&&Math.min(b.w,b.d)<.05&&b.h>.5);
+ assert.equal(dark.length,0,`black posts: ${dark.length}`);
+ const panels=plan.props.filter(b=>b.color==='#EEE8DB'&&Math.abs(b.y-(F1+.45))<1e-6&&Math.abs(b.h-.9)<1e-6);
+ assert.equal(panels.length,2,'two balustrade panels');assert.ok(panels.some(b=>Math.abs(b.x+6.43)<1e-9),'one along the loft edge');assert.ok(panels.some(b=>Math.abs(b.x+5.63)<1e-9),'one along the landing');
+ // No loose orange cushions on the living-room floor (they read as floating boxes).
+ assert.ok(!plan.props.some(b=>b.color==='#E0612A'&&b.h<=.08&&b.y<F0+.1&&b.x>HOUSE.x0&&b.x<HOUSE.x1),'no flat orange squares on the floor');
+ // The balcony laundry and its pole hang from the wall band under the eave, so they lift with it (else they float).
+ const laundry=plan.props.filter(b=>b.y>F1+1&&b.y<F1+1.8&&b.z<-1.0&&b.z>-1.2&&b.x<-6.5&&b.x>-9.3);
+ assert.ok(laundry.length>=6,`laundry pieces ${laundry.length}`);assert.ok(laundry.every(b=>b.lid),'the laundry and its pole are lid pieces');
+ // SUB-01's orange bike stands on the sidewalk west of the gate (not hidden behind the block wall), clear of the planters and the mailbox pillar.
+ const bike=plan.props.filter(b=>b.wheel&&b.z>-.7&&b.z<-.2);assert.equal(bike.length,4,'his bike is on the sidewalk');
+ for(const b of bike){assert.ok(b.x<-5.6&&b.x>-6.9,'between the mailbox pillar and the planter');assert.ok(!inside(b,LOT),'outside the lot');assert.ok(Math.abs(b.y-b.h/2-.2025)<1e-9,'standing on the sidewalk');}
 });
 
 test('hero-home doll-house: the lid lifts away in 0.4 s when the camera looks inside, returns outside, obeys setRoof; still 7 draw calls',async()=>{
  const scene=new THREE.Scene(),hero=await buildHeroHome(scene,{template,interactive:[],addLabel(){},places:{},getWorld:()=>({sub01:{state:'idle'},plots:[]}),getLife:()=>null});
  const plan=hero.plan,walls=hero.root.children.find(c=>c.name==='hero walls'),props=hero.root.children.find(c=>c.name==='hero props'),m=new THREE.Matrix4();
- const li=plan.walls.findIndex(b=>b.lid),ci=plan.props.findIndex(b=>b.cut);assert.ok(li>=0&&ci>=0);
- walls.getMatrixAt(li,m);assert.notEqual(m.determinant(),0,'roof on at start');props.getMatrixAt(ci,m);assert.equal(m.determinant(),0,'cut piece hidden at start');
+ const li=plan.walls.findIndex(b=>b.lid),pi=plan.props.findIndex(b=>b.lid);assert.ok(li>=0&&pi>=0);
+ walls.getMatrixAt(li,m);assert.notEqual(m.determinant(),0,'roof on at start');props.getMatrixAt(pi,m);assert.notEqual(m.determinant(),0,'lid props on at start');
  let t=0;const inside=aimed(DESK_POINT.x,DESK_POINT.z,1.4);
  for(;t<.2;t+=.05)hero.update(.05,t,inside);assert.ok(hero.roofT>0&&hero.roofT<1,`mid-way at 0.2 s (${hero.roofT})`);
  for(;t<1;t+=.05)hero.update(.05,t,inside);assert.equal(hero.roofT,1);assert.equal(hero.roofOpen,true);
- walls.getMatrixAt(li,m);assert.equal(m.determinant(),0,'the roof is gone');props.getMatrixAt(ci,m);assert.notEqual(m.determinant(),0,'the section barge board shows');
+ walls.getMatrixAt(li,m);assert.equal(m.determinant(),0,'the roof is gone');props.getMatrixAt(pi,m);assert.equal(m.determinant(),0,'the lid props are gone too');
+ // Every lid instance in every batch is gone: nothing of the roof or the lifted walls is left hanging.
+ for(const [list,mesh] of [[plan.walls,walls],[plan.props,props],[plan.glass,hero.root.children.find(c=>c.name==='hero glass')]])list.forEach((b,i)=>{if(!b.lid)return;mesh.getMatrixAt(i,m);assert.equal(m.determinant(),0,`lid piece ${i} still shows`);});
  const far=aimed(-2,2,.6);for(let k=0;k<30;k++)hero.update(.05,t+k*.05,far);assert.equal(hero.roofT,0);walls.getMatrixAt(li,m);assert.notEqual(m.determinant(),0,'the roof is back');
  const elsewhere=aimed(6,4,1.4);for(let k=0;k<30;k++)hero.update(.05,t+k*.05,elsewhere);assert.equal(hero.roofT,0,'zoomed on the Workshop corner: roof on');
  hero.setRoof(false);hero.update(.5,99,null);assert.equal(hero.roofT,1,'setRoof(false) lifts it without a camera');
@@ -149,15 +182,22 @@ test('hero-home interior: furniture stands clear of the walls\' inner faces and 
  assert.ok(FURNITURE.find(f=>f.item==='rugRound'&&f.room==='office'),'round office rug');assert.ok(!FURNITURE.some(f=>f.item==='rugRectangle'),'no 3×2 slab rug');
 });
 
-test('hero-home fillers: sheds, bikes, kōban, sentō, cage stay out of the house lot and the example volumes; bikes are hollow-wheeled',()=>{
+test('hero-home fillers: sheds, bikes, kōban, sentō, cage stay out of the house lot and the example volumes; bikes have solid wheels',()=>{
  const fl=fillers(),vols=[{id:'lot',...LOT},...Object.entries(EXAMPLES).map(([id,e])=>{const za=e.frontZ,zb=e.frontZ-e.fz*e.d;return {id,x0:e.x-e.w/2,x1:e.x+e.w/2,z0:Math.min(za,zb),z1:Math.max(za,zb)};})];
  // Footprint of a box: rotations about x widen z, about z widen x, about y both (bike tubes carry a matrix: a 1×1 stamp).
  const foot=b=>{if(b.m)return {x0:b.x-.5,x1:b.x+.5,z0:b.z-.5,z1:b.z+.5};const xr=b.rz?Math.hypot(b.w,b.h)/2:b.ry?Math.hypot(b.w,b.d)/2:b.w/2,zr=b.rx?Math.hypot(b.h,b.d)/2:b.ry?Math.hypot(b.w,b.d)/2:b.d/2;
   return {x0:b.x-xr,x1:b.x+xr,z0:b.z-zr,z1:b.z+zr};};
  let n=0;for(const b of [...fl.W,...fl.P,...fl.G]){const f=foot(b);n++;for(const v of vols)assert.ok(!(f.x0<v.x1&&v.x0<f.x1&&f.z0<v.z1&&v.z0<f.z1),`filler at ${b.x.toFixed(2)},${b.z.toFixed(2)} inside ${v.id}`);}
  assert.ok(n>200,'the fillers are there');
- const P=[];bicycle(P,0,0,0,true);assert.ok(P.length>=18&&P.length<=22,'a bike is ~19 boxes');
- const rims=P.filter(b=>b.rz!==undefined);assert.equal(rims.length,12,'two hexagon rims of six segments');
- assert.ok(rims.every(b=>b.h<.06),'rim segments are thin (hollow wheels, not slabs)');
- const Q=[];bicycle(Q,0,0,0,false);assert.equal(Q.filter(b=>b.rx!==undefined).length,12,'rims turn about x when the bike points along z');
+ // Bikes stand ≥ 0.85 apart (wheel to wheel; a bike's own wheels are 0.9 apart): closer rows merged into a dark jumble.
+ const hubs=[...new Set(fl.P.filter(b=>b.wheel).map(b=>`${b.x.toFixed(3)},${b.z.toFixed(3)}`))].map(s=>s.split(',').map(Number));
+ assert.ok(hubs.length>=20,`wheel positions ${hubs.length}`);
+ for(let i=0;i<hubs.length;i++)for(let j=i+1;j<hubs.length;j++)assert.ok(Math.hypot(hubs[i][0]-hubs[j][0],hubs[i][1]-hubs[j][1])>=.85,`wheels too close at ${hubs[i]} / ${hubs[j]}`);
+ // A bike (second pass: the hexagon rims read as broken geometry): two solid octagon wheels — a square plus the same
+ // square turned 45° about the axle — a four-tube frame, a saddle and a handlebar; 10 boxes, like the city's mamachari.
+ const P=[];bicycle(P,0,0,0,true);assert.equal(P.length,10,'a bike is 10 boxes');
+ const wheels=P.filter(b=>b.wheel);assert.equal(wheels.length,4,'two wheels of two solid squares');
+ for(const b of wheels){assert.ok(b.w===2*WHEEL&&b.h===2*WHEEL&&b.d<.06,'a solid disc face, thin along the axle');assert.ok(b.rz===0||b.rz===Math.PI/4,'turned about the axle (z) when the bike points along x');assert.ok(Math.abs(b.y-WHEEL)<1e-9,'the wheel stands on the ground');}
+ assert.equal(P.filter(b=>b.m).length,4,'four frame tubes');assert.ok(!P.some(b=>b.h<.03&&!b.m),'no hairline pieces');
+ const Q=[];bicycle(Q,0,0,0,false);assert.equal(Q.filter(b=>b.wheel&&b.rx!==undefined&&b.w<.06).length,4,'wheels turn about x when the bike points along z');
 });
