@@ -157,8 +157,8 @@ test('profileKit: logo + header files and bio/site texts for the owner; nothing 
 // ---------------------------------------------------------------- the dev buy (desk-flows.js devBuyModel/parseDevBuy, desk.js renderDevBuy)
 import {devBuyModel,parseDevBuy,renderDevBuy} from '../src/desk.js';
 const OPTS={initialBuyLamports:0,maxInitialBuyLamports:5e9,locked:false,editable:true};
-test('devBuyModel: owner at the launch step only; cap from the server (never above 5); locked while a transaction exists',()=>{
- assert.equal(devBuyModel(null),null);assert.equal(devBuyModel(view('preview_ready',{launchOptions:OPTS})),null,'not before the launch step');
+test('devBuyModel: owner from the approve step on; cap from the server (never above 5); locked while a transaction exists',()=>{
+ assert.equal(devBuyModel(null),null);assert.equal(devBuyModel(view('preview_ready',{launchOptions:OPTS}))?.editable,true,'settable from the approve step (preview_ready) on');assert.equal(devBuyModel(view('generating',{launchOptions:OPTS})),null,'not while SUB-01 builds');
  assert.equal(devBuyModel(view('launch_prepared')),null,'no launchOptions (visitor payload)');assert.equal(devBuyModel(view('launch_prepared',{owner:false,launchOptions:OPTS})),null);
  const a=devBuyModel(view('approved',{launchOptions:OPTS}));assert.deepEqual([a.sol,a.text,a.max,a.step,a.locked,a.editable,a.reprepares],[0,'0 SOL',5,0.01,false,true,false]);assert.match(a.note,/at most 5 SOL/);assert.equal(a.lockNote,'');
  const lp=devBuyModel(view('launch_prepared',{launchOptions:{...OPTS,initialBuyLamports:250000000,maxInitialBuyLamports:2e9}}));assert.deepEqual([lp.sol,lp.text,lp.max,lp.reprepares],[0.25,'0.25 SOL',2,true]);

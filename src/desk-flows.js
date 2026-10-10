@@ -85,7 +85,7 @@ export const stepIndex=id=>Math.max(0,STEP_IDS.indexOf(id));
 // {initialBuySol}; 409 intent_exists while a transaction exists (cancel it first); a change after the configuration was
 // prepared makes the server prepare it again (approved → launch_prepared), so the stepper shows "preparing" for a moment.
 export const DEV_BUY_MAX_SOL=5,DEV_BUY_STEP=0.01;
-const DEV_BUY_STATES=new Set(['approved','launch_prepared','awaiting_signature','confirming']);
+const DEV_BUY_STATES=new Set(['preview_ready','approved','launch_prepared','awaiting_signature','confirming']);   // from the approve step on (the owner never saw it inside step 4)
 /** devBuyModel(view) -> null (not the owner's, or not at the launch step) | {sol, text, max, step, locked, editable, note, lockNote, reprepares} */
 export function devBuyModel(view){
  const v=view&&typeof view==='object'?view:null,o=v?.launchOptions&&typeof v.launchOptions==='object'?v.launchOptions:null;

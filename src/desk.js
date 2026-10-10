@@ -261,6 +261,8 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    const open=s.state==='current'||s.state==='blocked'||(s.id==='live'&&m.live);
    if(!open){if(s.id==='site'&&s.action)main.append(el('div',{className:'pc-step-acts'},el('button',{className:'pc-link',type:'button',textContent:s.action.label,onclick:()=>show('site')})));continue;}
    if(s.id==='approve'&&m.split.rows.length)main.append(splitBox(m.split,m.approve?.statement));
+   // 2026-10-10 the owner: the dev buy must be settable before approving, not only inside step 4
+   if(s.id==='approve'){const dev=devBuyModel(view);if(dev)main.append(renderDevBuy(dev,{onSave:async sol=>{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/options`,{method:'PUT',body:{initialBuySol:sol}});await refresh();}}));}
    // the dev buy sits above "Prepare the transaction"; while the review card is open its row is on the card instead
    const dev=s.id==='launch'&&!flight?.tx?devBuyModel(view):null;
    if(dev)main.append(renderDevBuy(dev,{onSave:async sol=>{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/options`,{method:'PUT',body:{initialBuySol:sol}});await refresh();}}));
