@@ -16,7 +16,6 @@ export const hiddenMaterials=outfit=>[...(OUTFIT_MATS[outfit]?.hide||[])];
 let clips=null;
 const fits=new WeakMap();
 const _a=new THREE.Vector3(),_b=new THREE.Vector3(),_q=new THREE.Quaternion(),_w=new THREE.Quaternion(),_p=new THREE.Quaternion();
-const FWD=new THREE.Vector3(),DOWN=new THREE.Vector3(0,-1,0);
 // Rotates bone so the segment bone→child points along a world direction (rig-axis agnostic).
 // k<1 blends from the clip's pose (emotes ease in and out).
 function aim(bone,child,dir,k=1){
@@ -24,9 +23,26 @@ function aim(bone,child,dir,k=1){
  _q.setFromUnitVectors(_b.normalize(),dir);if(k<1)_q.slerp(_I,1-k);bone.getWorldQuaternion(_w).premultiply(_q);
  bone.parent.getWorldQuaternion(_p).invert();bone.quaternion.copy(_p.multiply(_w));bone.updateMatrixWorld(true);
 }
+// Rotates bone so one of its own axes (unit, bone space) points along a world direction: for a limb whose end is no child
+// bone (the Quaternius shin: the feet hang off Root as IK targets).
+function aimAxis(bone,axis,dir,k=1){
+ bone.getWorldQuaternion(_w);_b.copy(axis).applyQuaternion(_w);_q.setFromUnitVectors(_b,dir);if(k<1)_q.slerp(_I,1-k);_w.premultiply(_q);
+ bone.parent.getWorldQuaternion(_p).invert();bone.quaternion.copy(_p.multiply(_w));bone.updateMatrixWorld(true);
+}
 // Rotates bone by angle about a world axis.
 function turn(bone,axis,angle){if(!bone||!angle)return;_q.setFromAxisAngle(axis,angle);bone.getWorldQuaternion(_w).premultiply(_q);
  bone.parent.getWorldQuaternion(_p).invert();bone.quaternion.copy(_p.multiply(_w));bone.updateMatrixWorld(true);}
+// Seated leg, side view (pure): the hip joint S above the floor, thigh a, shin b, forward = +z, up = +y, relative to the hip.
+// A low seat keeps the thigh level (lifted by `lift` radians on the floor) and leans the shin forward until the foot
+// reaches the floor; a high seat dips the thigh so the shin stays vertical; higher than the leg is long, the feet dangle.
+export function seatedLeg(S,a,b,lift=0){
+ if(S<=b){const kz=a*Math.cos(lift),ky=a*Math.sin(lift),h=S+ky;return {knee:[kz,ky],foot:[kz+Math.sqrt(Math.max(0,b*b-h*h)),-S]};}
+ const th=Math.asin(Math.min(1,(S-b)/a)),kz=a*Math.cos(th),ky=-a*Math.sin(th);return {knee:[kz,ky],foot:[kz,Math.max(-S,ky-b)]};
+}
+// Sit styles: back lean (radians about the hips, negative reclines), thigh lift, knee splay, where the hands go, head tilt.
+export const SIT_STYLES={chair:{lean:.04,lift:0,splay:.02,hands:'thigh',head:.04},sofa:{lean:-.3,lift:.08,splay:.07,hands:'thigh',head:-.02},
+ desk:{lean:.1,lift:0,splay:.02,hands:'desk',head:.14},floor:{lean:.14,lift:.5,splay:.16,hands:'knee',head:.06,hip:.12}};
+const smooth=k=>k*k*(3-2*k);
 // Emote catalogue: base clip, seconds (Infinity loops until stopEmote), and whether the emote moves the root itself.
 export const EMOTE_DEFS={wave:{clip:'Wave',time:2.2},sit:{clip:'Idle_Neutral',time:Infinity},think:{clip:'Idle_Neutral',time:4},sleep:{time:Infinity},
  dance:{clip:'Idle',time:Infinity},facepalm:{clip:'Idle_Neutral',time:2},cook:{clip:'Interact',time:4},selfie:{clip:'Idle_Neutral',time:2.4},
@@ -75,16 +91,46 @@ export async function loadCharacter(look={},{template}){
  const hips=findBone(model,/^hips$|pelvis/),chest=findBone(model,/^chest$|spine2|upperchest/),head=findBone(model,/^head$|head$/);
  model.updateMatrixWorld(true);const len=(a,b)=>a.getWorldPosition(_a).distanceTo(b.getWorldPosition(_b));
  const thighLen=legs[0]?len(legs[0].thigh,legs[0].knee):HEIGHT*.25,hipY=legs[0]?legs[0].thigh.getWorldPosition(_a).y:HEIGHT*.5;
+ // The rig loads mid-animation, so the shin's own axis, its length (as a share of the thigh) and the flat foot come from
+ // the bind pose (skeleton.boneInverses). The feet are keyed by every clip; when seated they are put at the shin's end.
+ {const sk=skeletons[0],bind=b=>{const i=sk?sk.bones.indexOf(b):-1;if(i<0)return null;const m=sk.boneInverses[i].clone().invert(),p=new THREE.Vector3(),q=new THREE.Quaternion();m.decompose(p,q,new THREE.Vector3());return {p,q};};
+  for(const l of legs){const T=bind(l.thigh),K=bind(l.knee),F=bind(l.foot);
+   if(!T||!K||!F){l.axis=new THREE.Vector3(0,-1,0);l.shin=thighLen;l.flat=null;continue;}
+   const v=F.p.clone().sub(K.p),t=K.p.clone().sub(T.p);l.shin=thighLen*(t.length()?v.length()/t.length():1);
+   l.axis=v.normalize().applyQuaternion(K.q.clone().invert());l.flat=l.foot.parent===l.knee?null:F.q;}}
  // Bones the emotes rotate relatively: a clip may not key them (Idle leaves Hips alone), so their pre-emote rotation is put back
  // before every mixer update, or the turns would pile up frame after frame.
  const turned=[hips,chest,head].filter(Boolean),pre=turned.map(b=>b.quaternion.clone());
  const headAt=head?head.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,HEIGHT*.85,0);   // in inner space: root and inner are identity here
  // Caller placement: sit keeps feet on the floor and the hip joint at offsets.seat; lie centres the body on the root, back at y=0, head toward -z.
- const offsets={seat:hipY-thighLen,lieLength:HEIGHT};
- function pose(next=null){kind=next==='sit'||next==='lie'?next:null;inner.position.set(0,0,0);inner.rotation.set(0,0,0);
-  if(kind==='sit')inner.position.y=-thighLen;
-  if(kind==='lie'){inner.rotation.x=-Math.PI/2;inner.position.set(0,fit.back,HEIGHT/2);}
+ const offsets={seat:hipY-thighLen,thigh:thighLen,lieLength:HEIGHT};
+ // Sitting: pose('sit',{style,hip,deskY}) — style from SIT_STYLES (chair), hip = the hip joint's height above the floor once
+ // seated (offsets.seat when the root stands on the floor), deskY = the desk top (world height) for the desk style.
+ // The bones blend into the seat over .3 s and back out after pose(null), so neither end pops.
+ let sitK=0,sitT=0,sit={style:'chair',hip:offsets.seat,deskY:null};
+ function pose(next=null,opts={}){kind=next==='sit'||next==='lie'?next:null;inner.position.set(0,0,0);inner.rotation.set(0,0,0);
+  if(kind==='sit'){sit={style:SIT_STYLES[opts.style]?opts.style:'chair',hip:opts.hip>0?opts.hip:offsets.seat,deskY:opts.deskY>0?opts.deskY:null};if(!sitK)sitT=0;}
+  if(kind==='lie'){sitK=0;inner.rotation.x=-Math.PI/2;inner.position.set(0,fit.back,HEIGHT/2);}
   const b=base;play(kind?'Idle_Neutral':b);base=b;}
+ // The seated pose on top of whatever clip plays: legs solved so the feet rest on the floor, the feet set flat at the shin's
+ // end, hands on the thighs / knees / desk, the back leaned per style, a slow breath in the chest and head. e = blend 0..1.
+ const _k=new THREE.Vector3(),_f=new THREE.Vector3(),_h=new THREE.Vector3(),_fq=new THREE.Quaternion();
+ function applySit(style,e,t){
+  const st=SIT_STYLES[style]||SIT_STYLES.chair,floorSit=style==='floor',hip=floorSit?st.hip:sit.hip,drop=floorSit?Math.max(0,hipY-st.hip):thighLen;
+  inner.position.y=-drop*e;inner.updateWorldMatrix(true,false);inner.getWorldQuaternion(_rq);AX.set(1,0,0).applyQuaternion(_rq);AY.set(0,1,0).applyQuaternion(_rq);AZ.set(0,0,1).applyQuaternion(_rq);
+  const floorY=drop*e-(floorSit?0:hip-offsets.seat);   // the floor in inner space
+  turn(hips,AX,st.lean*e);
+  if(chest)turn(chest,AX,Math.sin(t*1.3)*.014*e);if(head)turn(head,AX,(st.head+Math.sin(t*.9+1)*.018)*e);
+  legs.forEach((l,i)=>{const s=i?-1:1;inner.worldToLocal(l.thigh.getWorldPosition(_h));const S=Math.max(.05,_h.y-floorY),g=seatedLeg(S,thighLen,l.shin,st.lift);
+   _k.set(_h.x+s*st.splay,_h.y+g.knee[1],_h.z+g.knee[0]);_f.set(_h.x+s*st.splay,_h.y+g.foot[1],_h.z+g.foot[0]);
+   aim(l.thigh,l.knee,toward(l.thigh,_k.x,_k.y,_k.z),e);aimAxis(l.knee,l.axis,toward(l.knee,_f.x,_f.y,_f.z),e);
+   if(l.flat){_t.copy(_f);inner.localToWorld(_t);l.foot.parent.worldToLocal(_t);l.foot.position.lerp(_t,e);
+    model.getWorldQuaternion(_fq).multiply(l.flat);l.foot.parent.getWorldQuaternion(_p).invert().multiply(_fq);l.foot.quaternion.slerp(_p,e);l.foot.updateMatrixWorld(true);}
+   const arm=arms[i];if(!arm)return;
+   if(st.hands==='desk'){const y=sit.deskY?floorY+sit.deskY+.03:_h.y+.32;reach(arm,.12,-.75,.55,_h.x+s*.16,y,_h.z+.42+Math.sin(t*7+i*2)*.01,e);}
+   else if(st.hands==='knee')reach(arm,.18,-.85,.5,_k.x+s*.02,_k.y+.06,_k.z-.08,e);
+   else reach(arm,.14,-1,.28,_h.x+s*.06+(_k.x-_h.x)*.55,_h.y+(_k.y-_h.y)*.55+.08,_h.z+(_k.z-_h.z)*.55,e);});
+ }
  // ---- emotes
  let em=null,emT=0,emDone=null,emPhase=0,flashMat=null,kit=null;
  // Props live under inner and follow the hand each frame (no bone parenting: rig scales differ). Built on first use.
@@ -103,7 +149,7 @@ export async function loadCharacter(look={},{template}){
  function reach(arm,ux,uy,uz,x,y,z,k){if(!arm)return;aim(arm.up,arm.low,dir(ux*arm.s,uy,uz),k);aim(arm.low,arm.hand,toward(arm.low,x,y,z),k);}
  const FACE=[0,.07,.12];
  const RUN={
-  sit(t,k){if(kind)return;inner.position.y=-(hipY-.12);for(const l of legs){aim(l.thigh,l.knee,dir(0,-.05,1));aim(l.knee,l.foot,dir(0,-.3,1));}},
+  sit(t,k){if(kind)return;applySit('floor',k,t);},
   sleep(t){inner.scale.z=1+Math.sin(t*1.7)*.035;},
   dance(t,k){const b=t*Math.PI*2.2,s=Math.sin(b*.5),uL=.5+.5*s,uR=.5-.5*s;inner.position.x=s*.07;turn(hips,AZ,s*.16*k);turn(chest,AZ,-s*.1*k);turn(head,AX,Math.sin(b)*.16*k);
    raise(arms[0],.4,-1+2*uL,.15,.3,-.2+1.2*uL+.3*Math.sin(b),.7-.5*uL,k);raise(arms[1],.4,-1+2*uR,.15,.3,-.2+1.2*uR+.3*Math.sin(b+1),.7-.5*uR,k);},
@@ -123,7 +169,6 @@ export async function loadCharacter(look={},{template}){
  function emote(name,{onDone,clip:override}={}){const def=EMOTE_DEFS[name];if(!def)return false;stopEmote();
   if(name==='sleep')pose('lie');else if(kind&&name!=='sit')pose(null);
   if(name==='wave')play('Wave');else if(def.clip||override){clip(override||def.clip);if(def.speed&&current)current.timeScale=def.speed;}
-  for(let i=0;i<turned.length;i++)pre[i].copy(turned[i].quaternion);
   em=name;emT=0;emDone=onDone||null;emPhase=0;return true;}
  // A sleeper stays lying after stopEmote: the caller stands it up (pose(null)) when it moves on.
  function stopEmote(){if(!em)return;const was=em;em=null;emDone=null;for(let i=0;i<turned.length;i++)turned[i].quaternion.copy(pre[i]);
@@ -132,12 +177,13 @@ export async function loadCharacter(look={},{template}){
   if(was==='sleep')return;if(!kind){inner.position.set(0,0,0);inner.rotation.set(0,0,0);clip(base==='Walk'||base==='Run'?'Idle':base);}}
  function runEmote(dt){emT+=dt;const def=EMOTE_DEFS[em],T=def.time,k=Math.min(1,emT/.3,T===Infinity?1:Math.max(0,(T-emT)/.3));
   inner.updateWorldMatrix(true,false);inner.getWorldQuaternion(_rq);AX.set(1,0,0).applyQuaternion(_rq);AY.set(0,1,0).applyQuaternion(_rq);AZ.set(0,0,1).applyQuaternion(_rq);
-  for(let i=0;i<turned.length;i++)pre[i].copy(turned[i].quaternion);
   RUN[em]?.(emT,k,dt);
   if(emT>=T){const cb=emDone;stopEmote();cb?.();}}
- function update(dt){if(em)for(let i=0;i<turned.length;i++)turned[i].quaternion.copy(pre[i]);mixer.update(dt);
-  if(kind==='sit'){root.updateWorldMatrix(true,false);root.getWorldQuaternion(_w);FWD.set(0,0,1).applyQuaternion(_w);
-   for(const l of legs){aim(l.thigh,l.knee,FWD);aim(l.knee,l.foot,DOWN);}}
+ // Relative turns (emotes, the seated lean) sit on top of the clip: the turned bones go back to their post-clip value before
+ // the mixer runs and that value is captured again right after it, so an unkeyed bone (Hips) never accumulates.
+ function update(dt){const tweak=em||sitK>0||kind==='sit';if(tweak)for(let i=0;i<turned.length;i++)turned[i].quaternion.copy(pre[i]);mixer.update(dt);
+  if(tweak)for(let i=0;i<turned.length;i++)pre[i].copy(turned[i].quaternion);
+  if(kind==='sit'||sitK>0){sitK=Math.min(1,Math.max(0,sitK+(kind==='sit'?dt:-dt)/.3));sitT+=dt;if(sitK>0)applySit(sit.style,smooth(sitK),sitT);else if(!kind&&!em)inner.position.y=0;}
   if(em)runEmote(dt);acc?.update(dt);}
  function dispose(){stopEmote();mixer.stopAllAction();mixer.uncacheRoot(model);for(const m of owned.values())m.dispose();for(const s of skeletons)s.dispose();flashMat?.dispose();acc?.dispose();root.removeFromParent();}
  play('Idle');

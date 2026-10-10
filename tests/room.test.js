@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
 import {CATALOG,ITEMS,LEGACY,WALL_ITEMS,LIMITS,HALF,MATERIALS,LIGHTING,WINDOW_VIEWS,upgradeRoom,extent,clampEntry,renderPosition,stackHeight,riders,standSpot,approach,
- actionFor,label,kitScale,dimsFrom,daylightAt,presetDaylight,nearestPreset} from '../src/room.js';
+ actionFor,label,kitScale,dimsFrom,daylightAt,presetDaylight,nearestPreset,seatOf,boxUV,planarUV,palette,WOODS,FABRICS} from '../src/room.js';
+import * as THREE from 'three';
 
 const manifest=JSON.parse(readFileSync(new URL('../public/assets/room/manifest.json',import.meta.url)));
 const S=kitScale(manifest),dimsOf=item=>dimsFrom(manifest,item,S);
@@ -84,4 +85,25 @@ test('a 403 locked save names the tier; emote tiers mirror the server',()=>{
  assert.equal(lockedMessage({status:403,body:{error:'locked',locked:['discoBall','goldToilet']}}),'Not unlocked yet: Disco ball (Builder), Gold toilet (Launched).');
  assert.equal(lockedMessage({status:400,body:{error:'bad_room'}}),null);
  assert.equal(Object.keys(EMOTE_TIERS).length,12);assert.equal(FALLBACK_UNLOCKS.items,SPECIAL_TIERS);
+});
+
+test('seatOf: the largest up-facing area below 70% of the height, with its extent; nothing for a piece without one',()=>{
+ // A chair: a seat slab at y .45 (.4 deep), a back rising to 1, two legs.
+ const chair=new THREE.Group(),mesh=(w,h,d,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d));m.position.set(x,y,z);chair.add(m);return m;};
+ mesh(.4,.04,.4,0,.43,0);mesh(.4,.6,.04,0,.7,-.18);mesh(.04,.41,.04,-.18,.2,.18);mesh(.04,.41,.04,.18,.2,.18);
+ const s=seatOf(chair,1);assert.ok(Math.abs(s.y-.45)<.011,'seat top '+s.y);assert.ok(Math.abs(s.z1-.2)<.011&&Math.abs(s.z0+.2)<.011,'seat depth');assert.ok(Math.abs(s.x1-.2)<.011);
+ const pole=new THREE.Group();pole.add(new THREE.Mesh(new THREE.BoxGeometry(.05,1,.05)));assert.equal(seatOf(pole,1),null,'no seat on a pole');
+});
+test('boxUV / planarUV: UVs by face normal in metres, or 0..1 across the footprint, set once',()=>{
+ const g=boxUV(new THREE.BoxGeometry(2,1,.5),2),uv=g.attributes.uv;assert.equal(uv.count,g.attributes.position.count);assert.equal(g.userData.uv,'box');
+ let maxU=0;for(let i=0;i<uv.count;i++)maxU=Math.max(maxU,Math.abs(uv.getX(i)));assert.ok(Math.abs(maxU-2)<1e-6,'scaled to metres: half-width 1 × scale 2');
+ const r=planarUV(new THREE.BoxGeometry(3,.1,2).translate(5,0,-7)),ruv=r.attributes.uv;let lo=1,hi=0;for(let i=0;i<ruv.count;i++){lo=Math.min(lo,ruv.getX(i),ruv.getY(i));hi=Math.max(hi,ruv.getX(i),ruv.getY(i));}
+ assert.equal(lo,0);assert.equal(hi,1);assert.equal(r.userData.uv,'planar');
+});
+test('palette: coordinated woods and fabrics per room; dark floors get light wood, the accent leads the fabrics',()=>{
+ const light=palette({floor:'white_oak',walls:'chalk',accent:'navy'}),dark=palette({floor:'walnut',walls:'navy',accent:'rust'});
+ assert.equal(light.wood,WOODS.walnut);assert.equal(light.metal,WOODS.black);assert.equal(light.fabrics[0],MATERIALS.accent.navy[0]);assert.equal(light.fabrics.length,4);
+ assert.equal(dark.wood,WOODS.oak);assert.equal(dark.woodDark,WOODS.white);assert.equal(dark.metal,WOODS.white);assert.equal(dark.fabrics[0],MATERIALS.accent.rust[0]);
+ assert.ok(light.fabrics.every(c=>/^#[0-9a-f]{6}$/i.test(c)));assert.ok(Object.values(FABRICS).includes(light.fabrics[1]));
+ assert.ok(palette({}).wood,'defaults for a bare object');assert.notEqual(light.fabrics[2],dark.fabrics[2],'a warm accent pairs with cool neutrals and vice versa');
 });

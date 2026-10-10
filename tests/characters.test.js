@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {OUTFITS,lookMaterials,loadCharacter,HEIGHT} from '../src/characters.js';
+import {OUTFITS,lookMaterials,loadCharacter,HEIGHT,seatedLeg,SIT_STYLES} from '../src/characters.js';
 import {addResidents,pickNear} from '../src/residents.js';
 
 test('every outfit maps look slots to material names; unknown outfits fall back to the hoodie',()=>{
@@ -34,9 +34,12 @@ test('loadCharacter: shared geometry, one skeleton, recolours only what the look
  assert.equal(meshes[1].material,rig.scene.children[2].material,'unset slots keep the shared material');
  const box=new THREE.Box3().setFromObject(c.root);assert.ok(Math.abs(box.min.y)<1e-6&&Math.abs(box.max.y-HEIGHT)<1e-6);
  c.play('Walk');c.update(.1);c.pose('sit');c.update(.1);
+ const half=[];c.root.traverse(n=>{if(n.name==='LowerLegL')half.push(n.getWorldPosition(new THREE.Vector3()).z);});assert.ok(half[0]>.03&&half[0]<.3,'the seat blends in over .3 s, no pop');
+ for(let i=0;i<5;i++)c.update(.1);
  const knee=[];c.root.traverse(n=>{if(n.name==='LowerLegL')knee.push(n);});const k=knee[0].getWorldPosition(new THREE.Vector3()),f=knee[0].children[0].getWorldPosition(new THREE.Vector3());
  assert.ok(k.z>.3,'thigh points forward');assert.ok(Math.abs(f.z-k.z)<1e-3&&f.y<k.y,'shin points down');assert.ok(Math.abs(f.y)<.05,'feet stay on the floor');
  assert.ok(c.offsets.seat>0&&c.offsets.seat<HEIGHT/2);
+ c.pose(null);c.update(.1);const out=[];c.root.traverse(n=>{if(n.name==='LowerLegL')out.push(n.getWorldPosition(new THREE.Vector3()).z);});assert.ok(out[0]>.03&&out[0]<k.z,'standing up blends out too');for(let i=0;i<5;i++)c.update(.1);
  c.pose('lie');c.update(.1);assert.equal(c.posed,'lie');c.pose(null);assert.equal(c.posed,null);
  let freed=0;meshes[0].material.addEventListener('dispose',()=>freed++);rig.scene.children[2].material.addEventListener('dispose',()=>freed+=10);
  c.dispose();assert.equal(freed,1,'only the recoloured copy is freed');
@@ -79,4 +82,14 @@ test('emotes: every one runs with finite transforms, finite ones end with onDone
  c.emote('skate');c.update(.1);assert.equal(c.board.visible,true);c.stopEmote();assert.equal(c.board.visible,false);
  c.pose('sit');c.emote('sit');c.update(.1);assert.equal(c.posed,'sit');c.stopEmote();c.pose(null);
  c.dispose();
+});
+
+test('seatedLeg: feet on the floor for low and high seats, the shin vertical when it can be, dangling only above leg length',()=>{
+ const a=.38,b=.45,near=(x,y,e=1e-9)=>Math.abs(x-y)<e;
+ let g=seatedLeg(.45,a,b);assert.ok(near(g.knee[1],0)&&near(g.knee[0],a),'seat = shin: thigh level');assert.ok(near(g.foot[0],a)&&near(g.foot[1],-.45),'shin vertical, foot on the floor');
+ g=seatedLeg(.3,a,b);assert.ok(near(g.foot[1],-.3)&&g.foot[0]>a,'a low seat leans the shin forward, foot still on the floor');assert.ok(near(Math.hypot(g.foot[0]-g.knee[0],g.foot[1]-g.knee[1]),b),'shin keeps its length');
+ g=seatedLeg(.6,a,b);assert.ok(g.knee[1]<0&&near(g.foot[0],g.knee[0])&&near(g.foot[1],-.6),'a high seat dips the thigh, shin vertical, foot on the floor');
+ g=seatedLeg(1,a,b);assert.ok(g.foot[1]>-1,'above leg length the feet dangle');
+ g=seatedLeg(.12,a,b,.4);assert.ok(g.knee[1]>0&&near(g.foot[1],-.12),'floor sit lifts the knees, feet on the floor');
+ for(const s of Object.values(SIT_STYLES))assert.ok(Number.isFinite(s.lean+s.lift+s.splay+s.head)&&['thigh','knee','desk'].includes(s.hands));
 });

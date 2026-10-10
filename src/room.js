@@ -59,10 +59,11 @@ export const MATERIALS={
 };
 export const WINDOW_VIEWS={city_day:'City · day',city_night:'City · night',sakura:'Sakura',rain:'Rain'};
 // Presets in the spirit of a daylight slider: sky, hemisphere, sun, the patch of window light on the floor.
+// The sun is the warm key, the hemisphere ground the cool fill, so forms turn from warm to cool instead of light to dark.
 export const LIGHTING={
- morning:{time:'07:30',icon:'sunrise',sky:'#e8e2d8',hemi:['#fff4e4','#8f8a7c',1.7],sun:['#ffe0b8',2.5,[-5,7,6]],glow:['#ffe2b8',.45],lamps:false},
- midday:{time:'12:45',icon:'sun',sky:'#e3e6e4',hemi:['#ffffff','#9a9a8e',2.1],sun:['#ffffff',2.9,[-3,9,5]],glow:['#fffbe8',.35],lamps:false},
- evening:{time:'18:30',icon:'sunset',sky:'#d8c3b2',hemi:['#ffe0c2','#5c4a48',1.35],sun:['#ffb07a',1.7,[-7,5,3]],glow:['#ffa36b',.5],lamps:true},
+ morning:{time:'07:30',icon:'sunrise',sky:'#e8e2d8',hemi:['#fff4e4','#7e8699',1.7],sun:['#ffdcae',2.6,[-5,7,6]],glow:['#ffe2b8',.45],lamps:false},
+ midday:{time:'12:45',icon:'sun',sky:'#e3e6e4',hemi:['#ffffff','#8d95a4',2.1],sun:['#fff3dc',2.9,[-3,9,5]],glow:['#fffbe8',.35],lamps:false},
+ evening:{time:'18:30',icon:'sunset',sky:'#d8c3b2',hemi:['#ffe0c2','#525468',1.35],sun:['#ffad72',1.8,[-7,5,3]],glow:['#ffa36b',.5],lamps:true},
  night:{time:'22:10',icon:'moon',sky:'#18202c',hemi:['#7d95c8','#1d2230',.8],sun:['#8fa6ff',.35,[-6,8,4]],glow:['#6f8fd8',.28],lamps:true},
 };
 // The daylight slider runs 0..1 through the four presets in order; the room stores the nearest preset name and the value.
@@ -152,6 +153,20 @@ export function approach(entry,d){
  const a=entry.rot*Math.PI/180,f=d.d/2+.4;return {x:c(entry.x+Math.sin(a)*f),z:c(entry.z+Math.cos(a)*f)};
 }
 
+// The surface a resident sits or lies on, measured from the piece itself (pure, any Object3D of meshes in metres): the
+// largest up-facing area between 8% and 70% of the height, with its extent. null when the piece has none (a nightstand).
+const _sa=new THREE.Vector3(),_sb=new THREE.Vector3(),_sc=new THREE.Vector3(),_sn=new THREE.Vector3();
+export function seatOf(object,h){
+ const bins=new Map();object.updateMatrixWorld(true);
+ object.traverse(m=>{if(!m.isMesh||!m.visible)return;const g=m.geometry,p=g.attributes.position,idx=g.index;if(!p)return;const tri=idx?idx.count/3:p.count/3;
+  for(let t=0;t<tri;t++){const i0=idx?idx.getX(t*3):t*3,i1=idx?idx.getX(t*3+1):t*3+1,i2=idx?idx.getX(t*3+2):t*3+2;
+   _sa.fromBufferAttribute(p,i0).applyMatrix4(m.matrixWorld);_sb.fromBufferAttribute(p,i1).applyMatrix4(m.matrixWorld);_sc.fromBufferAttribute(p,i2).applyMatrix4(m.matrixWorld);
+   _sn.copy(_sb).sub(_sa).cross(_sc.sub(_sa));const area=_sn.length()/2;if(area<1e-6||_sn.y/(2*area)<.9)continue;_sc.add(_sa);const y=(_sa.y+_sb.y+_sc.y)/3;if(y>h*.7||y<h*.08)continue;
+   const k=Math.round(y/.02),e=bins.get(k)||{area:0,z0:1e9,z1:-1e9,x0:1e9,x1:-1e9};e.area+=area;
+   for(const v of [_sa,_sb,_sc]){e.z0=Math.min(e.z0,v.z);e.z1=Math.max(e.z1,v.z);e.x0=Math.min(e.x0,v.x);e.x1=Math.max(e.x1,v.x);}bins.set(k,e);}});
+ let best=null;for(const [k,e] of bins)if(!best||e.area>best.area)best={y:Math.round(k*.02*100)/100,...e};
+ if(!best||best.area<.05)return null;for(const k of ['z0','z1','x0','x1'])best[k]=Math.round(best[k]*100)/100;return best;
+}
 // Pieces resting on piece i (a monitor on a desk): they travel with it.
 export function riders(entries,i,dimsOf){
  const base=entries[i],d=dimsOf(base.item);if(!d||WALL_ITEMS.has(base.item))return [];const {hx,hz}=extent(base,d),out=[];
@@ -226,6 +241,60 @@ const posterTexture=([name,[bg,a,b]])=>canvasTexture('poster:'+name,48,64,(g,w,h
  g.strokeStyle='#ffffff';g.lineWidth=3;g.strokeRect(1.5,1.5,w-3,h-3);});
 const BOX=once('box',()=>new THREE.BoxGeometry(1,1,1)),PLANE=once('plane',()=>new THREE.PlaneGeometry(1,1)),DISC=once('disc',()=>new THREE.CircleGeometry(.5,20));
 
+// ---------------------------------------------------------------- surfaces
+// The Kenney pieces ship flat colours and no UVs. Each template geometry gets box-projected UVs once (metres, by face
+// normal) and every material name maps to a surface: a greyscale canvas (grain, weave, brushed, leaves) that multiplies a
+// colour from the room's palette, so a room reads as one coordinated set rather than 57 unrelated tones.
+// boxUV: planar UVs by dominant normal axis, in world metres (scale = metres per geometry unit). Pure; mutates geometry.
+export function boxUV(geometry,scale=1){
+ const p=geometry.attributes.position,n=geometry.attributes.normal,uv=new Float32Array(p.count*2);
+ for(let i=0;i<p.count;i++){const x=p.getX(i)*scale,y=p.getY(i)*scale,z=p.getZ(i)*scale,nx=Math.abs(n?n.getX(i):0),ny=Math.abs(n?n.getY(i):1),nz=Math.abs(n?n.getZ(i):0);
+  if(ny>=nx&&ny>=nz){uv[i*2]=x;uv[i*2+1]=z;}else if(nx>=nz){uv[i*2]=z;uv[i*2+1]=y;}else{uv[i*2]=x;uv[i*2+1]=y;}}
+ geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));geometry.userData.uv='box';return geometry;
+}
+// planarUV: 0..1 across the geometry's footprint (rugs: the border and fringe land on the edges whatever the size).
+export function planarUV(geometry){
+ geometry.computeBoundingBox();const b=geometry.boundingBox,p=geometry.attributes.position,uv=new Float32Array(p.count*2),w=b.max.x-b.min.x||1,d=b.max.z-b.min.z||1;
+ for(let i=0;i<p.count;i++){uv[i*2]=(p.getX(i)-b.min.x)/w;uv[i*2+1]=(p.getZ(i)-b.min.z)/d;}
+ geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));geometry.userData.uv='planar';return geometry;
+}
+// The curated set: four woods, a few fabrics. palette(materials) picks per room: a dark floor gets light woods and a
+// light floor warm/dark ones; metal is black on light walls, white on dark; fabrics are the accent plus three that go with it.
+export const WOODS={oak:'#c99a62',walnut:'#6e4b34',white:'#efe9df',black:'#2f2c2a'};
+export const FABRICS={linen:'#ddd3c2',charcoal:'#4a4b50',olive:'#7f8659',rust:'#b2613c',mustard:'#d3a74a',slate:'#6b7a8c'};
+const DARK_FLOORS=new Set(['walnut','smoked_oak','black_ash','tile_slate','cherry','tile_terracotta']),DARK_WALLS=new Set(['navy','forest','concrete','terracotta']);
+export function palette(materials={}){
+ const floor=materials.floor||'white_oak',walls=materials.walls||'chalk',accent=MATERIALS.accent[materials.accent]?.[0]||MATERIALS.accent.navy[0];
+ const wood=DARK_FLOORS.has(floor)?'oak':'walnut',dark=DARK_FLOORS.has(floor)?'white':'black';
+ const c=new THREE.Color(accent),hsl=c.getHSL({}),warm=hsl.h<.17||hsl.h>.83;
+ return {wood:WOODS[wood],woodDark:WOODS[dark],metal:DARK_WALLS.has(walls)?WOODS.white:WOODS.black,fabrics:[accent,FABRICS.linen,warm?FABRICS.slate:FABRICS.rust,warm?FABRICS.olive:FABRICS.mustard]};
+}
+const grey=v=>{const h=Math.round(Math.min(255,Math.max(0,v))).toString(16).padStart(2,'0');return '#'+h+h+h;};
+// Greyscale surfaces (×colour): a wood grain with rings, a fabric weave, a brushed metal, two-tone leaves.
+const grainTexture=()=>canvasTexture('surf:grain',256,256,(g,w,h)=>{const r=rnd(31);g.fillStyle='#f2f2f2';g.fillRect(0,0,w,h);
+ for(let y=0;y<h;y+=2){const k=Math.sin(y*.11)*6+Math.sin(y*.037)*9;g.fillStyle=grey(236+k+(r()-.5)*14);g.fillRect(0,y,w,2);}
+ for(let i=0;i<40;i++){const y=r()*h,len=60+r()*200,x=r()*w;g.fillStyle=grey(190+r()*40);g.fillRect(x,y,len,1);}
+ for(let i=0;i<6;i++){const cx=r()*w,cy=r()*h;g.strokeStyle='#d4d4d4';g.lineWidth=1;for(let k=1;k<5;k++){g.beginPath();g.ellipse(cx,cy,k*9+r()*3,k*3,0,0,7);g.stroke();}}
+ g.fillStyle='#c8c8c8';g.fillRect(0,0,w,1);},1);
+const weaveTexture=()=>canvasTexture('surf:weave',128,128,(g,w,h)=>{const r=rnd(5);g.fillStyle='#f4f4f4';g.fillRect(0,0,w,h);
+ for(let y=0;y<h;y+=4)for(let x=0;x<w;x+=4){g.fillStyle=grey(((x+y)>>2)&1?222+r()*20:240+r()*15);g.fillRect(x,y,4,4);}
+ for(let i=0;i<300;i++){g.fillStyle=grey(205+r()*50);g.fillRect(r()*w,r()*h,1,1);}},4);
+const brushedTexture=()=>canvasTexture('surf:brushed',128,128,(g,w,h)=>{const r=rnd(9);g.fillStyle='#f6f6f6';g.fillRect(0,0,w,h);for(let i=0;i<180;i++){g.fillStyle=grey(226+r()*30);g.fillRect(0,r()*h,w,1);}},2);
+const leafTexture=()=>canvasTexture('surf:leaf',128,128,(g,w,h)=>{const r=rnd(17);g.fillStyle='#e6e6e6';g.fillRect(0,0,w,h);for(let i=0;i<70;i++){g.fillStyle=r()<.5?'#ffffff':'#bdbdbd';g.beginPath();g.arc(r()*w,r()*h,6+r()*14,0,7);g.fill();}},3);
+// A rug: weave, a woven border and a fringe at both ends (planar UVs).
+const rugTexture=()=>canvasTexture('surf:rug',256,256,(g,w,h)=>{const r=rnd(23);g.fillStyle='#ececec';g.fillRect(0,0,w,h);
+ for(let y=0;y<h;y+=3)for(let x=0;x<w;x+=3){g.fillStyle=grey(((x+y)/3&1)?214+r()*22:236+r()*16);g.fillRect(x,y,3,3);}
+ g.strokeStyle='#9a9a9a';g.lineWidth=8;g.strokeRect(22,22,w-44,h-44);g.strokeStyle='#d8d8d8';g.lineWidth=3;g.strokeRect(34,34,w-68,h-68);
+ g.fillStyle='#ffffff';g.fillRect(0,0,w,7);g.fillRect(0,h-7,w,7);for(let x=0;x<w;x+=5){g.fillStyle=grey(120+r()*60);g.fillRect(x,0,2,7);g.fillRect(x,h-7,2,7);}});
+// Wall paint: a faint roller texture, the corners and the cut ends darkened (baked occlusion), a shadow line over the
+// baseboard and a picture rail. One texture for both walls (the box's side faces run u along the wall, v up).
+const wallTexture=()=>canvasTexture('surf:wall',512,256,(g,w,h)=>{const r=rnd(41);g.fillStyle='#f6f6f6';g.fillRect(0,0,w,h);
+ for(let i=0;i<2600;i++){g.fillStyle=grey(232+r()*26);g.fillRect(r()*w,r()*h,1+r()*3,1+r()*2);}
+ for(const [x0,x1] of [[0,w*.16],[w,w*.84]]){const ao=g.createLinearGradient(x0,0,x1,0);ao.addColorStop(0,'rgba(60,50,40,.34)');ao.addColorStop(1,'rgba(60,50,40,0)');g.fillStyle=ao;g.fillRect(Math.min(x0,x1),0,Math.abs(x1-x0),h);}
+ const top=g.createLinearGradient(0,0,0,h*.3);top.addColorStop(0,'rgba(60,50,40,.18)');top.addColorStop(1,'rgba(60,50,40,0)');g.fillStyle=top;g.fillRect(0,0,w,h*.3);
+ const foot=g.createLinearGradient(0,h*.86,0,h);foot.addColorStop(0,'rgba(50,40,30,0)');foot.addColorStop(1,'rgba(50,40,30,.3)');g.fillStyle=foot;g.fillRect(0,h*.86,w,h*.14);
+ g.fillStyle='rgba(255,255,255,.55)';g.fillRect(0,h*.205,w,3);g.fillStyle='rgba(60,50,40,.22)';g.fillRect(0,h*.205+3,w,2);});
+
 // ---------------------------------------------------------------- character
 // Falls back to the city's minimal box figure (same API as characters.js) when the rigged one cannot load.
 function boxCharacter(look={}){
@@ -237,7 +306,7 @@ function boxCharacter(look={}){
  for(const s of [-1,1])box(.06,.06,.01,'#222',s*.09,1.33,.195);
  const arms=[-1,1].map(s=>{const p=new THREE.Group();p.position.set(s*.32,1.08,0);inner.add(p);box(.12,.5,.14,look.top,0,-.23,0,p);return p;});
  let clip='Idle',kind=null,t=0;
- return {root,offsets:{seat:.3,lieLength:1.5},get posed(){return kind;},
+ return {root,offsets:{seat:.3,thigh:.3,lieLength:1.5},get posed(){return kind;},
   play(name){clip=name;t=0;},stride(phase){t=phase*Math.PI*2/9;},pose(next){kind=next==='sit'||next==='lie'?next:null;inner.rotation.set(0,0,0);inner.position.set(0,0,0);if(kind==='lie'){inner.rotation.x=-Math.PI/2;inner.position.set(0,.15,.75);}if(kind==='sit')inner.position.y=-.26;},
   update(dt){t+=dt;const walk=clip==='Walk'||clip==='Run',sw=Math.sin(t*9)*.6;legs.forEach((l,i)=>l.rotation.x=walk?sw*(i?1:-1):kind==='sit'?-1.5:0);
    arms.forEach((a,i)=>{a.rotation.x=walk?-sw*(i?1:-1)*.8:clip==='Interact'?-1.2+Math.sin(t*12+i)*.1:0;a.rotation.z=0;});
@@ -258,7 +327,7 @@ export async function openRoom({plotId,mine,me:viewer}){
 }
 async function enter(plotId,mine,viewer){
  let data;try{data=await api(`/api/rooms/${encodeURIComponent(plotId)}`);}catch(err){host.notify(err.status===404?'Nobody lives here yet.':'The room could not be loaded.');return;}
- const man=await loadManifest(),SCALE=kitScale(man),measured=new Map();
+ const man=await loadManifest(),SCALE=kitScale(man),measured=new Map(),seats=new Map();   // seats: seatOf() per item
  const dimsOf=item=>measured.get(item)||specialDims(item)||dimsFrom(man,item,SCALE);
  const tierInfo=await loadTiers(),unlocks=(mine&&viewer?.unlocks)||data.unlocks||null;
  const owner=data.owner,scene=new THREE.Scene(),owned=[],desk=deskModel(data.desk,mine);   // desk.js: the projects on the computer
@@ -278,14 +347,18 @@ async function enter(plotId,mine,viewer){
  const camera=new THREE.PerspectiveCamera(30,1,1,80),VIEW_DIR=new THREE.Vector3(10,10.5,12).normalize(),TARGET=new THREE.Vector3(0,.9,0);
  // Lights: hemisphere + one shadowed sun + one lamp. Their count never changes, so toggling never recompiles shaders.
  const hemi=new THREE.HemisphereLight();scene.add(hemi);
- const sun=new THREE.DirectionalLight();sun.castShadow=true;sun.shadow.mapSize.set(512,512);sun.shadow.bias=-.0015;sun.shadow.normalBias=.02;
+ const sun=new THREE.DirectionalLight();sun.castShadow=true;sun.shadow.mapSize.set(phone?512:1024,phone?512:1024);sun.shadow.bias=-.0015;sun.shadow.normalBias=.02;
  Object.assign(sun.shadow.camera,{left:-5.5,right:5.5,top:5.5,bottom:-5.5,near:.5,far:30});scene.add(sun,sun.target);
  const lamp=new THREE.PointLight('#ffb36b',0,7,1.6);lamp.position.set(0,1.6,0);scene.add(lamp);
- // Shell: floor slab, two walls with dark cut tops, baseboards. One BoxGeometry for all of them.
- const dark=own(toon({color:'#3b3430'})),floorMat=own(toon({color:'#ffffff'})),wallMat=own(toon({color:'#eeeeee'})),trim=own(toon({color:'#f7f4ee'}));
+ // Shell: floor slab, two walls with dark cut tops and ends, baseboards. One BoxGeometry for all of them, one material per
+ // mesh (a material array costs a draw call per face): the floor is a plane on a dark slab, the cut edges are thin dark boxes.
+ const dark=own(toon({color:'#3b3430'})),floorMat=own(toon({color:'#ffffff'})),wallMat=own(toon({color:'#eeeeee',map:wallTexture()})),trim=own(toon({color:'#f7f4ee'}));
  const shell=new THREE.Group();scene.add(shell);
- const slab=new THREE.Mesh(BOX,[dark,dark,floorMat,dark,dark,dark]);slab.scale.set(2*HALF,.3,2*HALF);slab.position.y=-.15;slab.receiveShadow=true;shell.add(slab);
- const T=.22,walls=[[T,WALL_H,2*HALF+T,-HALF-T/2,WALL_H/2,-T/2],[2*HALF,WALL_H,T,0,WALL_H/2,-HALF-T/2]].map(([w,h,d,x,y,z])=>{const m=new THREE.Mesh(BOX,[wallMat,wallMat,dark,dark,wallMat,wallMat]);m.scale.set(w,h,d);m.position.set(x,y,z);m.receiveShadow=true;shell.add(m);return m;});
+ const slab=new THREE.Mesh(BOX,dark);slab.scale.set(2*HALF,.3,2*HALF);slab.position.y=-.15;shell.add(slab);
+ const floor=new THREE.Mesh(PLANE,floorMat);floor.rotation.x=-Math.PI/2;floor.position.y=.002;floor.scale.set(2*HALF,2*HALF,1);floor.receiveShadow=true;shell.add(floor);
+ const T=.22,walls=[[T,WALL_H,2*HALF+T,-HALF-T/2,WALL_H/2,-T/2],[2*HALF,WALL_H,T,0,WALL_H/2,-HALF-T/2]].map(([w,h,d,x,y,z],i)=>{const m=new THREE.Mesh(BOX,wallMat);m.scale.set(w,h,d);m.position.set(x,y,z);m.receiveShadow=true;shell.add(m);
+  const cap=new THREE.Mesh(BOX,dark);cap.scale.set(w+.01,.05,d+.01);cap.position.set(x,WALL_H,z);shell.add(cap);
+  const end=new THREE.Mesh(BOX,dark);if(i===0){end.scale.set(w+.01,h+.01,.05);end.position.set(x,y,HALF);}else{end.scale.set(.05,h+.01,d+.01);end.position.set(HALF,y,z);}shell.add(end);return m;});
  for(const [w,d,x,z] of [[.05,2*HALF,-HALF+.025,0],[2*HALF,.05,0,-HALF+.025]]){const b=new THREE.Mesh(BOX,trim);b.scale.set(w,.14,d);b.position.set(x,.07,z);shell.add(b);}
  const addMesh=(geo,mat,[x,y,z],[sx,sy,sz],ry=0,parent=shell)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.scale.set(sx,sy,sz);m.rotation.y=ry;parent.add(m);return m;};
  // Wall details from the reference room, all cheap: posters, a clock, an air conditioner, a cork board.
@@ -298,17 +371,36 @@ async function enter(plotId,mine,viewer){
  // Name plate by the door.
  if(hasDom){const c=document.createElement('canvas');c.width=256;c.height=64;const g=c.getContext('2d');g.fillStyle='#fb752b';g.fillRect(0,0,256,64);g.fillStyle='#1d2a30';g.font='bold 30px monospace';g.textAlign='center';g.fillText(owner.name.slice(0,14).toUpperCase(),128,43);
   const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;const m=own(new THREE.MeshBasicMaterial({map:tex}));owned.push(tex);addMesh(PLANE,m,[2.5,2.22,-HALF+.012],[.8,.2,1]);}
- // Accent tints: one cloned material per (template material) for this room only.
+ // Accent tints: one woven material per (template material, rug or not) for this room only.
  const tints=new Map();
  const tint=c=>{c.color.set(MATERIALS.accent[room.materials.accent][0]);if(c.userData.darker)c.color.offsetHSL(0,0,-.12);return c;};
- const tinted=m=>{if(!tints.has(m)){const c=m.clone();c.userData.darker=m.name==='carpetDarker';tints.set(m,own(c));}return tint(tints.get(m));};
+ const tinted=(m,rug)=>{const key=m.name+(rug?':rug':'');if(!tints.has(key)){const c=own(toon({color:'#ffffff',map:rug?rugTexture():weaveTexture()}));c.userData.darker=m.name==='carpetDarker';tints.set(key,c);}return tint(tints.get(key));};
  const fabric=(item,m)=>ACCENT.has(item)&&(m.name==='carpet'||m.name==='carpetDarker');   // Kenney's upholstery materials
+ // Every other Kenney material name becomes one room-owned surface: a palette colour times a greyscale canvas (see palette()).
+ const SURFACE_OF={wood:['wood','grain'],woodDark:['woodDark','grain'],metal:['metal','brushed'],metalMedium:['metal','brushed'],metalDark:['black','brushed'],metalLight:['white','brushed'],
+  carpetWhite:['linen','weave'],carpetBlue:['fabric1','weave'],carpet:['fabric2','weave'],carpetDarker:['fabric3','weave'],fur:['fabric1','weave'],lamp:['shade',null],plant:['leaf','leaf'],glass:['glass','brushed'],_defaultMat:['white',null]};
+ const TEX={grain:grainTexture,weave:weaveTexture,brushed:brushedTexture,leaf:leafTexture};
+ const swatch=role=>{const p=palette(room.materials);return {wood:p.wood,woodDark:p.woodDark,metal:p.metal,black:WOODS.black,white:WOODS.white,linen:FABRICS.linen,fabric1:p.fabrics[1],fabric2:p.fabrics[2],fabric3:p.fabrics[3],shade:'#fff1d6',leaf:'#5f8f4e',glass:'#dfe9ee'}[role];};
+ const surfaces=new Map();
+ const surface=(item,m)=>{if(fabric(item,m))return tinted(m,/^rug/.test(item));const sf=SURFACE_OF[m.name];if(!sf)return m;
+  if(!surfaces.has(m.name)){const x=own(toon({color:swatch(sf[0]),map:sf[1]?TEX[sf[1]]():null}));x.userData.role=sf[0];surfaces.set(m.name,x);}return surfaces.get(m.name);};
+ const _ws=new THREE.Vector3();
  const views=new Map();
  const viewMat=()=>{const tex=viewTexture(room.window,room.lighting);for(const m of views.values()){m.map=tex;m.needsUpdate=true;}return tex;};
  const curtainMat=own(toon({color:'#efe6d6'})),glowMat=own(new THREE.MeshBasicMaterial({map:glowTexture(),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:.5}));
- // Fake contact shadows: one soft dark quad (shared texture) under the character and under big pieces.
- const contactMat=own(new THREE.MeshBasicMaterial({map:glowTexture(),color:'#000000',transparent:true,opacity:.32,depthWrite:false}));
- const CONTACT=new Set(['bedSingle','bedDouble','loungeSofa','loungeDesignSofa','loungeChair','desk','deskCorner','bookcaseOpen','bookcaseClosedWide','kitchenFridge','kitchenFridgeSmall','washer','sideTableDrawers','cabinetTelevision','tableCoffee']);
+ // Fake contact shadows: one soft dark quad (shared texture) under the character, and one merged mesh of quads under every
+ // piece that stands on the floor (rebuilt when furniture moves: one draw call however many pieces).
+ const contactMat=own(new THREE.MeshBasicMaterial({map:glowTexture(),color:'#000000',transparent:true,opacity:.34,depthWrite:false,side:THREE.DoubleSide}));
+ const blobGeo=own(new THREE.BufferGeometry()),blobs=new THREE.Mesh(blobGeo,contactMat);blobs.raycast=()=>{};blobs.frustumCulled=false;blobs.visible=false;scene.add(blobs);
+ function rebuildBlobs(){const pos=[],uv=[],idx=[];let k=0;
+  for(const e of room.furniture){if(WALL_ITEMS.has(e.item)||HANGING.has(e.item)||OVERHEAD.has(e.item)||/^rug/.test(e.item)||e.y>0)continue;const d=dimsOf(e.item);if(!d)continue;
+   const a=e.rot*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),hx=d.w*.68+.05,hz=d.d*.68+.05;
+   for(const [u,v] of [[-1,-1],[1,-1],[1,1],[-1,1]]){const x=u*hx,z=v*hz;pos.push(e.x+x*c+z*sn,.007,e.z-x*sn+z*c);uv.push(u*.5+.5,v*.5+.5);}
+   idx.push(k,k+1,k+2,k,k+2,k+3);k+=4;}
+  blobGeo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));blobGeo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));blobGeo.setIndex(idx);blobs.visible=k>0;}
+ // A warm pool of lamplight on the floor under the lit lamp (the point light alone reads flat on a toon floor).
+ const pool=new THREE.Mesh(PLANE,own(new THREE.MeshBasicMaterial({map:glowTexture(),color:'#ffb36b',transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:.4})));
+ pool.rotation.x=-Math.PI/2;pool.scale.set(2.6,2.6,1);pool.raycast=()=>{};pool.visible=false;scene.add(pool);
  // Furniture: one wrapper per entry, built from the cached template (geometry shared, materials shared unless tinted).
  const furnitureRoot=new THREE.Group();scene.add(furnitureRoot);
  const pieces=[];   // pieces[i] mirrors room.furniture[i]: {wrap, model}
@@ -322,12 +414,13 @@ async function enter(plotId,mine,viewer){
   const object=gltf.scene.clone(true);
   let d=dimsOf(entry.item);
   if(!d){object.scale.setScalar(SCALE);const b=new THREE.Box3().setFromObject(object),s=b.getSize(new THREE.Vector3());d={w:s.x,h:s.y,d:s.z,ox:-(b.min.x+s.x/2),oy:-b.min.y,oz:-(b.min.z+s.z/2)};measured.set(entry.item,d);}
-  object.scale.setScalar(SCALE);object.position.set(d.ox,d.oy,d.oz);wrap.add(object);
+  object.scale.setScalar(SCALE);object.position.set(d.ox,d.oy,d.oz);wrap.add(object);object.updateMatrixWorld(true);
+  const act=actionFor(entry.item);if((act==='sit'||act==='lie')&&!seats.has(entry.item))seats.set(entry.item,seatOf(object,d.h));
   object.traverse(n=>{if(!n.isMesh)return;n.castShadow=!/^rug/.test(entry.item);n.receiveShadow=true;
-   if(ACCENT.has(entry.item))n.material=Array.isArray(n.material)?n.material.map(m=>fabric(entry.item,m)?tinted(m):m):fabric(entry.item,n.material)?tinted(n.material):n.material;});
+   if(!n.geometry.userData.uv){if(/^rug(Rectangle|Square|Round)$/.test(entry.item))planarUV(n.geometry);else{n.getWorldScale(_ws);boxUV(n.geometry,_ws.x||1);}}   // once per shared template geometry
+   n.material=Array.isArray(n.material)?n.material.map(m=>surface(entry.item,m)):surface(entry.item,n.material);});
   if(entry.item==='wallWindow'||entry.item==='wallWindowSlide')decorateWindow(wrap,object,entry.item,d);
   if(SCREEN_ITEMS.has(entry.item))dressScreen(wrap,object,entry,d);
-  if(CONTACT.has(entry.item)){const q=addMesh(PLANE,contactMat,[0,.008,0],[d.w*1.25,d.d*1.25,1],0,wrap);q.rotation.x=-Math.PI/2;q.userData.glow=true;q.raycast=()=>{};}
   return wrap;
  }
  // Kenney's window is a wall slab with a frame; the room has its own walls, so the slab is hidden and the opening gets
@@ -354,7 +447,7 @@ async function enter(plotId,mine,viewer){
  function place(i){
   const p=pieces[i],e=room.furniture[i];if(!p)return;const d=dimsOf(e.item);if(!d)return;
   const [x,y,z]=renderPosition(e,d);p.wrap.position.set(x,y,z);p.wrap.rotation.y=e.rot*Math.PI/180;p.wrap.userData.entry=e;
-  p.wrap.traverse(n=>{if(n.userData.glow)n.position.y=.012-y;});p.wrap.updateMatrixWorld(true);shadowsDirty=true;
+  p.wrap.traverse(n=>{if(n.userData.glow)n.position.y=.012-y;});p.wrap.updateMatrixWorld(true);shadowsDirty=true;rebuildBlobs();
  }
  async function build(){
   const list=room.furniture.slice();
@@ -371,7 +464,8 @@ async function enter(plotId,mine,viewer){
   const L=daylightAt(daylight());shadowsDirty=true;
   floorMat.map=floorTexture(room.materials.floor);floorMat.needsUpdate=true;
   wallMat.color.set(MATERIALS.walls[room.materials.walls][0]);
-  for(const c of tints.values())tint(c);
+  for(const c of tints.values())tint(c);for(const m of surfaces.values())m.color.set(swatch(m.userData.role));
+  const night=Math.max(0,(daylight()-.5)*2);curtainMat.color.set(mixHex('#efe6d6','#aeaab9',night));   // curtains cool down with the light
   scene.background=new THREE.Color(L.sky);hemi.color.set(L.hemi[0]);hemi.groundColor.set(L.hemi[1]);hemi.intensity=L.hemi[2];
   sun.color.set(L.sun[0]);sun.intensity=L.sun[1];sun.position.set(...L.sun[2]);
   glowMat.color.set(L.glow[0]);glowMat.opacity=L.glow[1];viewMat();
@@ -379,6 +473,8 @@ async function enter(plotId,mine,viewer){
   const li=lampIndex(),on=li>=0&&lampsLit;
   if(on){const e=room.furniture[li],d=dimsOf(e.item);const [x,y,z]=d?renderPosition(e,d):[e.x,0,e.z];lamp.position.set(x,y+(d?d.h*.85:1.4),z);}
   lamp.intensity=on?(room.lighting==='night'?5:room.lighting==='evening'?3.5:2.5):0;
+  pool.visible=on;if(on){pool.position.set(lamp.position.x,.009,lamp.position.z);pool.material.opacity=.18+night*.32;}
+  const shade=surfaces.get('lamp');if(shade){shade.emissive.set('#ffb36b');shade.emissiveIntensity=on?.5:0;}
  }
  lampsLit=daylightAt(daylight()).lamps;
  await build();if(closed)return;
@@ -400,7 +496,9 @@ async function enter(plotId,mine,viewer){
  const brain=makeResident(owner.traits||Object.fromEntries(TRAITS.map((t,i)=>[t,((seed>>(i*6))&63)/63])));
  let free=true,think=3;   // free: standing idle with nothing in hand; think: seconds to the next autonomous choice
  const timers=new Set(),later=(ms,fn)=>{const id=setTimeout(()=>{timers.delete(id);if(!closed)fn();},ms);timers.add(id);return id;};
- function stand(){endShow();me.pose(null);me.root.position.y=0;mv.set(me.root.position.x,me.root.position.z,me.root.rotation.y);}
+ // Getting onto a seat or bed glides the root there over .3 s (the pose itself blends in characters.js), instead of a jump.
+ let perch=null;const glideTo=(x,y,z)=>{perch={from:me.root.position.clone(),to:new THREE.Vector3(x,y,z),t:0};};
+ function stand(){endShow();perch=null;me.pose(null);me.root.position.y=0;mv.set(me.root.position.x,me.root.position.z,me.root.rotation.y);}
  function walkTo(x,z,then){
   const c=v=>Math.min(HALF-.3,Math.max(-HALF+.3,v));stand();free=false;
   const path=route(blockedTiles(footprints(),HALF),me.root.position,{x,z},HALF,mv.heading)||[{x:c(x),z:c(z)}];   // boxed in: walk straight
@@ -413,9 +511,13 @@ async function enter(plotId,mine,viewer){
   useAd(brain,e.item);lastSpot=spot;
   walkTo(spot.x,spot.z,()=>{
    const done=ms=>later(ms,()=>{me.play('Idle');free=true;});
-   if(act==='lie'){me.root.position.set(px,py+d.h*(SURFACE[e.item]||.5),pz);me.root.rotation.y=a;me.pose('lie');hud.say(ACTION_TEXT.lie);after?.();return;}
+   const st=seats.get(e.item)||null,top=py+(st?st.y:d.h*(SURFACE[e.item]||.45));   // the measured seat / mattress top
+   if(act==='lie'){glideTo(px,top,pz);me.root.rotation.y=a;me.pose('lie');hud.say(ACTION_TEXT.lie);after?.();return;}
    if(act==='sit'&&IS_SPECIAL.has(e.item)){me.root.position.set(px,Math.max(0,py+SPECIAL_SEAT[e.item]-me.offsets.seat),pz);me.root.rotation.y=a;me.pose('sit');hud.say(SPECIAL_USE[e.item].say);return;}
-   if(act==='sit'){const seat=py+d.h*(SURFACE[e.item]||.45);me.root.position.set(px+Math.sin(a)*-.05,Math.max(0,seat-me.offsets.seat),pz+Math.cos(a)*-.05);me.root.rotation.y=a;me.pose('sit');
+   // Hips just ahead of the backrest, or as far forward as keeps the knees at the seat's front edge (deep sofas), so the shins clear it.
+   if(act==='sit'){const style=/^lounge/.test(e.item)?'sofa':workAfterSit?'desk':'chair',back=st?Math.max(st.z0+.1,st.z1-(me.offsets.thigh||.38)+.04):-.05;
+    glideTo(px+Math.sin(a)*back,Math.max(0,top-me.offsets.seat),pz+Math.cos(a)*back);me.root.rotation.y=a;
+    me.pose('sit',{style,hip:Math.max(top,me.offsets.seat),deskY:workDeskY});
     if(workAfterSit){workAfterSit=false;me.play('Interact');hud.say(ACTION_TEXT.work);}else hud.say(ACTION_TEXT.sit);after?.();return;}
    face(px,pz);
    if(IS_SPECIAL.has(e.item)){useSpecial(i,done);return;}
@@ -432,10 +534,10 @@ async function enter(plotId,mine,viewer){
   const c=choose(brain,room.furniture.map(f=>{const a=actionFor(f.item);return a==='leave'||a==='toggle'?{item:null}:f;}),me.root.position);
   if(c)actionFor(c.item)==='work'?useForWork(c.i):use(c.i);
  }
- let workAfterSit=false;
+ let workAfterSit=false,workDeskY=null;   // workDeskY: the desk top the seated resident's hands go to
  // A desk is used from the chair in front of it, if there is one.
  function nearestSeat(p){let best=-1,dist=1.4;room.furniture.forEach((f,j)=>{if(actionFor(f.item)!=='sit'||/^lounge/.test(f.item))return;const k=Math.hypot(f.x-p.x,f.z-p.z);if(k<dist){dist=k;best=j;}});return best;}
- const useForWork=(i,after)=>{const e=room.furniture[i],d=dimsOf(e?.item);if(!d)return;const seat=nearestSeat(approach(e,d));if(seat>=0){workAfterSit=true;use(seat,after);}else use(i,after);};
+ const useForWork=(i,after)=>{const e=room.furniture[i],d=dimsOf(e?.item);if(!d)return;const seat=nearestSeat(approach(e,d));if(seat>=0){workAfterSit=true;workDeskY=e.y>0?e.y:d.h;use(seat,after);}else use(i,after);};
 
  // ------------------------------------------------ the computer (desk.js): walk over, sit, open the overlay; closing stands up
  let pc=null,pcPending=null;   // pcPending: the walk to the computer in progress (a token; any other tap cancels it)
@@ -571,6 +673,7 @@ async function enter(plotId,mine,viewer){
    const r=me.root.position;
    if(glide){const p=glide.mv.update(dt);r.x=p.x;r.z=p.z;me.root.rotation.y=p.yaw;if(!glide.mv.busy){glide=null;mv.set(r.x,r.z,p.yaw);}}
    else if(me.emoting==='moonwalk'){}   // the character slides itself (characters.js); synced back to the mover below
+   if(perch&&me.posed){perch.t=Math.min(1,perch.t+dt/.3);const k=perch.t*perch.t*(3-2*perch.t);r.lerpVectors(perch.from,perch.to,k);if(perch.t>=1)perch=null;}
    else if(!me.posed){const p=mv.update(dt);
     if(!me.posed){r.x=p.x;r.z=p.z;me.root.rotation.y=p.yaw;   // the arrival callback may have put the resident on a bed or chair
      if(p.moving){me.play('Walk');me.stride?.(p.phase);}
@@ -581,7 +684,7 @@ async function enter(plotId,mine,viewer){
    if(party>0)party-=dt;for(const sp of specials)sp.update(dt);if(pet)petStep(dt);
    feet.position.set(r.x,(me.posed==='lie'?r.y:0)+.012,r.z);feet.visible=me.posed!=='lie';
   },
-  dispose(){sun.dispose();
+  dispose(){sun.dispose();if(window.__room?.me===me)delete window.__room;
    closed=true;for(const id of timers)clearTimeout(id);
    canvas?.removeEventListener('pointerdown',onDown);removeEventListener('pointermove',onMove);removeEventListener('pointerup',onUp);removeEventListener('pointercancel',onUp);
    me.dispose();pet?.dispose();for(const sp of specials)sp.dispose();specials.clear();for(const m of owned)m.dispose();scene.clear();
@@ -591,6 +694,9 @@ async function enter(plotId,mine,viewer){
  const hud=roomHud({owner,mine,room,edit,plotId,guestbook:Array.isArray(data.guestbook)?data.guestbook:null,visits:data.visits,unlocks,tierInfo,viewer,onClose:close,onWave(){if(mv.busy)return;stand();faceCamera();me.play('Wave');hud.say(`${owner.name} waves back.`);}});
  function close(){if(closed)return;pc?.close({quiet:true});host.setView(null);hud.remove();view.dispose();}
  host.setView(view);
+ // Dev-only hooks for headless screenshots, never on a public host: __room.action('sit'|'lie'|'work'), .emote(name), .light('night'|0..1).
+ if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))window.__room={action(kind,item){const i=room.furniture.findIndex(f=>actionFor(f.item)===kind&&(!item||f.item===item));if(i<0)return false;kind==='work'?useForWork(i):use(i);return true;},walk:walkTo,
+  emote:doEmote,light:v=>edit.set(typeof v==='number'?'daylight':'lighting',v),get me(){return me;},get room(){return room;},get view(){return view;}};
  if(hasDesk(desk)){const b=el('button',{className:'button button-dark button-sm room-pc-btn',type:'button',onclick:()=>toComputer(room.furniture.findIndex(f=>SCREEN_ITEMS.has(f.item)))},icon('pc','i lead'),desk.projects.length?`${mine?'Your':owner.name+'\u2019s'} computer`:'Computer');hud.root.append(b);}
  // Rituals (main.js host): a postcard button, SUB-01's diary page by the desk, and in your own room a quiet
  // "while you were away" card when something happened since your last visit (nothing when empty, never a push).
