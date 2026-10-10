@@ -693,6 +693,12 @@ const GPU=gpuName(renderer.getContext()),START=startLevel({phone,gpu:GPU,deviceM
 const LITE_KEY='sub01-lite',liteStored=local.get(LITE_KEY)==='1';
 governor=createGovernor({level:liteStored?0:START,auto:!liteStored,now:performance.now(),onChange(level,{reason}){applyQuality();if(reason==='down')notify('Lighter mode for a smoother city');}});
 const liteButton=control('lite-mode',icon('check'),()=>setLite(governor.auto),'more-lite');
+// Labels on/off (owner 2026-10-10: "let every label be removable, Ginza etc."): hides the district tickets, place
+// tickets and shrine tags; chat bubbles and the walking character's name tag stay. Remembered in localStorage.
+const LABELS_KEY='sub01.labels';let labelsOn=local.get(LABELS_KEY)!=='0';
+const labelsButton=control('labels-mode',icon('check'),()=>setLabels(!labelsOn),'more-labels');
+function setLabels(on){labelsOn=on;local.set(LABELS_KEY,on?'1':'0');labelsButton.setAttribute('aria-pressed',String(on));label(labelsButton,on?'Labels: on':'Labels: off');document.body.classList.toggle('labels-off',!on);}
+setLabels(labelsOn);
 function setLite(on){local.set(LITE_KEY,on?'1':'0');governor.auto=!on;governor.set(on?0:START,performance.now());applyQuality();notify(on?'Low graphics on: the lightest city, always.':'Low graphics off: the city adjusts to this device.');}
 function applyQuality(){
   const q=settingsFor(governor.level,{mobile,dpr:devicePixelRatio||1});Q=q;
@@ -853,7 +859,7 @@ function animate(now){
   // While the headline is up (first INTRO_MS), no district label may sit in its column, header included (owner
   // 2026-10-10: Kiyosumi/Kinshicho over the title).
   const introRect=introUp?introBox():null;
-  for(const label of labels){if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;const lx=(p.x*.5+.5)*innerWidth,ly=(-p.y*.5+.5)*innerHeight;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1||(introRect&&label.district&&lx<introRect.right+40&&ly<introRect.bottom+24);}
+  for(const label of labels){if(!labelsOn&&!label.roam&&!label.element.classList.contains('visit-bubble')&&!label.element.classList.contains('chat-bubble')){label.element.hidden=true;continue;}if(label.district&&(camera.zoom>.9||(camera.zoom<.25&&!['SHIBUYA','SHINJUKU','AKIHABARA','ODAIBA','GINZA'].includes(label.element.textContent)))){label.element.hidden=true;continue;}if(camera.zoom<.5&&!label.district&&!label.roam&&label.element.textContent.indexOf('Tokyo Tower'.toUpperCase())===-1){label.element.hidden=true;continue;}const p=label.position.clone().project(camera);label.element.style.left=`${(p.x*.5+.5)*innerWidth}px`;label.element.style.top=`${(-p.y*.5+.5)*innerHeight}px`;const lx=(p.x*.5+.5)*innerWidth,ly=(-p.y*.5+.5)*innerHeight;label.element.hidden=p.z>1||p.z< -1||Math.abs(p.x)>1.1||Math.abs(p.y)>1.1||(introRect&&label.district&&lx<introRect.right+40&&ly<introRect.bottom+24);}
 }
 // The headline ("Your idea. A whole city.") shows for INTRO_MS after the city is up, then fades (CSS .intro-gone).
 const INTRO_MS=5000;let introUp=true,introBoxCache=null,introBoxAt=0;
