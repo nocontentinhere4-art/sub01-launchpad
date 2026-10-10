@@ -91,7 +91,7 @@ test('Fuji: concave profile (slope rises with height, ~10° foot → ~31° rim),
 
 test('four draw calls (props, signs, Fuji, Fuji haze), detail LOD by instance count, night switch',()=>{
  const parent=new THREE.Group(),style=addTokyoStyle(parent,[]),st=style.stats();
- assert.equal(st.drawCalls,4);const meshes=[];parent.traverse(o=>{if(o.isMesh)meshes.push(o);});assert.equal(meshes.length,4);
+ assert.equal(st.drawCalls,5);const meshes=[];parent.traverse(o=>{if(o.isMesh)meshes.push(o);});assert.equal(meshes.length,5);assert.ok(st.wheels>0);
  const cam=new THREE.OrthographicCamera();cam.zoom=.14;cam.updateMatrixWorld();style.mountain.onBeforeRender(null,null,cam);assert.ok(style.mountain.matrixWorld.elements.every(Number.isFinite));
  assert.ok(st.propsCore<st.props&&st.signsCore<=st.signs);
  style.signMesh.onBeforeRender(null,null,{zoom:.2});assert.equal(style.signMesh.count,st.signsCore);

@@ -80,6 +80,10 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
     add('marks',d.x,.1915,d.z+s*(half(s)-.05),28,.004,.09,'#5A605F');
     add('marks',d.x,.193,d.z+s*(half(s)-.4),27.6,.008,.12,'#E6E4DC',{fac:F_PAINT});
    }
+   // Back lane (owner 2026-10-10): a narrow asphalt lane along the row boundary south of this block, where the
+   // interior houses of both rows face each other (lots.js INNER); white edge lines, no centre line.
+   if(d.z+15<E.maxZ-1){const lz=d.z+15;add('roads',(x0+x1)/2,.15,lz,x1-x0,.06,3,'#6E7372',{fac:ASPH});
+    for(const s of [-1,1])add('marks',(x0+x1)/2,.1835,lz+s*1.4,x1-x0,.004,.1,'#DCDAD2',{fac:F_PAINT});}
    // Manholes: two per district street, hashed along it, clear of the zebras and the tower plaza.
    const rm=rng(d.id+':manholes');
    for(let i=0;i<2;i++){const x=d.x+(rm()-.5)*20,z=d.z+(rm()<.5?-1:1)*(.55+rm()*.4);

@@ -173,9 +173,13 @@ export function stylePlan(buildings=[]){
    machine(f.x(u0),f.z(.34),n,[0,f.fz],[-side,0]);take(lot,lo,hi);clusters--;}
 
   // --- Bikes: the konbini (4, beside the doors, away from the bins) and mansion entrances/pilotis; 2 rows a district.
+  // A mamachari: two round wheels (shape 'wheel' → the cylinder batch, not a box), a sloping top tube, seat, handlebar.
   const bike=(bx,bz,ry,color)=>{const at=place(bx,bz,ry);
-   for(const lz of [.28,1.1]){const [x,z]=at(0,lz);P({x,y:BASE_Y+.3,z,w:.04,h:.56,d:.56,ry,color:'#2B2B2B',role:'bike'});}
-   {const [x,z]=at(0,.72);P({x,y:BASE_Y+.62,z,w:.06,h:.2,d:.9,ry,color,role:'bike'});}
+   for(const lz of [.26,1.12]){const [x,z]=at(0,lz);P({x,y:BASE_Y+.29,z,w:.05,h:.58,d:.58,ry,color:'#2B2B2B',role:'bike',shape:'wheel'});}
+   {const [x,z]=at(0,.7);P({x,y:BASE_Y+.6,z,w:.05,h:.07,d:.78,ry,rx:.22,color,role:'bike'});}      // top tube, rising to the bars
+   {const [x,z]=at(0,.42);P({x,y:BASE_Y+.5,z,w:.04,h:.42,d:.05,ry,color,role:'bike'});}            // seat post
+   {const [x,z]=at(0,.4);P({x,y:BASE_Y+.74,z,w:.14,h:.05,d:.22,ry,color:'#2B2B2B',role:'bike'});}   // saddle
+   {const [x,z]=at(0,1.0);P({x,y:BASE_Y+.86,z,w:.44,h:.04,d:.05,ry,color:'#8C8F93',role:'bike'});}  // handlebar
    small++;};
   const bikeRow=(lot,u0,dirU,n)=>{const f=front(lot),rb=rng(lot.id+':bikes'),steep=lot.setback<.5,lean=rb()<.5?-1:1,start=props.length,small0=small;
    for(const sgn of [lean,-lean]){const a=(steep?1.08:.12)*sgn,rj=rng(lot.id+':bikes:'+sgn);
@@ -328,7 +332,7 @@ export function stylePlan(buildings=[]){
 // zooms in, so it still reads from the district views that see the north-west horizon. Two draw calls: the opaque body +
 // ridge, and the transparent haze + cloud. Colours follow the shared night amount (day → dusk → night silhouette).
 const FUJI_AT=CS.FUJI_AT??{x:-60.5,z:-131},FUJI_K=CS.OVERVIEW_ZOOM?.desktop?.19/CS.OVERVIEW_ZOOM.desktop:1;
-export const FUJI={x:FUJI_AT.x,z:FUJI_AT.z,height:34*FUJI_K,base:{sy:.4*16.5/.19*FUJI_K,target:[0,8,-7]},squash:.15,view:{yaw:36,pitch:40},
+export const FUJI={x:FUJI_AT.x,z:FUJI_AT.z,height:21*FUJI_K,baseY:0,squash:.15,view:{yaw:36,pitch:40},
  overviewZoom:CS.OVERVIEW_ZOOM?.desktop??.19,segments:48,rings:18,slopeBase:10,slopeTop:31,crater:.04,snow:.3,
  day:'#8FA2B6',snowDay:'#F3F1EA',dusk:'#6C6F93',snowDusk:'#F2C9B5',night:'#1E2840',snowNight:'#36425F',
  ridge:{day:'#7A8C9C',dusk:'#4E5076',night:'#141C30',height:.3,width:1.55},maxTriangles:3000,renderOrder:-5};
@@ -427,12 +431,17 @@ export function addTokyoStyle(parent,buildings=[]){
  const order=list=>[...list.filter(v=>!v.detail),...list.filter(v=>v.detail)];
  const lod=(mesh,core,all)=>{mesh.userData.lod={core,all};mesh.onBeforeRender=(renderer,scene,camera)=>{mesh.count=camera.zoom<LOD_ZOOM?core:all;};};
  const matrix=v=>{dummy.position.set(v.x,v.y,v.z);dummy.rotation.set(v.rx||0,v.ry||0,v.rz||0);dummy.scale.set(v.w,v.h,v.d??1);dummy.updateMatrix();return dummy.matrix;};
- // Props: one box batch.
- const propMat=toon({roughness:.9}),props=order(plan.props);
+ // Props: one box batch, plus one cylinder batch for the round things (bike wheels: owner 2026-10-10, "square bikes").
+ const propMat=toon({roughness:.9}),props=order(plan.props.filter(p=>p.shape!=='wheel')),wheels=order(plan.props.filter(p=>p.shape==='wheel'));
  const propMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),propMat,Math.max(1,props.length));
  props.forEach((v,i)=>{propMesh.setMatrixAt(i,matrix(v));propMesh.setColorAt(i,col.set(v.color));});
  propMesh.count=props.length;propMesh.castShadow=propMesh.receiveShadow=true;propMesh.name='street props';propMesh.raycast=()=>{};
  if(propMesh.instanceColor)propMesh.instanceColor.needsUpdate=true;propMesh.computeBoundingSphere();lod(propMesh,props.filter(v=>!v.detail).length,props.length);root.add(propMesh);
+ // Wheels: a 12-sided disc whose axis is local x (the prop's thin w), scaled by (w,h,d) like a box.
+ const wheelGeo=new THREE.CylinderGeometry(.5,.5,1,12).rotateZ(Math.PI/2),wheelMesh=new THREE.InstancedMesh(wheelGeo,propMat,Math.max(1,wheels.length));
+ wheels.forEach((v,i)=>{wheelMesh.setMatrixAt(i,matrix(v));wheelMesh.setColorAt(i,col.set(v.color));});
+ wheelMesh.count=wheels.length;wheelMesh.castShadow=true;wheelMesh.name='wheels';wheelMesh.raycast=()=>{};
+ if(wheelMesh.instanceColor)wheelMesh.instanceColor.needsUpdate=true;wheelMesh.computeBoundingSphere();lod(wheelMesh,wheels.filter(v=>!v.detail).length,wheels.length);root.add(wheelMesh);
  // Signs: one plane batch, per-instance atlas rect, ground/ink/accent colours and night glow.
  const signs=order(plan.signs),n=Math.max(1,signs.length),geo=new THREE.PlaneGeometry(1,1),a={rect:new Float32Array(n*4),bg:new Float32Array(n*3),ink:new Float32Array(n*3),acc:new Float32Array(n*3),glow:new Float32Array(n*3)};
  const ci=new THREE.Color(),ca=new THREE.Color();
@@ -461,12 +470,12 @@ export function addTokyoStyle(parent,buildings=[]){
  const C=h=>new THREE.Color(h),fu={uFN:nightShared,uFSnow:{value:1-FUJI.snow},uFDay:{value:C(FUJI.day)},uFDusk:{value:C(FUJI.dusk)},uFNight:{value:C(FUJI.night)},
   uFSDay:{value:C(FUJI.snowDay)},uFSDusk:{value:C(FUJI.snowDusk)},uFSNight:{value:C(FUJI.snowNight)},uFRDay:{value:C(FUJI.ridge.day)},uFRDusk:{value:C(FUJI.ridge.dusk)},uFRNight:{value:C(FUJI.ridge.night)}};
  const FU='uniform float uFN,uFSnow;uniform vec3 uFDay,uFDusk,uFNight,uFSDay,uFSDusk,uFSNight,uFRDay,uFRDusk,uFRNight;\nvec3 fuji3(vec3 a,vec3 b,vec3 c){return uFN<.5?mix(a,b,uFN*2.):mix(b,c,uFN*2.-1.);}\n';
- // Fuji's anchor sits far below the city's ground plane (main.js cityGround: y −0.02 to CITY_EXTENT + 40, −1.6 to ±600),
- // so a depth test would hide it under the ground (the wave-5 regression). The body is drawn right after the ground
- // (renderOrder −5 vs −10) with no depth test but writing its depth, so everything in the city still draws over it and
- // the haze still tests against it. Without a depth test the body cannot sort itself: the fragment shader drops the
- // back half (it always faces the camera, so the front half is sin(angle) > 0 and never overlaps itself in a side view),
- // and the Tanzawa ridge comes last in the buffer, so it covers the foot.
+ // Fuji stands ON the ground plane (owner 2026-10-10: the mountain at the city's level, not floating): its foot ring is
+ // at y = FUJI.baseY, right behind the north skyline. The body is drawn right after the ground (renderOrder −5 vs −10)
+ // with no depth test (the foot would z-fight the plane) but writing its depth, so everything in the city still draws
+ // over it and the haze still tests against it. Without a depth test the body cannot sort itself: the fragment shader
+ // drops the back half (it always faces the camera, so the front half is sin(angle) > 0 and never overlaps itself in a
+ // side view), and the Tanzawa ridge comes last in the buffer, so it covers the foot.
  const fujiMat=new THREE.MeshBasicMaterial({toneMapped:false,side:THREE.DoubleSide,depthTest:false,depthWrite:true});
  fujiMat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,fu);
   sh.vertexShader='attribute float aLit,aF,aAng,aLayer;varying float vLit,vF,vAng,vLayer;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vLit=aLit;vF=aF;vAng=aAng;vLayer=aLayer;');
@@ -491,9 +500,9 @@ export function addTokyoStyle(parent,buildings=[]){
  gl_FragColor=vec4(mix(hz,cl,vCloud),vA*mix(1.,.8-.55*uFN,vCloud));`);};
  hazeMat.customProgramCacheKey=()=>'tokyo-fuji-haze-w4b';
  const mountain=new THREE.Mesh(fgeo,fujiMat),haze=new THREE.Mesh(hgeo,hazeMat);mountain.name='fuji';haze.name='fuji haze';mountain.renderOrder=FUJI.renderOrder;
- // Base anchor: at FUJI_AT, low enough that the base sits FUJI.base.sy below screen centre in the default overview.
- const fp=THREE.MathUtils.degToRad(FUJI.view.pitch),fy=THREE.MathUtils.degToRad(FUJI.view.yaw),up=new THREE.Vector3(-Math.sin(fp)*Math.sin(fy),Math.cos(fp),-Math.sin(fp)*Math.cos(fy)),T0=FUJI.base.target;
- const anchor=new THREE.Vector3(FUJI.x,T0[1]+(FUJI.base.sy-(FUJI.x-T0[0])*up.x-(FUJI.z-T0[2])*up.z)/up.y,FUJI.z),FM=new THREE.Matrix4(),fr=new THREE.Vector3(),fu2=new THREE.Vector3(),fb=new THREE.Vector3();
+ // Base anchor: the foot ring on the ground at FUJI_AT.
+ const fp=THREE.MathUtils.degToRad(FUJI.view.pitch),fy=THREE.MathUtils.degToRad(FUJI.view.yaw),up=new THREE.Vector3(-Math.sin(fp)*Math.sin(fy),Math.cos(fp),-Math.sin(fp)*Math.cos(fy));
+ const anchor=new THREE.Vector3(FUJI.x,FUJI.baseY,FUJI.z),FM=new THREE.Matrix4(),fr=new THREE.Vector3(),fu2=new THREE.Vector3(),fb=new THREE.Vector3();
  // Faces the camera every frame (it is radially symmetric), squashed in depth, a bit smaller when zoomed in.
  const face=(m,camera)=>{const s=Math.min(1,Math.max(.42,Math.pow(FUJI.overviewZoom/Math.max(1e-3,camera.zoom||1),.6)));camera.matrixWorld.extractBasis(fr,fu2,fb);
   FM.makeBasis(fr.multiplyScalar(s),fu2.multiplyScalar(s),fb.multiplyScalar(s*FUJI.squash)).setPosition(anchor);m.matrixWorld.multiplyMatrices(m.parent.matrixWorld,FM);};
@@ -501,9 +510,9 @@ export function addTokyoStyle(parent,buildings=[]){
  mountain.matrixWorld.makeBasis(new THREE.Vector3(1,0,0),up,new THREE.Vector3().crossVectors(new THREE.Vector3(1,0,0),up)).setPosition(anchor);
  const white=new THREE.Color('#ffffff');let life=null;
  return {signMesh,propMesh,mountain,haze,plan,lightPools:plan.pools,
-  stats:()=>({props:props.length,propsCore:propMesh.userData.lod.core,signs:signs.length,signsCore:signMesh.userData.lod.core,fujiTriangles:fm.triangles+fh.triangles,drawCalls:4,atlasBytes:atlas?512*512:0}),
+  stats:()=>({props:props.length,wheels:wheels.length,propsCore:propMesh.userData.lod.core,signs:signs.length,signsCore:signMesh.userData.lod.core,fujiTriangles:fm.triangles+fh.triangles,drawCalls:5,atlasBytes:atlas?512*512:0}),
   // Vending pools need city-life's light-pool batch; city.js can hand it over (style.bindLife(life)) after each redraw.
   bindLife(l){life=l;if(!l?.addLightPool)return;l.clearLightPools('props');for(const [x,z,c,r,s] of plan.pools)l.addLightPool(x,z,c,r,{group:'props',strength:s});},
   setNight(value){night.value=value?1:0;const f=value?nightColor('walls'):white;propMat.color.copy(f);signMat.color.copy(f);},
-  dispose(){parent.remove(root);propMesh.dispose();propMesh.geometry.dispose();propMat.dispose();signMesh.dispose();geo.dispose();signMat.dispose();atlas?.dispose();fgeo.dispose();fujiMat.dispose();hgeo.dispose();hazeMat.dispose();}};
+  dispose(){parent.remove(root);propMesh.dispose();propMesh.geometry.dispose();wheelMesh.dispose();wheelGeo.dispose();propMat.dispose();signMesh.dispose();geo.dispose();signMat.dispose();atlas?.dispose();fgeo.dispose();fujiMat.dispose();hgeo.dispose();hazeMat.dispose();}};
 }

@@ -33,7 +33,7 @@ export const CANAL_X=CITY_EXTENT.maxX+6.5;          // 108   [79]   canal centre
 export const METRO_Z=CITY_EXTENT.maxZ+2.5;          // 108   [78]   elevated metro track (express 2.25 north of it)
 export const SKYLINE_Z=CITY_EXTENT.minZ+.5;         // −101  [−71]  north skyline edge (buildings at SKYLINE_Z − offset)
 export const SKYLINE_X=CITY_EXTENT.minX+1.5;        // −100  [−71]  west skyline edge
-export const FUJI_AT={x:-89.5,z:-161};              //       [−60.5, −131]
+export const FUJI_AT={x:-58.3,z:-118};              //       [−60.5, −131]  foot on the ground inside the north skyline band (the towers hide it, like from Tokyo), same camera line (yaw 36°) as before
 // Overview camera (main.js resetView) for the bigger map, and the zoom-out floor it needs.
 export const OVERVIEW_ZOOM={desktop:.14,mobile:.065,min:.05};
 export const cityPlots=districts.flatMap((d,di)=>Array.from({length:6},(_,i)=>({

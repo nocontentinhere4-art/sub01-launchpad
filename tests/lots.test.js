@@ -35,7 +35,7 @@ test('lots: density per district stays in the brief range; roofs carry 1–5 off
  const L=cityLayout([]);
  for(const d of districts){const lots=L.lots.filter(l=>l.district===d.id);assert.ok(lots.length>=12&&lots.length<=26,`${d.id} ${lots.length}`);
   assert.equal(L.spots.filter(s=>s.district===d.id&&s.kind==='coin-parking'&&!s.plotId).length,1);
-  const houses=lots.filter(l=>l.role==='interior').length;assert.ok(houses>=3&&houses<=6);}
+  const houses=lots.filter(l=>l.role==='interior').length;assert.ok(houses>=3&&houses<=12,`${houses} interior houses`);}
  for(const l of L.lots)if(l.type!=='T5'){assert.ok(l.roofItems.length>=(l.floors<=2?1:2)&&l.roofItems.length<=5,l.id);
   for(const it of l.roofItems){assert.notEqual(it.kind,'rail');assert.ok(Math.hypot(it.u,it.v)>.2||l.width<2.2,`${l.id} ${it.kind} centred`);}}
 });

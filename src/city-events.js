@@ -394,22 +394,23 @@ export function createCityEvents(scene,{mobile=false,reducedMotion=false,gpu=nul
   stepBuffs(T);
  }
  // ---------- Omikuji buffs and ema cheers (rituals.js via main.js; cosmetic, nothing of value) ----------
- // Buffs: a soft additive halo on a resident's figure (glow), with petals or confetti dots orbiting it. Yours is larger
- // and rides with your roaming model while it is out. One instanced camera-facing quad, one draw call.
+ // Buffs: a faint additive halo on a resident's figure (glow), with petals or confetti dots orbiting it. Yours is a
+ // little larger and rides with your roaming model while it is out. One instanced camera-facing quad, one draw call.
+ // Owner 2026-10-10: the glow was reading as a floodlight when zoomed in; it is now small (≤ 1.6 units) and dim.
  const BUFF_MAX=64,buffAttr=new THREE.InstancedBufferAttribute(new Float32Array(BUFF_MAX*2),2),buffGeo=new THREE.PlaneGeometry(1,1);buffGeo.setAttribute('aBuff',buffAttr);
  // No depth test: half the residents stand on the street side the camera does not see; the aura shows through the block.
  const buffTime={value:0},buffs=new THREE.InstancedMesh(buffGeo,new THREE.ShaderMaterial({uniforms:{uTime:buffTime,uPx:beaconPx},transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending,
   vertexShader:`uniform float uPx;attribute vec2 aBuff;varying vec2 vUv;varying float vKind;void main(){vUv=uv;vKind=aBuff.x;
- vec4 mv=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);mv.xy+=position.xy*aBuff.y*max(2.4,22./max(uPx,.01));mv.z+=1.2;gl_Position=projectionMatrix*mv;}`,
+ vec4 mv=modelViewMatrix*instanceMatrix*vec4(0.,0.,0.,1.);mv.xy+=position.xy*aBuff.y*max(1.3,12./max(uPx,.01));mv.z+=1.2;gl_Position=projectionMatrix*mv;}`,
   fragmentShader:`uniform float uTime;varying vec2 vUv;varying float vKind;void main(){vec2 p=(vUv-.5)*2.;float d=length(p);if(d>1.)discard;
- vec3 col=vKind<.5?vec3(1.,.78,.42):vKind<1.5?vec3(1.,.62,.78):vec3(.62,.85,1.);float halo=pow(1.-d,2.)*.55,dots=0.;
+ vec3 col=vKind<.5?vec3(1.,.78,.42):vKind<1.5?vec3(1.,.62,.78):vec3(.62,.85,1.);float halo=pow(1.-d,2.5)*(vKind<.5?.2:.3),dots=0.;
  if(vKind>.5){float n=7.,s=6.2831/n,a=atan(p.y,p.x)+uTime*(vKind<1.5?.6:1.3),k=floor(a/s),aa=mod(a,s)-s*.5,r=.64+.08*sin(uTime*2.+k);
   dots=smoothstep(.14,.05,length(vec2(cos(aa),sin(aa))*d-vec2(r,0.)));if(vKind>1.5)col=mix(col,.5+.5*cos(6.2831*(k/n+vec3(0.,.33,.67))),dots);}
  gl_FragColor=vec4(col*(halo+dots*.9),1.);}`}),BUFF_MAX);
  buffs.count=0;buffs.frustumCulled=false;buffs.renderOrder=4;buffs.name='buffs';root.add(buffs);let buffList=[],mineBuff=-1;
  const BUFF_CODE={glow:0,petals:1,confetti:2};
  function setBuffs(list){buffList=(Array.isArray(list)?list:[]).filter(b=>b&&BUFF_CODE[b.kind]!==undefined&&Number.isFinite(b.x)&&Number.isFinite(b.z)).slice(0,BUFF_MAX);mineBuff=buffList.findIndex(b=>b.mine);
-  buffList.forEach((b,i)=>{m4.makeTranslation(b.x,1.05,b.z);buffs.setMatrixAt(i,m4);buffAttr.setXY(i,BUFF_CODE[b.kind],b.mine?1.5:1);});
+  buffList.forEach((b,i)=>{m4.makeTranslation(b.x,1.05,b.z);buffs.setMatrixAt(i,m4);buffAttr.setXY(i,BUFF_CODE[b.kind],b.mine?1.25:1);});
   buffs.count=buffList.length;buffs.instanceMatrix.needsUpdate=true;buffAttr.needsUpdate=true;}
  // Cheers: a small paper tag "応援 ♥ N" above each thinking site with cheers (one atlas of 8 tiles, one draw call).
  const CH_W=256,CH_H=96,CH_N=8,cheerAttr=new THREE.InstancedBufferAttribute(new Float32Array(CH_N),1),cheerGeo=new THREE.PlaneGeometry(1,1);cheerGeo.setAttribute('aTile',cheerAttr);

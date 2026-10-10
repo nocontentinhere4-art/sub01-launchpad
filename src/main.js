@@ -5,6 +5,7 @@ import {createWeather,createAmbience,weatherAt,LEVELS,nextMode,approach,atmosphe
 import {crossingState} from './city-crowd.js';
 import {trainPosition,setCityWorld,setCityFocus,canalLayout} from './city-life.js';
 import {riverHole} from './landmarks.js';
+import {addOutskirts,OUTSKIRTS} from './outskirts.js';
 import {setTrafficQuality} from './city-traffic.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -145,28 +146,39 @@ const HERO_TREES=[[9.8,-.5],[-12.6,3.75],[-4.4,3.75],[2.4,3.75],[12.6,3.75]].map
   .concat([{species:'grove',x:-13.25,z:-5.7,y:HERO.top,s:.72},{species:'grove',x:-11.95,z:-6.2,y:HERO.top,s:.55}]);
 let heroHome=null;
 // One ground under the whole city (owner bug: sky-coloured strips between districts at close zoom): a concrete plane
-// over CITY_EXTENT + 40 at y = −0.02 with a hole for the river (landmarks.js riverHole, water at −1.05), and a darker far
-// plane to ±600 at −1.6. One geometry, vertex colours, one draw call; the city's ground night tint (#55617A) in-shader.
-// renderOrder −10: the ground is drawn first, so Fuji (tokyo-style.js, a backdrop whose anchor sits far below this plane)
-// can paint over it at −5 before the city draws on top.
-let horizon=null;
-const GROUND_PLANE={near:'#8E8E88',far:'#77776F',margin:40,far_:600,y:-.02,farY:-1.6,renderOrder:-10};
+// over CITY_EXTENT + the suburbs at y = −0.02 with a hole for the river (landmarks.js riverHole, water at −1.05). One
+// geometry, vertex colours, one draw call; the city's ground night tint (#55617A) in-shader. renderOrder −10: the ground
+// is drawn first, so Fuji (tokyo-style.js, a backdrop standing on this plane) paints over it at −5 before the city.
+let horizon=null,outskirts=null;
+// The plate reaches past the suburbs (outskirts.js), then a ring fades it into the fog colour (vertex aFade, mixed in
+// after lighting so it matches the horizon plane exactly): no plate edge, no step, whatever the fog distance is.
+const GROUND_PLANE={near:'#8E8E88',margin:OUTSKIRTS.gap+OUTSKIRTS.band+4,fadeRing:70,far_:600,y:-.02,farY:-.06,renderOrder:-10};
 function cityGround(){
   const E=CS.CITY_EXTENT,M=GROUND_PLANE.margin,x0=E.minX-M,x1=E.maxX+M,z0=E.minZ-M,z1=E.maxZ+M,F=GROUND_PLANE.far_,h=CS.CANAL_X==null?null:riverHole();
   const rects=[],R=(a,b,c,d,y,col)=>{if(b-a>.01&&d-c>.01)rects.push([a,b,c,d,y,col]);},Y=GROUND_PLANE.y,N=GROUND_PLANE.near;
   if(h&&h.x0>x0&&h.x1<x1){const cz0=Math.max(z0,E.minZ-3),cz1=Math.min(z1,E.maxZ+3);
     R(x0,h.x0,z0,z1,Y,N);R(h.x1,x1,z0,z1,Y,N);R(h.x0,h.x1,z0,cz0,Y,N);R(h.x0,h.x1,cz1,z1,Y,N);}
   else R(x0,x1,z0,z1,Y,N);
-  const pos=[],nor=[],col=[],c=new THREE.Color();
-  for(const [a,b,zA,zB,y,hex] of rects){c.set(hex);for(const [x,z] of [[a,zA],[a,zB],[b,zA],[b,zA],[a,zB],[b,zB]]){pos.push(x,y,z);nor.push(0,1,0);col.push(c.r,c.g,c.b);}}
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  const pos=[],nor=[],col=[],fade=[],c=new THREE.Color();c.set(N);
+  const V=(x,z,f)=>{pos.push(x,Y,z);nor.push(0,1,0);col.push(c.r,c.g,c.b);fade.push(f);};
+  for(const [a,b,zA,zB] of rects)for(const [x,z] of [[a,zA],[a,zB],[b,zA],[b,zA],[a,zB],[b,zB]])V(x,z,0);
+  // Fade ring: four strips (inner edge fade 0, outer edge fade 1) whose corners meet at the outer rectangle.
+  const W=GROUND_PLANE.fadeRing,X0=x0-W,X1=x1+W,Z0=z0-W,Z1=z1+W;
+  const strip=(p0,p1,q0,q1)=>{for(const [x,z,f] of [p0,p1,q1,p0,q1,q0])V(x,z,f);};   // p = inner edge (0), q = outer edge (1)
+  strip([x0,z0,0],[x1,z0,0],[X0,Z0,1],[X1,Z0,1]);strip([x1,z1,0],[x0,z1,0],[X1,Z1,1],[X0,Z1,1]);
+  strip([x0,z1,0],[x0,z0,0],[X0,Z1,1],[X0,Z0,1]);strip([x1,z0,0],[x1,z1,0],[X1,Z0,1],[X1,Z1,1]);
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));g.setAttribute('aFade',new THREE.Float32BufferAttribute(fade,1));
   const m=toon({vertexColors:true}),prev=m.onBeforeCompile;
   m.onBeforeCompile=(s,r)=>{prev.call(m,s,r);s.uniforms.uGpNight=nightAmount;s.uniforms.uGpTint={value:new THREE.Color().setHex(0x55617A,THREE.LinearSRGBColorSpace)};
-    s.fragmentShader='uniform float uGpNight;uniform vec3 uGpTint;\n'+s.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=mix(vec3(1.),uGpTint,uGpNight);');};
-  m.customProgramCacheKey=()=>'ground-plane';
+    s.vertexShader='attribute float aFade;varying float vFade;\n'+s.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvFade=aFade;');
+    s.fragmentShader='uniform float uGpNight;uniform vec3 uGpTint;varying float vFade;\n'+s.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb*=mix(vec3(1.),uGpTint,uGpNight);')
+      .replace('#include <fog_fragment>','#ifdef USE_FOG\ngl_FragColor.rgb=mix(gl_FragColor.rgb,fogColor,vFade);\n#endif\n#include <fog_fragment>');};
+  m.customProgramCacheKey=()=>'ground-plane-fade';
   const mesh=new THREE.Mesh(g,m);mesh.name='city ground';mesh.renderOrder=GROUND_PLANE.renderOrder;mesh.receiveShadow=true;mesh.raycast=()=>{};mesh.frustumCulled=false;scene.add(mesh);
-  // Horizon: a far plane in the fog colour (unlit, unfogged) so the city still dissolves into haze at the edges.
-  horizon=new THREE.Mesh(new THREE.PlaneGeometry(F*2,F*2).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:scene.fog?.color||'#E6DFD2',fog:false}));horizon.position.y=GROUND_PLANE.farY;horizon.renderOrder=GROUND_PLANE.renderOrder-1;horizon.raycast=()=>{};horizon.frustumCulled=false;scene.add(horizon);return mesh;
+  // Horizon: a far plane in the fog colour (unlit, unfogged) under everything, so the ring's outer edge meets haze.
+  horizon=new THREE.Mesh(new THREE.PlaneGeometry(F*2,F*2).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:scene.fog?.color||'#E6DFD2',fog:false}));horizon.position.y=GROUND_PLANE.farY;horizon.renderOrder=GROUND_PLANE.renderOrder-1;horizon.raycast=()=>{};horizon.frustumCulled=false;scene.add(horizon);
+  outskirts=addOutskirts(scene);
+  return mesh;
 }
 function groundwork() {
   cityGround();
@@ -286,7 +298,8 @@ function resize(){const w=innerWidth,h=innerHeight,aspect=w/h;const half=mobile?
 const CAMERA={pitch:40,yaw:36,distance:168};
 function aimCamera(target){const p=THREE.MathUtils.degToRad(CAMERA.pitch),y=THREE.MathUtils.degToRad(CAMERA.yaw),d=CAMERA.distance;
   controls.target.copy(target);camera.position.set(target.x+d*Math.cos(p)*Math.sin(y),target.y+d*Math.sin(p),target.z+d*Math.cos(p)*Math.cos(y));}
-function resetView(){cityTour=null;follow=false;cameraTween=null;aimCamera(new THREE.Vector3(0,8,-7));camera.zoom=mobile?OVERVIEW.mobile:OVERVIEW.desktop;camera.updateProjectionMatrix();controls.update();}
+// 2026-10-10: the overview target sits a touch north of the city centre, so Fuji (foot on the ground) clears the header.
+function resetView(){cityTour=null;follow=false;cameraTween=null;aimCamera(new THREE.Vector3(-9,8,-19));camera.zoom=mobile?OVERVIEW.mobile:OVERVIEW.desktop;camera.updateProjectionMatrix();controls.update();}
 
 // The mailbox needs a signed-in resident. Each step opens the next one.
 async function openBuildForm(plot){

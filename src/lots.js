@@ -39,7 +39,7 @@
 //    shrine; in the third ring mostly a pocket park or shrine.
 //
 // frontFace(plotId) → '+z'|'-z'.  subLotsOf(plotId,buildings) → {front, lots, spots, user} for that plot.
-import {cityPlots,districts,buildingColors} from './city-state.js';
+import {cityPlots,districts,buildingColors,ROAD_Z} from './city-state.js';
 
 export const GROUND=3.0,STOREY=2.5,PARAPET=.6,BASE_Y=.12,JOINT=.08,LOT_LINE=3.3,EDGE=11.0;
 // EDGE: facades stop 3.5 short of the boulevard centres (14.5 from a district centre), clear of 1A's boulevard poles at 3.3.
@@ -149,13 +149,21 @@ export function skin5a(lot){
 
 // Wave 5A: the vacant plot beside Tokyo Tower is a small park (city-green.js plants its trees).
 export const TOWER_PARKS=['shiba-6'];
+// Shrines (owner 2026-10-10: "too many in the same place, put a few around the city"): only districts on one diagonal of
+// the grid (col + 2·row ≡ 2 mod 7 → 7 of 49) get one, on their first vacant plot (north row first, west to east).
+export const shrineDistrict=d=>(((Math.round(d.x/29)+2*Math.round((d.z-2)/30))%7)+7)%7===2;
+export function shrinePlot(d,buildings=[]){
+ if(!shrineDistrict(d))return null;
+ const q=cityPlots.filter(p=>p.district===d.id&&p.vacant&&!buildings.some(b=>b.plotId===p.id)).sort((a,b)=>(a.z<d.z?0:1)-(b.z<d.z?0:1)||a.x-b.x)[0];
+ return q?q.id:null;
+}
 function sideElements(d,s,buildings){
  // s = -1: the row at d.z-6 (fronts face +z); s = 1: the row at d.z+6 (fronts face −z).
  const front=s<0?'+z':'-z',plots=cityPlots.filter(p=>p.district===d.id&&(s<0?p.z<d.z:p.z>d.z)).sort((a,b)=>a.x-b.x);
  const el=[];
  plots.forEach((p,k)=>{
   const b=buildings.find(b=>b.plotId===p.id),r=rng(p.id+':split');
-  if(p.vacant&&!b){const x=r(),kind=TOWER_PARKS.includes(p.id)?'park':isRing3(d.id)?(x<.45?'park':x<.8?'shrine':'coin-parking'):x<.65?'coin-parking':'shrine';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
+  if(p.vacant&&!b){const x=r(),kind=TOWER_PARKS.includes(p.id)?'park':shrinePlot(d,buildings)===p.id?'shrine':isRing3(d.id)?(x<.72?'park':'coin-parking'):'coin-parking';el.push({kind:'spot',spot:kind,plotId:p.id,x:p.x,width:5.8,vacant:true,cars:kind==='coin-parking'?[0,1,2].filter(()=>r()<.5):[]});}
   else{
    let split=pick(r,SPLITS).slice();
    if(b&&split.length===3)split=[1.8,4];
@@ -290,15 +298,20 @@ function layoutDistrict(d,buildings,out){
   }
   out.sides.push({district:d.id,front,fill:streetFill(el,d),sequence:el.filter(e=>e.kind==='building').map(e=>e.lot)});
  }
- // Block interior: concrete with 3–6 low houses and one coin parking (brief 3.2).
- const slots=[];
+ // Block interior (brief 3.2; owner 2026-10-10 "too many empty strips"): a back lane runs along the row boundary
+ // (city.js ground, z = d.z ± 15), and low houses face it from nearly every slot, with one coin parking and one or two
+ // vacant lots. INNER is the lane's building line (lane half 1.5 + a 1.1 walk; faces at 12.4 after the 0.8 setback).
+ const INNER=13.2,slots=[];
  for(const s of [-1,1]){let x=d.x-EDGE+.2;const r=rng(`${d.id}:interior:${s}`);while(true){const w=between(r,3.4,4.8),gap=between(r,.6,2.4);if(x+w>d.x+EDGE-.2)break;slots.push({s,x:x+w/2,width:w});x+=w+gap;}}
  const order=slots.map(v=>({v,k:dr()})).sort((a,b)=>a.k-b.k).map(o=>o.v);
- const parking=order.shift(),houses=order.slice(0,3+Math.floor(dr()*3));
+ const parking=order.shift(),houses=order.slice(0,Math.max(3,order.length-1-Math.floor(dr()*2)));
  if(parking){const front=parking.s<0?'-z':'+z',fz=fzOf(front),zc=d.z+parking.s*11.4;
   out.spots.push({id:`${d.id}:interior:parking`,plotId:null,district:d.id,kind:'coin-parking',x:parking.x,z:zc,width:Math.max(parking.width,4.2),depth:4.2,front,frontZ:zc+fz*2.1,cars:[0,1,2].filter(()=>dr()<.5),bays:3});}
  for(const h of houses){const r=rng(`${d.id}:house:${h.x.toFixed(2)}`),front=h.s<0?'-z':'+z',fz=fzOf(front),tile=r()<.7,type=tile?'T5':'T4';
-  const depth=between(r,3.4,4.0),frontZ=d.z+h.s*(EDGE+.6)-fz*.8,floors=tile?2:2+Math.floor(r()*2),wall=tile?(r()<.5?'#6B5443':'#D9CDB4'):pick(r,WALLS);
+  // The Shuto expressway (landmarks.js) runs along the boundary between the second and third rows: houses there keep
+  // the older, deeper setback so the deck (half 2.3 about z −44) never passes over a roof.
+  const viaduct=(h.s>0&&d.z===ROAD_Z[1])||(h.s<0&&d.z===ROAD_Z[2]),line=viaduct?INNER-2.2:INNER;
+  const depth=between(r,3.0,3.5),frontZ=d.z+h.s*line-fz*.8,floors=tile?2:2+Math.floor(r()*2),wall=tile?(r()<.5?'#6B5443':'#D9CDB4'):pick(r,WALLS);
   out.lots.push({id:`${d.id}:house:${h.x.toFixed(2)}`,plotId:null,district:d.id,role:'interior',user:false,building:null,x:h.x,z:frontZ-fz*depth/2,width:h.width,depth,setback:.8,front,frontZ,
    type,floors,height:heightFor(floors,type),eave:tile?GROUND+STOREY:undefined,wall,roof:pick(r,tile?TILE_ROOFS:ROOFS),shop:'house',stripe:null,awning:null,stair:false,gap:null,
    leftH:0,rightH:0,bays:[],sideAC:0,sideWindows:Math.floor(r()*2),roofItems:roofRecipe(r,{type,floors,width:h.width,depth},category)});skin5a(out.lots.at(-1));}
