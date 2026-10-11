@@ -139,7 +139,7 @@ export const signOut=()=>api('/api/auth/logout',{method:'POST',body:{}});
 // decodes (no @solana/web3.js here: CSP, bundle size). Wallet Standard `solana:signTransaction` takes raw bytes; a legacy
 // injected provider (window.phantom.solana…) wants a web3.js Transaction object, so it cannot sign bytes: a clear line
 // says to reconnect through the wallet's Wallet Standard entry (Phantom 23+, Solflare, Backpack register one).
-export const SIGN_MS=10000;
+export const SIGN_MS=120000   // 2026-10-11: Phantom shows up to three warning screens for a new domain; 10 s timed out while the user read them;
 export const NO_RAW_SIGN='This wallet is connected the old way and cannot sign a raw transaction here. Reload the page and pick the same wallet again (Phantom 23+, Solflare and Backpack register the standard connection), or use another wallet.';
 export const NO_SIGN_FEATURE='This wallet does not offer transaction signing to web pages. Use another wallet.';
 export const fromBase64=s=>{const bin=atob(String(s||''));const out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out;};

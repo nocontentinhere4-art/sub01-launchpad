@@ -348,8 +348,10 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   card.append(el('span',{className:'eyebrow',textContent:'What this does NOT do'}),el('ul',{className:'pc-doesnot'},...r.doesNot.map(t=>el('li',{textContent:t}))));
   card.append(el('p',{className:'pc-note',textContent:r.mock?'The wallet asks you to sign a labelled text message; no transaction exists.':'Your wallet shows the transaction again before you sign. Check it shows the same network, fee payer and amount.'}));
   const err=el('p',{className:'pc-err'}),sign=btn('button-orange button-sm',`Sign with ${wallet}`,()=>signNow(root,fl,sign,err,refresh),'wallet');sign.disabled=!r.canSign;
+  // 2026-10-11: Phantom flags city.subzerone.live as a new domain (domain review requested); say so before the popup
+  const walletNote=el('p',{className:'pc-note pc-wallet-note',textContent:'Your wallet may warn that this site is new or unreviewed: city.subzerone.live is days old and under review. The transaction is exactly the one above; take your time, this page waits up to 2 minutes.'});
   const cancel=el('button',{className:'pc-link pc-abandon',type:'button',textContent:'Cancel this transaction',onclick:()=>abandon(root,sign,err,refresh,'cancelled')});
-  card.append(el('div',{className:'pc-step-acts'},sign,cancel),err);
+  card.append(walletNote,el('div',{className:'pc-step-acts'},sign,cancel),err);
   return card;
  }
  async function signNow(root,fl,b,err,refresh){
