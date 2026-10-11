@@ -252,10 +252,10 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   const m=launchSteps(view,me),out=[],e=epoch;syncStage(m);
   if(m.loading){root.replaceChildren(el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),'The launch page is not reachable.'),el('p',{textContent:'The project could not be loaded. Close the computer and try again.'})));return;}
   const err=el('p',{className:'pc-err',textContent:extra.error||''});
-  const list=el('ol',{className:'pc-steps'});list.style.setProperty('--step',String(stepIndex(m.current==='stopped'?'site':m.current)));
+  const list=el('ol',{className:'pc-steps'});list.style.setProperty('--step',String(stepIndex(m.current==='stopped'?'site':m.current,m.steps)));
   const refresh=async(error='')=>{const v=await load(cur.slug,true);if(alive(e)&&tab==='launch')drawLaunch(root,v,{error});};
   for(const s of m.steps){
-   const li=el('li',{className:'pc-step is-'+s.state},el('i',{className:'pc-step-dot'},s.state==='done'?icon('check'):s.state==='blocked'?icon('x'):el('b',{textContent:String(stepIndex(s.id)+1)})));
+   const li=el('li',{className:'pc-step is-'+s.state},el('i',{className:'pc-step-dot'},s.state==='done'?icon('check'):s.state==='blocked'?icon('x'):el('b',{textContent:String(stepIndex(s.id,m.steps)+1)})));
    const main=el('div',{className:'pc-step-main'},el('b',{className:'pc-step-title',textContent:s.title}),el('span',{className:'pc-step-line',textContent:s.line}));
    li.dataset.step=s.id;li.append(main);list.append(li);
    const open=s.state==='current'||s.state==='blocked'||(s.id==='live'&&m.live);

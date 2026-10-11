@@ -1,4 +1,4 @@
-import {profileKit} from '../src/desk-flows.js';
+import {profileKit,stepIndex} from '../src/desk-flows.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {deskModel,hasDesk,tabsFor,siteFor,screenCard,switcherItems,welcomeText,safeHref,SANDBOX,SCREEN_ITEMS} from '../src/desk.js';
@@ -83,7 +83,7 @@ test('launchSteps: loading, building, preview (approve), waiting for the reviewe
  const rev=launchSteps(view('preview_ready',{submitterApprovedAt:1,owner:false}),ME_REV);assert.deepEqual(rev.steps[2].action,{id:'clear',label:'Clear for launch',enabled:true});assert.equal(rev.staff,true);
  const revOwn=launchSteps(view('preview_ready',{submitterApprovedAt:1,submittedBy:ME_REV.user.wallet}),ME_REV);assert.equal(revOwn.steps[2].action,null);assert.match(revOwn.steps[2].line,/not of your own project/);
  const early=launchSteps(view('preview_ready',{owner:false}),ME_REV);assert.equal(early.steps[2].action?.id,'clear','a reviewer may clear before the author approves');assert.equal(early.steps[2].state,'todo');
- const noClear=launchSteps(view('preview_ready',{requireAdminClearance:false}),ME_OWNER);assert.equal(noClear.steps[2].state,'done');assert.match(noClear.steps[2].line,/Not required/);
+ const noClear=launchSteps(view('preview_ready',{requireAdminClearance:false}),ME_OWNER);assert.deepEqual(noClear.steps.map(s=>s.id),['site','approve','launch','live'],'no reviewer step when the server does not require it');assert.equal(stepIndex('launch',noClear.steps),2,'steps shown are numbered 1-4');
  const a=launchSteps(view('approved',{submitterApprovedAt:1,adminClearedAt:1}),ME_OWNER);assert.equal(a.current,'launch');assert.equal(a.phase,'preparing');assert.equal(states(a),'done done done current todo');assert.equal(a.steps[3].action,null);
  const lp=launchSteps(view('launch_prepared',{submitterApprovedAt:1,adminClearedAt:1,launchConfig:{mock:true,feeSharing:{locked:true,recipients:alloc.recipients}},intent:{status:'expired',error:'blockhash expired before the transaction landed'}}),ME_OWNER);
  assert.equal(lp.phase,'prepare');assert.deepEqual(lp.steps[3].action,{id:'prepare',label:'Prepare the transaction',enabled:true});assert.match(lp.steps[3].note,/Last attempt: blockhash expired/);assert.equal(lp.mock,true);assert.match(lp.steps[3].line,/MOCK/);

@@ -53,7 +53,7 @@ export function launchSteps(view,me){
   action:status==='preview_ready'&&!approvedByYou?{id:'approve',label:'Approve site + split',enabled:canApprove}:null,note:split.status==='approved'&&!approvedByYou?'The split is approved; the site changed since. Approve again.':''});
  // 3 clearance
  const own=!!wallet&&str(v.submittedBy)===wallet,canClear=staff&&!own&&status==='preview_ready'&&!cleared;
- steps.push({id:'clear',title:'Reviewer clearance',state:!needClear?'done':stopped?'todo':cleared||rank>=3?'done':status==='preview_ready'&&approvedByYou?'current':'todo',
+ if(needClear)steps.push({id:'clear',title:'Reviewer clearance',state:!needClear?'done':stopped?'todo':cleared||rank>=3?'done':status==='preview_ready'&&approvedByYou?'current':'todo',
   line:!needClear?'Not required on this server.':cleared||rank>=3?'Cleared by a SUBZERONE reviewer.':canClear?'A reviewer clears it for launch; the author cannot clear their own.':staff&&own&&status==='preview_ready'?'You are a reviewer, but not of your own project: another reviewer clears it.':approvedByYou?'Waiting for a SUBZERONE reviewer to clear it for launch.':'A reviewer clears it after your approval.',
   action:canClear?{id:'clear',label:'Clear for launch',enabled:true}:null,note:''});
  // 4 launch
@@ -77,7 +77,8 @@ export function launchSteps(view,me){
  return {...base,loading:false,status,owner,current,stopped,mock,steps,split,phase,publicIdea,
   approve:v.allocation?{allocationId:str(v.allocation.id),statement:str(v.allocation.statement),siteVersion,ideaId:str(v.ideaId)}:null,live};
 }
-export const stepIndex=id=>Math.max(0,STEP_IDS.indexOf(id));
+// Step numbers follow the steps actually shown: without the reviewer step (REQUIRE_ADMIN_CLEARANCE=0) they run 1-4.
+export const stepIndex=(id,steps=null)=>{const ids=Array.isArray(steps)?steps.map(s=>s.id):STEP_IDS;return Math.max(0,ids.indexOf(id));};
 
 // ---------------------------------------------------------------- the dev buy (launch options)
 // The author's optional buy of their own coin inside the creation transaction. Server: launchOptions on the owner's
