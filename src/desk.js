@@ -341,7 +341,7 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    kv('Fee payer',el('code',{textContent:short(r.feePayer,6)}),el('small',{className:r.you?'is-ok':'is-bad',textContent:r.you?'you':'not your wallet'})),
    kv('New mint',el('code',{textContent:short(r.mint,6)||'—'})),
    kv('Programs',el('span',{className:'pc-programs'},...r.programs.map(p=>el('span',{className:'pc-program'+(p.flag?' is-bad':'')},p.flag?icon('x'):icon('check'),p.name,p.direct?'':el('small',{textContent:' (inside the one above)'}))))),
-   kv('Can write',el('b',{textContent:String(r.writable)}),el('small',{textContent:` accounts · ${r.signers} signature${r.signers>1?'s (yours + the new mint, already signed)':' (yours)'}`})),
+   kv('Can write',el('b',{textContent:String(r.writable)}),el('small',{textContent:` accounts · ${r.signers} signature${r.signers>1?'s (yours first; the new mint signs after you, on the server)':' (yours)'}`})),
    kv('Cost',el('b',{textContent:r.cost.total}),el('small',{textContent:r.cost.fee!=null?` · fee ${r.cost.fee} + rent ${r.cost.rent}${r.cost.buy?' + dev buy '+r.cost.buy:''}${r.cost.simulated?' (from a simulation)':''}`:r.mock?' · mock':' · the wallet shows the exact amount'}),r.cost.balance?el('small',{textContent:` · your balance ${r.cost.balance}`}):null));
   if(r.cost.buy)card.append(kv('Dev buy',el('b',{textContent:r.cost.buy}),el('small',{textContent:`${r.cost.buyMax?` · capped at ${r.cost.buyMax} in the transaction`:''} · tokens land in your wallet`})));
   card.append(el('span',{className:'eyebrow',textContent:'Creator-fee split'+(r.split.locked?' · locked at launch':'')}),splitBox(r.split,null));
