@@ -15,7 +15,7 @@ import * as CS from './city-state.js';
 import {addCityGreen} from './city-green.js';
 import {openRoom,attachRoomHost} from './room.js';
 import {addResidents} from './residents.js';
-import {createRemoteWalkers,createPresenceSender} from './presence.js'; // presence: other residents' live walkers, your own outing posted
+import {createRemoteWalkers,createPresenceSender,homeStand} from './presence.js'; // presence: other residents' live walkers, your own outing posted, your figure at your door otherwise
 import {createCrowdGPU,crowdPixels,crowdClose} from './crowd-gpu.js';
 import {renderLookFields,readLook,isUnlocked} from './creator.js';
 import {loadCharacter,HEIGHT} from './characters.js';
@@ -499,7 +499,7 @@ function openAccount(){const r=resident();$('account-name').textContent=(r?.name
 $('account-button').onclick=()=>{if(!me?.user){openSignIn();return;}openAccount();};
 $('account-home-button').onclick=()=>{closeDialog();goHome();};
 $('account-edit-button').onclick=()=>{closeDialog();openCreator();};
-$('signout-button').onclick=async()=>{const b=$('signout-button');b.disabled=true;try{stopExplore();await signOut();await refreshMe();await pollWorld();closeDialog();notify('Signed out. See you in the city.');}catch(err){notify(describeError(err));}finally{b.disabled=false;}};
+$('signout-button').onclick=async()=>{const b=$('signout-button');b.disabled=true;try{stopExplore();presenceSender.stop();await signOut();await refreshMe();await pollWorld();closeDialog();notify('Signed out. See you in the city.');}catch(err){notify(describeError(err));}finally{b.disabled=false;}};
 $('signin-close').onclick=$('resident-close').onclick=closeDialog;
 $('idea-button').onclick=()=>openBuildForm();
 $('city-tour').onclick=()=>{cityTour={index:0,elapsed:0};nextCityView();};
@@ -514,7 +514,7 @@ $('home-view').onclick=()=>focusPlace(places[0]);
 $('tower-view').onclick=()=>focusPlace(tower);
 $('idea-close').onclick=$('detail-close').onclick=closeDialog;
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=closeDialog;
-for(const id of ['idea-backdrop','detail-backdrop','signin-backdrop','resident-backdrop','calendar-backdrop','shrine-backdrop','ledger-backdrop','diary-backdrop','about-backdrop','postcard-backdrop']) $(id).onclick=e=>{if(e.target===$(id))closeDialog();};
+for(const id of ['idea-backdrop','detail-backdrop','signin-backdrop','resident-backdrop','calendar-backdrop','shrine-backdrop','ledger-backdrop','diary-backdrop','about-backdrop','postcard-backdrop','online-backdrop']) $(id).onclick=e=>{if(e.target===$(id))closeDialog();};
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){if(!currentDialog&&photo?.on)photo.exit();closeDialog();}
   if(e.key==='Tab'&&currentDialog){const nodes=[...currentDialog.querySelectorAll('button,input,textarea,select')].filter(n=>!n.disabled);const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){last.focus();e.preventDefault();}else if(!e.shiftKey&&document.activeElement===last){first.focus();e.preventDefault();}}
@@ -529,7 +529,10 @@ $('visit-button').onclick=()=>{
  if(cityPlots.some(c=>c.id===p.id)){openBuildForm(p);return;}
  focusPlace(p);
 };
-function updateResident(){if(world)residents.set(residentList());remoteWalkers.setMyPlot(resident()?.plotId);} // presence: never your own walker twice
+function updateResident(){if(world)residents.set(residentList());remoteWalkers.setMyPlot(resident()?.plotId);standHome();} // presence: never your own walker twice
+// presence: a signed-in resident who is not out stands at their own door for everyone else (idle fixes, presence.js standAt);
+// an outing takes the live root (roamStart) and comes back here when it ends (roamEnd, `ended`); no account → nothing is posted.
+function standHome(ended=false){const r=resident();if(!me?.user||!r){presenceSender.stop();return;}if(!ended&&cityEvents.visitor)return;const h=homeStand(r.plotId);if(h)presenceSender.standAt(h);}
 $('idea-form').onsubmit=async e=>{
  e.preventDefault();$('form-error').textContent='';
  const body={plotId:$('plot-address').value,title:$('idea-title-input').value,concept:$('idea-concept').value,nameSuggestion:$('idea-name').value,tickerSuggestion:$('idea-ticker').value,receivingWallet:$('idea-wallet').value.trim(),rightsConfirmed:$('idea-rights').checked};
@@ -557,7 +560,7 @@ function visitWalk(p){
 const roamTag={element:Object.assign(document.createElement('div'),{className:'world-label roam-tag',hidden:true}),position:new THREE.Vector3(),roam:true};
 function roamStart(r,root){visitKey=boxKey(r.plotId);residents.hide(new Set(visitKey?[visitKey]:[]));roamTag.element.replaceChildren(icon('walk'),r.name);if(!labels.includes(roamTag)){$('labels').append(roamTag.element);labels.push(roamTag);}cityTour=null;cameraTween=null;followObj=root;follow=true;camera.zoom=mobile?1.1:1.5;camera.updateProjectionMatrix();
  if(me?.user&&resident()&&!r.guest)presenceSender.start();} // presence: a signed-in resident's outing is seen by everyone; a guest's stays here
-function roamEnd(){presenceSender.stop();const i=labels.indexOf(roamTag);if(i>=0)labels.splice(i,1);roamTag.element.remove();visitKey=null;residents.hide(new Set());if(followObj){followObj=null;follow=false;}}
+function roamEnd(){standHome(true);const i=labels.indexOf(roamTag);if(i>=0)labels.splice(i,1);roamTag.element.remove();visitKey=null;residents.hide(new Set());if(followObj){followObj=null;follow=false;}}
 // The host's greeting when a visitor (or an exploring resident) stops at their door.
 function greet(plotId,name){const f=frontOf(plotId);if(f)bubble(`💬 Hi ${name}!`,new THREE.Vector3(f.x+1.2,2.4,f.z),4000);const k=boxKey(plotId);if(k)residents.wave(k,performance.now()*.001);}
 // Purely local: nothing about a visit is sent to the server.
@@ -912,8 +915,10 @@ function focusFromUrl(){const q=new URLSearchParams(location.search),id=q.get('f
 // Bubbles are world labels (labels[], projected below in animate); chat.frame() keeps their anchors on the speakers.
 const chat=createChat({me:()=>me,labels,notify,requireWallet:(k,next)=>guest.requireWallet(k,next),openCreator:next=>openCreator(next),
   sub01:()=>character,visitor:()=>cityEvents.visitor,target:()=>controls.target,selected:()=>$('district-select').value,
-  walkerAt:plotId=>remoteWalkers.at(plotId),presence:remoteWalkers}); // presence: bubbles over walkers, walker frames in
-window.__city.chat=chat;window.__city.presence={get walkers(){return remoteWalkers.list;},get myId(){return remoteWalkers.myId;},get sender(){return presenceSender.stats;},get frames(){return remoteWalkers.frames;},
+  walkerAt:plotId=>remoteWalkers.at(plotId),presence:remoteWalkers, // presence: bubbles over walkers, walker frames in
+  openDialog,closeDialog,focusPlot,plotOf:name=>cityBuildings.find(b=>b.type==='apartment'&&b.name===name)?.plotId||null}); // the online sheet: Visit → their plot
+addEventListener('pagehide',()=>presenceSender.stop()); // presence: leaving the page sends the figure home (the server does the same when the stream closes)
+window.__city.chat=chat;window.__city.presence={get walkers(){return remoteWalkers.list;},get myId(){return remoteWalkers.myId;},get sender(){return presenceSender.stats;},get standing(){return presenceSender.standing;},get frames(){return remoteWalkers.frames;},
   inject:frames=>remoteWalkers.apply(frames)};   // rendering only (screenshots, the draw-call audit): a fake walker frame as the stream would send it
 // ---------- end Chat ----------
 const clock=new THREE.Clock();let lastRender=0,renderedAt=-1;

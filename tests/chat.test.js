@@ -117,3 +117,18 @@ test('refusals read in the city’s words: SUB-01 busy, his filter, offline, quo
  assert.match(chatError(E(400,{error:'no_links'})),/Links/);assert.match(chatError(E(409,{error:'duplicate'})),/just said/);assert.match(chatError(E(400,{error:'bad_text'})),/140/);
  assert.match(chatError(E(409,{error:'no_resident'})),/resident/);assert.equal(chatError({message:'boom'}),'boom');assert.equal(chatError(null),'Not sent.');
 });
+
+// ---- The online sheet (2026-10-11): who is here, from the presence frame and the live walkers ----
+import {onlineRows,onlineAlone,ONLINE_STATUS,ONLINE_EMPTY} from '../src/chat.js';
+import {homeStand} from '../src/presence.js';
+test('online rows: one per name, you first, walking / out / at home from the walkers, Visit knows the plot',()=>{
+ const h=homeStand('shibuya-4'),online=[{name:'Aiko',district:'ginza'},{name:'Test Pilot',district:'shibuya'},{name:'Bo',district:null},{name:'Aiko',district:'ueno'},{name:'Cy',district:'ueno'},{name:'',district:'x'},null];
+ const walkers=[{id:'a',name:'Aiko',plotId:'ginza-2',state:'walk',moving:true,x:0,z:0},{id:'t',name:'Test Pilot',plotId:'shibuya-4',state:'idle',moving:false,x:h.x,z:h.z},{id:'c',name:'Cy',plotId:'ueno-1',state:'idle',moving:false,x:40,z:40}];
+ const rows=onlineRows(online,walkers,{myName:'Bo'});
+ assert.deepEqual(rows,[{name:'Bo',district:null,plotId:null,status:'home',mine:true},{name:'Aiko',district:'ginza',plotId:'ginza-2',status:'walking',mine:false},
+  {name:'Test Pilot',district:'shibuya',plotId:'shibuya-4',status:'home',mine:false},{name:'Cy',district:'ueno',plotId:'ueno-1',status:'out',mine:false}]);
+ assert.equal(onlineAlone(rows),false);assert.equal(onlineAlone(onlineRows([{name:'Bo'}],[],{myName:'Bo'})),true);assert.equal(onlineAlone([]),true);
+ assert.deepEqual(onlineRows(null,null),[]);assert.deepEqual(onlineRows([{name:'Zed'}],undefined),[{name:'Zed',district:null,plotId:null,status:'home',mine:false}]);
+ assert.deepEqual(ONLINE_STATUS,{walking:'walking',out:'out in the city',home:'at home'});
+ assert.equal(ONLINE_EMPTY,'Only you right now. Walk around: everyone online sees you.');
+});

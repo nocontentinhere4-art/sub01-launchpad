@@ -290,6 +290,15 @@
         </div>
       </section>
     </div>
+    <!-- Online now: the station board's "· N ONLINE" opens it (chat.js renders the rows from the presence frames). -->
+    <div class="dialog-backdrop" id="online-backdrop" hidden>
+      <section class="idea-card sheet-card more-card" role="dialog" aria-modal="true" aria-labelledby="online-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow">ONLINE NOW · 今いる人</span><h2 id="online-title">Who is <em>here.</em></h2><p class="sheet-h" id="online-count"></p>
+        <div class="sheet-body more-list" id="online-body"></div>
+      </section>
+    </div>
     <div class="dialog-backdrop" id="shrine-backdrop" hidden>
       <section class="idea-card sheet-card shrine-card" role="dialog" aria-modal="true" aria-labelledby="shrine-title">
         <span class="grabber" aria-hidden="true"></span>

@@ -1075,9 +1075,17 @@ button.cal-row:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--a
  font:600 10px/1 var(--f-mono);letter-spacing:.06em;color:var(--ink-2);opacity:0;pointer-events:none;transition:opacity var(--d-2)}
 .chat-row:hover .chat-report,.chat-row:focus-within .chat-report,.chat-row.show-report .chat-report,.chat-row.is-reported .chat-report{opacity:1;pointer-events:auto}
 .chat-report:hover{color:var(--danger-ink)}
-/* the station board band: "· N ONLINE" */
-#eki-online{white-space:nowrap}
+/* the station board band: "· N ONLINE", a button that opens the online sheet */
+#eki-online{white-space:nowrap;height:100%;margin:0;padding:0 4px 0 0;border:0;border-radius:3px;background:none;color:inherit;font:inherit;letter-spacing:inherit;cursor:pointer;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;transition:text-decoration-color var(--d-2)}
+#eki-online:hover{text-decoration-color:currentColor}
+#eki-online:focus-visible{outline:2px solid var(--on-accent);outline-offset:-2px;box-shadow:none}
 .eki-band>span:has(#eki-online:not([hidden])){letter-spacing:.05em}
+/* the online sheet: a row per resident, their district and whether they walk, stand out, or are at home; Visit → their plot */
+.online-row{padding-left:10px;gap:10px}.online-row .tile{flex:none}.online-row>.button{flex:none;width:auto}   /* .idea-card .button is full-width */
+.online-row.is-me{box-shadow:inset 0 0 0 1px var(--stroke-2)}
+.online-row.is-walking .more-k small::before,.online-row.is-out .more-k small::before{content:"";display:inline-block;width:6px;height:6px;margin:0 6px 1px 0;border-radius:50%;background:var(--accent)}
+.online-empty{margin:0;padding:18px 16px;border-radius:var(--r-row);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke);font:450 14px/1.45 var(--f-ui);color:var(--ink-2)}
+@media (max-width:600px){.online-row>.button{--h:34px;font-size:12px;padding:0 4px 0 12px;gap:6px}.online-row>.button .arw{width:26px;height:26px}}
 /* bubbles over heads */
 .world-label.chat-stack{transform:translate(-50%,-100%);pointer-events:none;cursor:default;height:auto;padding:0;display:flex;flex-direction:column;align-items:center;gap:4px;
  white-space:normal;letter-spacing:0;color:var(--paper-ink);z-index:1}

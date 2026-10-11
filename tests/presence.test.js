@@ -95,3 +95,51 @@ test('sender: starts idle, the path goes out as walk, fixes carry no path, stop 
  g.start();assert.equal(posts.length,6,'nothing until the model has loaded');
 });
 test('guests hear once why nobody sees them',()=>{assert.equal(PRESENCE_HINT,'Sign in so others can see you walk.');assert.equal(PRESENCE_HINT_KEY,'sub01.presence.hint');});
+
+// ---- Always present (2026-10-11): a resident in the city but not out stands at their door ----
+import {homeStand,standsAtHome} from '../src/presence.js';
+import {cityPlots,districts} from '../src/city-state.js';
+import {frontOf} from '../src/world-sync.js';
+test('homeStand: the static figure\'s spot (front + 1.2), facing the street; unknown plots are null',()=>{
+ for(const p of cityPlots.slice(0,40)){const h=homeStand(p.id),f=frontOf(p.id),d=districts.find(d=>d.id===p.district);
+  assert.deepEqual(h,{x:f.x+1.2,z:f.z,yaw:f.z>d.z?Math.PI:0},p.id);
+  const dz=Math.cos(h.yaw);assert.ok((d.z-h.z)*dz>0,`${p.id}: yaw ${h.yaw} faces the road at z=${d.z} from z=${h.z}`);}   // atan2(dx, dz): yaw 0 looks +z
+ assert.equal(homeStand('nowhere-9'),null);assert.equal(homeStand(null),null);
+ const h=homeStand('shibuya-4');assert.ok(h&&Math.abs(h.x)<=140&&Math.abs(h.z)<=120,'inside the server\'s city box');
+});
+test('standsAtHome: an idle fix near the front of its own plot, never a walk or a stand elsewhere',()=>{
+ const h=homeStand('shibuya-4'),w={name:'Test Pilot',plotId:'shibuya-4',state:'idle',x:h.x+.4,z:h.z-.3,moving:false};
+ assert.equal(standsAtHome(w),true);
+ assert.equal(standsAtHome({...w,state:'walk'}),false);assert.equal(standsAtHome({...w,moving:true}),false);
+ assert.equal(standsAtHome({...w,x:h.x+9}),false,'standing on a street is out, not home');
+ assert.equal(standsAtHome({...w,plotId:'ginza-2'}),false,'at somebody else\'s door is out');
+ assert.equal(standsAtHome({...w,plotId:null}),false);assert.equal(standsAtHome(null),false);
+});
+test('throttle: a standing figure needs only the idle heartbeat (6 s, well inside the server\'s 15 s TTL)',()=>{
+ const th=createThrottle();th.due(0,{changed:true});th.sent(0);
+ assert.equal(th.due(2500,{every:PRESENCE.idleMs}),false);assert.equal(th.due(6000,{every:PRESENCE.idleMs}),true);
+ assert.equal(th.due(2500),true,'the walking cadence is unchanged');
+ assert.ok(PRESENCE.idleMs*2<PRESENCE.ttlMs,'one lost heartbeat still keeps the figure alive');
+});
+test('sender: standAt posts an idle fix at the door every 6 s, start() takes the live root, the end of an outing goes back to the door, a hidden tab posts nothing',async()=>{
+ const posts=[];let t=0,hid=false;const root={position:{x:50,z:60},rotation:{y:1}},door={x:1.2,z:-2.8,yaw:Math.PI};
+ const s=createPresenceSender({root:()=>root,post:b=>{posts.push(b);return Promise.resolve({});},now:()=>t,every:1e9,hidden:()=>hid});
+ s.standAt(door);assert.deepEqual(posts,[{state:'idle',x:1.2,z:-2.8,yaw:3.14,speed:0}]);assert.equal(s.standing,true);assert.equal(s.stats.standing,true);
+ await Promise.resolve();await Promise.resolve();
+ t=2500;s.tick();assert.equal(posts.length,1,'no 2 s fixes while standing');t=6000;s.tick();assert.equal(posts.length,2,'…a heartbeat every 6 s');
+ await Promise.resolve();await Promise.resolve();
+ s.standAt({...door});s.tick();assert.equal(posts.length,2,'the same door again is nothing');
+ s.path([{x:0,z:0},{x:5,z:0}],2);assert.equal(posts.length,2,'a route means nothing to a standing figure');
+ t=7000;s.start();assert.equal(posts.length,3);assert.deepEqual(posts[2],{state:'idle',x:50,z:60,yaw:1,speed:0},'the outing starts from the live root');assert.equal(s.standing,false);
+ await Promise.resolve();await Promise.resolve();
+ t=8500;s.path([{x:50,z:60},{x:70,z:60}],2.2);assert.equal(posts[3].state,'walk');assert.equal(posts[3].path.length,2);
+ await Promise.resolve();await Promise.resolve();
+ t=9000;s.standAt(door);assert.equal(posts.length,4,'within 1 s of the last post it waits');t=9500;s.tick();assert.deepEqual(posts[4],{state:'idle',x:1.2,z:-2.8,yaw:3.14,speed:0},'…then stands at the door again');
+ await Promise.resolve();await Promise.resolve();
+ hid=true;t=20000;s.tick();assert.equal(posts.length,5,'a hidden tab posts nothing (the server sends the figure home after its TTL)');
+ hid=false;t=20100;s.tick();assert.equal(posts.length,6,'back in view: a fix at once');
+ await Promise.resolve();await Promise.resolve();
+ s.stop();assert.deepEqual(posts.at(-1),{state:'home'});assert.equal(s.on,false);assert.equal(s.standing,false);
+ const g=createPresenceSender({root:()=>null,post:b=>{posts.push(b);return Promise.resolve({});},now:()=>0,every:1e9,hidden:()=>false});
+ g.standAt({x:'no'});g.standAt(null);assert.equal(g.on,false,'no spot, no sender');
+});

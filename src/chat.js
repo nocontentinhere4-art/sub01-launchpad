@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import {api} from './api.js';
 import {districts,cityPlots} from './city-state.js';
 import {frontOf} from './world-sync.js';
-import {icon,brandMark} from './icons.js';
+import {icon,brandMark,tile,cta} from './icons.js';
+import {standsAtHome} from './presence.js';
 
 // ---- Pure helpers (tests/chat.test.js) ----
 export const CHAT={max:50,bubbleMs:7000,stack:3,presenceMs:20e3,presenceBeat:45e3,sendGap:3e3,sub01Gap:20e3,farZoom:.5,maxLen:140,
@@ -119,11 +120,25 @@ export function sub01Status(s){
   reason:st==='offline'?'SUB-01 is offline: messages to him cannot be delivered right now.':'SUB-01’s status has not reached the city yet.'};
 }
 export const onlineCount=o=>Array.isArray(o)?o.length:Number.isFinite(+o)?+o:0;
+// The online sheet ("Online now · 今いる人"): one row per name from the latest presence frame (its order: most recent
+// first, you first), with what the live walkers say: 'walking' (a walk frame), 'out' (standing somewhere in the city),
+// 'home' (no walker, or the standing figure at their own door: presence.js standAt). plotId: the walker's, when it has one.
+export const ONLINE_STATUS={walking:'walking',out:'out in the city',home:'at home'};
+export const ONLINE_EMPTY='Only you right now. Walk around: everyone online sees you.';
+export function onlineRows(online,walkers=[],{myName=null,atHome=standsAtHome}={}){
+ const seen=new Set(),rows=[];
+ for(const o of Array.isArray(online)?online:[]){const name=typeof o?.name==='string'?o.name:'';if(!name||seen.has(name))continue;seen.add(name);
+  const w=(Array.isArray(walkers)?walkers:[]).find(x=>x?.name===name)||null,status=!w?'home':w.state==='walk'||w.moving?'walking':atHome(w)?'home':'out';
+  rows.push({name,district:o.district||null,plotId:w?.plotId||null,status,mine:name===myName});}
+ return rows.sort((a,b)=>Number(b.mine)-Number(a.mine));
+}
+export const onlineAlone=rows=>rows.every(r=>r.mine);
 const initials=n=>(String(n).match(/[\p{L}\p{N}]/gu)||['?']).slice(0,2).join('').toUpperCase();
 
 // ---- DOM wiring ----
 // ctx (main.js): me(), labels (main's world-label list), notify, requireWallet(reason,next), openCreator(next),
-// sub01() → his model, visitor() → your roaming model or null, target() → camera target, selected() → board district.
+// sub01() → his model, visitor() → your roaming model or null, target() → camera target, selected() → board district,
+// presence (the remote walkers: list, hello, apply), openDialog/closeDialog, focusPlot(plotId), plotOf(name) → plotId|null.
 export function createChat(ctx){
  const $=id=>document.getElementById(id),el=(tag,props={},...kids)=>{const n=Object.assign(document.createElement(tag),props);n.append(...kids);return n;};
  const form=$('chat-form'),input=$('chat-input'),sendBtn=$('chat-send'),toBtn=$('chat-to'),toggle=$('chat-toggle'),panel=$('chat-panel'),list=$('chat-list'),note=$('chat-note');
@@ -134,8 +149,25 @@ export function createChat(ctx){
  const myName=()=>ctx.me()?.resident?.name||you?.name||null,myPlot=()=>ctx.me()?.resident?.plotId||you?.plotId||null;
  const district=()=>districtAt(ctx.target(),districts,{selected:ctx.selected()});
  const onlineHere=name=>{const d=district();return online.some(o=>o?.name===name&&(!o.district||o.district===d));};
- // Station board band: "· N ONLINE" after the live count.
- const band=el('span',{id:'eki-online',hidden:true});$('eki-live')?.parentElement?.append(band);
+ // Station board band: "· N ONLINE" after the live count; a button that opens the online sheet (who, where, Visit).
+ const band=el('button',{id:'eki-online',type:'button',hidden:true,title:'Who is online right now'});$('eki-live')?.parentElement?.append(band);
+ const sheet=$('online-body');let sheetOpen=false;
+ let onlineKey='';
+ function renderOnline(){
+  if(!sheet||!sheetOpen)return;const rows=onlineRows(online,ctx.presence?.list||[],{myName:myName()});
+  const key=JSON.stringify(rows);if(key===onlineKey)return;onlineKey=key;   // walker frames come 4× a second: redraw only when a row changed
+  const n=rows.filter(r=>!r.mine).length;$('online-count').textContent=n?`${n} ${n===1?'other resident':'other residents'} here`:'nobody else yet';
+  if(onlineAlone(rows)){sheet.replaceChildren(el('p',{className:'online-empty',textContent:ONLINE_EMPTY}));return;}
+  sheet.replaceChildren(...rows.map(r=>{
+   const where=[r.district?districtLabel(r.district):'',r.mine?'you':ONLINE_STATUS[r.status]].filter(Boolean).join(' · ');
+   const row=el('div',{className:'more-row online-row'+(r.mine?' is-me':'')+' is-'+r.status},tile({kind:'resident',name:r.name},'sm'),el('span',{className:'more-k'},el('b',{textContent:r.name}),el('small',{className:'more-v',textContent:where})));
+   if(!r.mine){const b=cta(el('button',{type:'button',className:'button button-ghost button-sm',title:`Go to ${r.name}'s place`}),'Visit →');
+    b.onclick=()=>{const plotId=r.plotId||ctx.plotOf?.(r.name)||null;ctx.closeDialog?.();if(plotId)ctx.focusPlot?.(plotId);else ctx.notify(`${r.name} has no address in the city yet.`);};row.append(b);}
+   return row;}));
+ }
+ function openOnline(){if(!sheet)return;sheetOpen=true;onlineKey='';renderOnline();ctx.openDialog?.('online-backdrop');}
+ band.onclick=openOnline;
+ if(sheet){const bd=$('online-backdrop');new MutationObserver(()=>{if(bd.hidden)sheetOpen=false;}).observe(bd,{attributes:true,attributeFilter:['hidden']});}
 
  // -- bubbles over heads
  const anchor=(key,out)=>{
@@ -239,9 +271,9 @@ export function createChat(ctx){
  // -- the stream
  function handle(e){
   let d=null;try{d=JSON.parse(e.data);}catch{return;}
-  if(e.event==='hello'){you=d?.you||null;online=d?.online??[];for(const m of d?.recent||[])log.add(m);ctx.presence?.hello(d);render();chrome();return;}
-  if(e.event==='presence'){online=d?.online??[];chrome();return;}
-  if(e.event==='walker'||e.event==='walkers'){ctx.presence?.apply(Array.isArray(d)?d:[d]);return;}   // live walkers (presence.js)
+  if(e.event==='hello'){you=d?.you||null;online=d?.online??[];for(const m of d?.recent||[])log.add(m);ctx.presence?.hello(d);render();chrome();renderOnline();return;}
+  if(e.event==='presence'){online=d?.online??[];chrome();renderOnline();return;}
+  if(e.event==='walker'||e.event==='walkers'){ctx.presence?.apply(Array.isArray(d)?d:[d]);renderOnline();return;}   // live walkers (presence.js)
   if(e.event==='sub01'){sub01=d;chrome();return;}
   if(e.event==='del'){const id=String(d?.id);log.del(id);const k=bubbles.remove(id);if(k)drawStack(k);render();return;}
   if(e.event!=='msg')return;
@@ -279,7 +311,7 @@ export function createChat(ctx){
    for(const k of bubbles.expire(performance.now()))drawStack(k);
    for(const [k,l] of stackLabels){if(!anchor(k,l.position))l.position.set(0,-1e4,0);l.element.classList.toggle('is-far',zoom<CHAT.farZoom);}
   }catch(err){console.warn('[city] chat',err?.message||err);}},
-  reconnect:connect,open:setOpen,
+  reconnect:connect,open:setOpen,openOnline,get onlineRows(){return onlineRows(online,ctx.presence?.list||[],{myName:myName()});},
   get online(){return onlineCount(online);},get state(){return state;},get sub01(){return sub01;},get log(){return log.list;},get typing(){return document.activeElement===input;},
   get bubbles(){return [...stackLabels].map(([k,l])=>({key:k,count:bubbles.stack(k).length,at:{x:+l.position.x.toFixed(2),y:+l.position.y.toFixed(2),z:+l.position.z.toFixed(2)}}));}};
  return self;

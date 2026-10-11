@@ -4,13 +4,18 @@
 // (residents.js: the GPU crowd up close, box figures far away: no draw call of their own), dead-reckoned along the
 // path between fixes. Only a resident's public name, look and position travel; guests are never sent (guest.js
 // says so once). The server names walkers by an opaque id, never a wallet.
+// Always present (owner 2026-10-11, "non vedo nessuno"): a signed-in resident who is in the city but not walking
+// stands at their own door (standAt: an idle fix every 6 s, the server forgets a walker after 15 s), so everyone
+// online is seen, not only the ones out walking. Guests still post nothing.
 import * as THREE from 'three';
 import {api} from './api.js';
 import {icon} from './icons.js';
 import {STRIDE} from './motion.js';
 import {groundY} from './explore.js';   // the canal bridge deck: a walker's feet follow the ground like the local model's
+import {cityPlots,districts} from './city-state.js';
+import {frontOf} from './world-sync.js';
 
-export const PRESENCE={path:'/api/presence',fixMs:2000,minGapMs:1000,ttlMs:15e3,snap:3,maxPath:24,bodyMax:580,tagZoom:.5,lerp:8,walkCycle:4/3};
+export const PRESENCE={path:'/api/presence',fixMs:2000,idleMs:6000,minGapMs:1000,ttlMs:15e3,snap:3,maxPath:24,bodyMax:580,tagZoom:.5,lerp:8,walkCycle:4/3};
 const STATES=new Set(['walk','idle','home']);
 const num=(v,d=0)=>typeof v==='number'&&Number.isFinite(v)?v:d;
 const r1=v=>Math.round(v*10)/10,r2=v=>Math.round(v*100)/100;
@@ -54,12 +59,20 @@ export function approach(cur,target,dt,{snap=PRESENCE.snap,rate=PRESENCE.lerp}={
  const k=Math.min(1,dt*rate);cur.x+=dx*k;cur.z+=dz*k;cur.yaw=wrap(cur.yaw+wrap(target.yaw-cur.yaw)*k);return 'move';
 }
 // When to post: a changed path goes out at once but never within minGap of the last post (it waits for the next tick);
-// otherwise a fix every fixMs. ≤ 1 message a second on the wire.
+// otherwise a fix every fixMs (`every` overrides it: a standing figure needs only the idle heartbeat). ≤ 1 message a second.
 export function createThrottle({minGapMs=PRESENCE.minGapMs,fixMs=PRESENCE.fixMs}={}){
  let lastAt=-Infinity,dirty=false;
- return {due(now,{changed=false}={}){if(changed)dirty=true;const gap=now-lastAt;return (dirty&&gap>=minGapMs)||gap>=fixMs;},
+ return {due(now,{changed=false,every=fixMs}={}){if(changed)dirty=true;const gap=now-lastAt;return (dirty&&gap>=minGapMs)||gap>=every;},
   sent(now){lastAt=now;dirty=false;},reset(){lastAt=-Infinity;dirty=false;},get dirty(){return dirty;}};
 }
+// Where a resident stands when they are in the city but not out: at their door (the static figure's spot, 1.2 to the
+// right of the front), facing the street. The idle heartbeat (idleMs) keeps that figure alive within the server's TTL.
+export function homeStand(plotId,{plots=cityPlots,dists=districts}={}){
+ const p=plots.find(c=>c.id===plotId),f=p&&frontOf(plotId);if(!p||!f)return null;
+ const d=dists.find(d=>d.id===p.district);return {x:f.x+1.2,z:f.z,yaw:d&&f.z>d.z?Math.PI:0};
+}
+// A standing resident on the stream: a walker frame that stands (idle) within `near` of the front of its own plot.
+export const standsAtHome=(w,near=2.5)=>{if(!w||w.state==='walk'||w.moving)return false;const h=w.plotId&&homeStand(w.plotId);return !!h&&Math.hypot(w.x-h.x,w.z-h.z)<=near;};
 // The POST body for an outing: state, a fix, the path (only when it changed, cut to fit the server's 600 B limit).
 export function presenceBody({state,x,z,yaw,speed,path=null,withPath=false},max=PRESENCE.bodyMax){
  const b={state,x:r2(x),z:r2(z),yaw:r2(wrap(yaw)),speed:r2(speed)};
@@ -83,22 +96,31 @@ export function createRemoteSet({ttlMs=PRESENCE.ttlMs}={}){
 
 // ---- Your outing → the server ----
 // root(): the roaming model's Object3D (position, rotation.y) or null while it loads. post(body) → promise.
-export function createPresenceSender({root,post=b=>api(PRESENCE.path,{method:'POST',body:b}),now=()=>performance.now(),every=250}={}){
- const th=createThrottle();let on=false,path=null,speed=0,state='idle',changed=false,timer=0,inflight=false,sent=0,failed=0,lastBody=null;
+// start() follows the live root (an outing); standAt({x,z,yaw}) posts a fixed spot instead (standing at your door);
+// either way one timer, one throttle, idle fixes every idleMs. hidden(): a hidden tab posts nothing (the server lets
+// the figure go home after its TTL); the first tick back in view posts at once.
+export function createPresenceSender({root,post=b=>api(PRESENCE.path,{method:'POST',body:b}),now=()=>performance.now(),every=250,hidden=()=>typeof document!=='undefined'&&document.hidden}={}){
+ const th=createThrottle();let on=false,fixed=null,path=null,speed=0,state='idle',changed=false,timer=0,inflight=false,sent=0,failed=0,lastBody=null,paused=false;
+ const at=()=>fixed||root?.();
  function tick(){
-  if(!on||inflight)return;const r=root?.();if(!r)return;
-  if(!th.due(now(),{changed}))return;
+  if(!on||inflight)return;if(hidden()){paused=true;return;}if(paused){paused=false;changed=true;}const r=at();if(!r)return;
+  if(!th.due(now(),{changed,every:state==='idle'?PRESENCE.idleMs:PRESENCE.fixMs}))return;
   const withPath=changed;changed=false;th.sent(now());
   const body=presenceBody({state,x:r.position.x,z:r.position.z,yaw:r.rotation.y,speed,path,withPath});lastBody=body;inflight=true;
   post(body).then(()=>{sent++;},err=>{failed++;if(err?.status===401||err?.status===409)halt();}).finally(()=>{inflight=false;});
  }
- function halt(){on=false;clearInterval(timer);timer=0;path=null;changed=false;}
+ function halt(){on=false;fixed=null;clearInterval(timer);timer=0;path=null;changed=false;paused=false;}
+ function begin(){if(!on){on=true;th.reset();timer=setInterval(tick,every);timer.unref?.();}state='idle';path=null;speed=0;changed=true;tick();}
  return {
-  start(){if(on)return;on=true;state='idle';path=null;speed=0;changed=true;th.reset();timer=setInterval(tick,every);timer.unref?.();tick();},
+  start(){if(on&&!fixed)return;fixed=null;begin();},
+  // Stand at a fixed spot (your door) until start() takes the live root or stop() posts home. The same spot again is nothing.
+  standAt(p){if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.z))return;const yaw=Number.isFinite(p.yaw)?p.yaw:0;
+   if(on&&fixed&&fixed.position.x===p.x&&fixed.position.z===p.z&&fixed.rotation.y===yaw)return;
+   fixed={position:{x:p.x,z:p.z},rotation:{y:yaw}};begin();},
   // The explorer's / the visit's route changed (null: standing still).
-  path(p,s=0){if(!on)return;path=Array.isArray(p)&&p.length>1?p:null;speed=path?s:0;state=path?'walk':'idle';changed=true;tick();},
+  path(p,s=0){if(!on||fixed)return;path=Array.isArray(p)&&p.length>1?p:null;speed=path?s:0;state=path?'walk':'idle';changed=true;tick();},
   stop(){if(!on)return;halt();lastBody={state:'home'};post({state:'home'}).then(()=>{sent++;},()=>{failed++;});},
-  tick,get on(){return on;},get stats(){return {sent,failed,state,lastBody};}};
+  tick,get on(){return on;},get standing(){return on&&!!fixed;},get stats(){return {sent,failed,state,standing:on&&!!fixed,lastBody};}};
 }
 
 // ---- Everyone else's outings → the city ----
@@ -106,14 +128,15 @@ export function createPresenceSender({root,post=b=>api(PRESENCE.path,{method:'PO
 export function createRemoteWalkers({residents,labels,labelsRoot=null,ttlMs=PRESENCE.ttlMs}={}){
  const set=createRemoteSet({ttlMs}),figs=new Map();let myId=null,myPlot=null,lastT=0,frames=0;
  const root=()=>labelsRoot||document.getElementById('labels');
- function addLabel(f){const element=Object.assign(document.createElement('div'),{className:'world-label roam-tag remote-tag',hidden:true});element.append(icon('walk'),f.name);
+ const ic=w=>w.state==='walk'?'walk':'user';   // the tag's glyph: walking, or standing (at their door or anywhere)
+ function addLabel(f){const element=Object.assign(document.createElement('div'),{className:'world-label roam-tag remote-tag',hidden:true});f.ic=ic(f.w);element.append(icon(f.ic),f.name);
   f.label={element,position:new THREE.Vector3(f.x,2.31,f.z),roam:true,minZoom:PRESENCE.tagZoom};root()?.append(element);labels.push(f.label);}
  function dropLabel(f){if(!f.label)return;f.label.element.remove();const i=labels.indexOf(f.label);if(i>=0)labels.splice(i,1);f.label=null;}
  const mine=w=>w.id===myId||(myPlot&&w.plotId===myPlot);                  // never your own model twice
  function sync(){
   for(const w of set.list()){if(mine(w))continue;let f=figs.get(w.id);
    if(!f){f={key:'walker:'+w.id,id:w.id,name:w.name,plotId:w.plotId,x:w.x,y:.26,z:w.z,yaw:w.yaw,look:w.look,moving:false,wave:false,phase:(figs.size*.37)%1,rate:1,w,label:null};figs.set(w.id,f);addLabel(f);}
-   else{f.w=w;f.look=w.look;if(f.name!==w.name){f.name=w.name;f.label?.element.replaceChildren(icon('walk'),w.name);}}
+   else{f.w=w;f.look=w.look;if(f.name!==w.name||f.ic!==ic(w)){f.name=w.name;f.ic=ic(w);f.label?.element.replaceChildren(icon(f.ic),w.name);}}
    f.rate=Math.max(.6,w.speed*PRESENCE.walkCycle/STRIDE);f.wave=w.state==='idle'&&w.emote==='wave';}
   for(const [id,f] of figs){const w=set.get(id);if(!w||mine(w)){dropLabel(f);figs.delete(id);}}
   residents.walkers([...figs.values()]);
