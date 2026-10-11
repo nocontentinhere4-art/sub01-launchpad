@@ -169,5 +169,5 @@ test('signTransaction: Wallet Standard signs the bytes on the asked chain; legac
  let n=0;registerStandard({name:'Loud',chains:['solana:mainnet'],features:{'standard:connect':{connect:async(o)=>{n++;if(o.silent)throw new Error('not trusted');return {accounts:[acct]};}},'solana:signMessage':{signMessage:async()=>[]},
   'solana:signTransaction':{signTransaction:async({transaction})=>[{signedTransaction:transaction}]}}});
  assert.equal(fromBase64((await signTransaction('Loud',toBase64(tx))).signed).length,tx.length);assert.equal(n,2);
- assert.equal(SIGN_MS,10000);assert.deepEqual([...fromBase64(toBase64(new Uint8Array([0,1,255,128])))],[0,1,255,128]);
+ assert.equal(SIGN_MS,120000);assert.deepEqual([...fromBase64(toBase64(new Uint8Array([0,1,255,128])))],[0,1,255,128]);
 });
