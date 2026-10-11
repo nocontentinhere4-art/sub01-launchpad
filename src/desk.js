@@ -359,7 +359,12 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    let signed;
    if(fl.tx.mock){const v=await load(cur.slug,true),text=v?.mockSigningText;if(!text)throw new Error('The mock signing text is missing; prepare again.');
     signed=b58encode((await signMessage(name,new TextEncoder().encode(text))).signature);}
-   else signed=(await signTransaction(name,fl.tx.txBase64,{chain:chainFor(fl.tx.network)})).signed;
+   else{
+    // a fresh blockhash right before the wallet opens: the same mint and instructions, so the review stays true
+    let txb=fl.tx.txBase64;
+    try{const fresh=await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/refresh`,{method:'POST',body:{}});if(fresh?.txBase64&&fresh.mint===fl.tx.mint){txb=fresh.txBase64;fl.tx={...fl.tx,...fresh};}}
+    catch(x){if(x?.status&&x.status!==404)throw x;}   // an older server without the route: sign what was reviewed
+    signed=(await signTransaction(name,txb,{chain:chainFor(fl.tx.network)})).signed;}
    await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/signed`,{method:'POST',body:{signed}});
    flight=null;await refresh();
   }catch(x){
