@@ -425,7 +425,7 @@ const ART={choice:0,chosen:false,locked:false,lockedWhy:null,candidates:[
  {index:1,label:'Option 2',provider:'higgsfield',symbol:'ramen',live:false,logoUrl:'/api/projects/ramen/art/logo-1.png',bannerUrl:'/api/projects/ramen/art/banner-1.png'}]};
 test('artModel: owner, preview_ready/approved/launch_prepared, two same-origin options; older coins and visitors get nothing',()=>{
  const m=artModel(ART,view('preview_ready'));
- assert.deepEqual(m.options.map(o=>[o.index,o.label,o.live,o.by]),[[0,'Option 1',true,'drawn by SUB-01 (no AI)'],[1,'Option 2',false,'drawn with Higgsfield']]);
+ assert.deepEqual(m.options.map(o=>[o.index,o.label,o.live,o.by]),[[0,'Option 1',true,'drawn by SUB-01 (no AI)'],[1,'Option 2',false,'']]);
  assert.deepEqual([m.choice,m.chosen,m.editable],[0,false,true]);assert.match(m.note,/Option 1 is used unless you pick/);
  assert.equal(artModel(ART,view('generating')),null,'not while SUB-01 builds');assert.equal(artModel(ART,view('launched')),null);
  assert.equal(artModel(ART,view('preview_ready',{owner:false})),null,'owner only');

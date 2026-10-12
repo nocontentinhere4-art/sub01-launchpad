@@ -164,7 +164,7 @@ export function artModel(art,view){
  const a=art&&typeof art==='object'?art:null,v=view&&typeof view==='object'?view:null;
  if(!a||!v||v.owner!==true||!ART_STATES.has(str(v.status))||!Array.isArray(a.candidates))return null;
  const sameOrigin=u=>(u=str(u))&&/^\/api\/projects\/[a-z0-9-]+\/art\/(logo|banner)-[01]\.png$/.test(u)?u:null;
- const by={local:'drawn by SUB-01 (no AI)','owner-supplied':'your own art',higgsfield:'drawn with Higgsfield',recraft:'drawn with Recraft'};
+ const by={local:'drawn by SUB-01 (no AI)','owner-supplied':'your own art',higgsfield:'',recraft:''};
  const options=a.candidates.filter(c=>c&&(c.index===0||c.index===1)&&sameOrigin(c.logoUrl)&&sameOrigin(c.bannerUrl))
   .map(c=>({index:c.index,label:`Option ${c.index+1}`,logo:sameOrigin(c.logoUrl),banner:sameOrigin(c.bannerUrl),live:c.live===true,by:by[str(c.provider)]||''}));
  if(options.length<2)return null;
