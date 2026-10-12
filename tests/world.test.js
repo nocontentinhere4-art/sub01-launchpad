@@ -62,3 +62,15 @@ test('world: launched public projects carry their coin stats (normalised); unlau
  assert.equal(b[1].stats,null,'private: nothing');assert.equal(b[2].stats,null,'not launched: nothing');assert.equal(b[3].stats.mock,true,'mock stays marked');
  assert.equal(worldBuildings({plots:[{plotId:'ueno-3',kind:'project',project:{slug:'m',name:'M',ticker:'M',stage:'launched',launched:true}}]})[0].stats,null,'no stats object yet');
 });
+
+test('a coin launched from another coin\'s site names its parent; a launchpad counts the coins launched from it', () => {
+  const plot = (plotId, project) => ({ plotId, kind: 'project', project: { stage: 'launched', stageLabel: 'Launched', progress: 1, launched: true, mint: 'M', ...project } });
+  const [kid, pad] = worldBuildings({ plots: [plot('shiba-1', { slug: 'lattice-cat', name: 'Lattice Cat', ticker: 'LCAT', parent: { slug: 'q-wave', name: 'Q-wave' } }),
+    plot('shiba-4', { slug: 'q-wave', name: 'Q-wave', ticker: 'QWAVE', childrenLaunched: 3 })] });
+  assert.deepEqual(kid.parent, { slug: 'q-wave', name: 'Q-wave' });
+  assert.equal(kid.childrenLaunched, 0);
+  assert.equal(pad.parent, null);
+  assert.equal(pad.childrenLaunched, 3);
+  const priv = worldBuildings({ plots: [plot('shiba-1', { slug: null, name: 'Private project', ticker: null, parent: { slug: 'q-wave', name: 'Q-wave' } })] })[0];
+  assert.equal(priv.parent, null, 'a private project carries nothing');
+});

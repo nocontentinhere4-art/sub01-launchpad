@@ -24,7 +24,9 @@ export function worldBuildings(world){
    // Private ideas: the server sends only 'Private project' + stage; nothing else is carried (no ticker, art, mint or stats).
    // `stats` (coin-tier.js cleanStats): the launched coin's on-chain record, only for public launched projects; null otherwise.
    out.push({plotId:p.plotId,type:'project',phase,progress:Math.max(0,Math.min(1,Number(x.progress)||0)),name:x.name,ticker:priv?null:x.ticker||null,stageLabel:x.stageLabel,slug:x.slug||null,launched:!!x.launched,mint:priv?null:x.mint||null,
-    logoUrl:priv?null:x.logoUrl||null,bannerUrl:priv?null:x.bannerUrl||null,private:priv,color:PALETTE[hash(p.plotId)%4],stats:priv||!x.launched?null:cleanStats(x.stats)});}
+    logoUrl:priv?null:x.logoUrl||null,bannerUrl:priv?null:x.bannerUrl||null,private:priv,color:PALETTE[hash(p.plotId)%4],stats:priv||!x.launched?null:cleanStats(x.stats),
+    // a coin launched from another coin's site (backend child-launch.js) names its parent; a launchpad coin counts its children
+    parent:!priv&&x.parent&&typeof x.parent.name==='string'?{slug:String(x.parent.slug||'').slice(0,40),name:String(x.parent.name).slice(0,32)}:null,childrenLaunched:priv?0:Math.max(0,Math.floor(Number(x.childrenLaunched)||0))});}
   else if(p.kind==='apartment'&&p.resident)out.push({plotId:p.plotId,type:'apartment',phase:'home',progress:1,name:p.resident.name,resident:p.resident,color:PALETTE[hash(p.resident.name)%4]});
  }
  return out;
