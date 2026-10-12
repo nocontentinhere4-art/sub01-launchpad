@@ -40,6 +40,7 @@ import {awayCard} from './away.js';
 import {cityLayout} from './lots.js';
 import {createChat} from './chat.js'; // chat:
 import {verdictModel,renderVerdict,prefillFrom,pollPlan,counterLabel} from './verdict.js'; // verdict: SUB-01 answers the drop in seconds
+import {requestComputer} from './desk.js'; // the verdict's "Choose your logo on your PC" opens the room computer on Launch
 import {createGovernor,settingsFor,startLevel,gpuName,createFuse,packResume,unpackResume,safeStore,timeoutSignal,nextPollDelay,GOV,RESUME_KEY,RESUME_MAX_AGE} from './quality.js';
 // Never a white page: an uncaught error or rejection is one quiet console line. If the city never drew its first frame
 // (no WebGL, a module that failed), the loading screen says so instead of spinning forever.
@@ -428,7 +429,10 @@ function watchVerdict(ideaId,root,{plot=null,dialog=null,closable=true}={}){
  const started=Date.now();let timer=0,stopped=false,last=null;
  const stop=()=>{stopped=true;clearTimeout(timer);removeEventListener('sub01:verdict',onFrame);if(watch?.ideaId===ideaId)watch=null;};
  const close=dialog&&closable?m=>()=>{stop();closeDialog();if(m?.state==='build'&&plot)focusPlace(plot);}:()=>null;
- const draw=idea=>{last=idea;const m=verdictModel(idea);renderVerdict(root,m,{onRevise:m.canRevise?()=>{stop();closeDialog();openBuildForm(plot,idea);}:null,onClose:close(m)});return m;};
+ // a build: "Choose your logo on your PC" → the author's room, the computer on this project's Launch tab (desk.js requestComputer)
+ const chooseLogo=idea=>()=>{stop();if(dialog)closeDialog();requestComputer({slug:idea?.project?.slug,tab:'launch'});deepLink('room','pc');};
+ const draw=idea=>{last=idea;const m=verdictModel(idea);renderVerdict(root,m,{onRevise:m.canRevise?()=>{stop();closeDialog();openBuildForm(plot,idea);}:null,onClose:close(m),
+  onChooseLogo:m.state==='build'&&m.next?chooseLogo(idea):null});return m;};
  const onFrame=e=>{if(e.detail?.ideaId===ideaId)tick(true);};
  async function tick(now=false){
   if(stopped)return;

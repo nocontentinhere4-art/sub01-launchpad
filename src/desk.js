@@ -166,9 +166,16 @@ function kitBlock(kit,p){
 const copyBtn=text=>{const b=el('button',{className:'pc-copy',type:'button',title:'Copy',onclick:async()=>{try{await navigator.clipboard.writeText(text);b.classList.add('is-ok');setTimeout(()=>b.classList.remove('is-ok'),1200);}catch{}}},icon('check'));b.setAttribute('aria-label','Copy '+short(text,6));return b;};
 // openComputer({model,project,ownerName,me,onIdea,onClose}) → {close()}. me: the /api/me answer (role, wallet) or null.
 // onIdea: null when main.js has not wired host.openIdea.
+// A one-shot request from outside the room (the verdict card's "Choose your logo on your PC", 2026-10-12): the next
+// computer opened on the owner's own desk shows that project on that tab. Consumed by openComputer; stale after 2 min.
+let pcRequest=null;
+export function requestComputer(r){pcRequest=r&&typeof r==='object'?{slug:str(r.slug)||null,tab:str(r.tab)||null,at:Date.now()}:null;}
+export function takeComputerRequest(model,now=Date.now()){const r=pcRequest;pcRequest=null;if(!r||!model?.mine||now-r.at>120000)return null;
+ return {project:(r.slug&&(model.projects||[]).find(p=>p?.slug===r.slug))||null,tab:r.tab};}
 export function openComputer({model,project=null,ownerName='',me=null,onIdea=null,onClose}){
  const items=switcherItems(model),prevFocus=document.activeElement,timers=new Set(),views=new Map();
- let cur=project||model.projects[0]||null,tab=null,closed=false,focusIdea=null,epoch=0;
+ const req=takeComputerRequest(model);
+ let cur=req?.project||project||model.projects[0]||null,tab=null,closed=false,focusIdea=null,epoch=0;
  const back=el('div',{className:'pc-backdrop'}),win=el('section',{className:'pc-window',tabIndex:-1});win.setAttribute('role','dialog');win.setAttribute('aria-modal','true');
  const title=el('div',{className:'pc-title'}),closeB=el('button',{className:'pc-close',type:'button',title:'Close (Esc)',onclick:()=>close()},icon('x'));closeB.setAttribute('aria-label','Close the computer');
  const tabs=el('div',{className:'pc-tabs'}),body=el('div',{className:'pc-body'});tabs.setAttribute('role','tablist');body.setAttribute('role','tabpanel');
@@ -591,6 +598,6 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   if((e.key==='ArrowRight'||e.key==='ArrowLeft')&&e.target?.classList?.contains('pc-tab')){const list=tabsFor(model,cur),k=list.indexOf(tab),n=list[(k+(e.key==='ArrowRight'?1:-1)+list.length)%list.length];show(n);tabs.querySelector(`[data-tab="${n}"]`)?.focus();}};
  document.addEventListener('keydown',onKey,true);
  function close({quiet=false}={}){if(closed)return;closed=true;document.removeEventListener('keydown',onKey,true);clearBody();back.remove();if(prevFocus?.isConnected)prevFocus.focus?.({preventScroll:true});onClose?.({quiet});}
- show(cur?'site':'ideas');document.body.append(back);win.focus({preventScroll:true});
+ show(cur?(req?.tab&&tabsFor(model,cur).includes(req.tab)?req.tab:'site'):'ideas');document.body.append(back);win.focus({preventScroll:true});
  return {close,get open(){return !closed;}};
 }

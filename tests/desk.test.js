@@ -452,3 +452,12 @@ test('renderArtPick: two cards, the live one marked; a tap sends the other index
   await buttons[1].onclick();assert.deepEqual(picked,[1]);
  }finally{delete globalThis.document;}
 });
+test('requestComputer: the next computer on the owner\'s desk opens that project on that tab, once, within 2 minutes',async()=>{
+ const {requestComputer,takeComputerRequest}=await import('../src/desk.js');
+ const model={mine:true,projects:[{slug:'ramen'},{slug:'soba'}]};
+ requestComputer({slug:'soba',tab:'launch'});assert.deepEqual(takeComputerRequest(model),{project:{slug:'soba'},tab:'launch'});
+ assert.equal(takeComputerRequest(model),null,'one-shot');
+ requestComputer({slug:'gone',tab:'launch'});assert.deepEqual(takeComputerRequest(model),{project:null,tab:'launch'},'project not built yet: the default project, Launch tab');
+ requestComputer({slug:'soba',tab:'launch'});assert.equal(takeComputerRequest({...model,mine:false}),null,'never on someone else\'s desk');
+ requestComputer({slug:'soba',tab:'launch'});assert.equal(takeComputerRequest(model,Date.now()+121000),null,'stale');
+});
