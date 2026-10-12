@@ -68,3 +68,10 @@ test('model: after a resubmit the old verdict is not shown as the new one; he is
  assert.deepEqual(reviseButton(verdictModel({...passed,nextVersionAt:500},1000),1000),{label:'Revise & resubmit · v2 of 5',disabled:false});
  assert.deepEqual(reviseButton(verdictModel({...passed,version:4}),1000),{label:'Revise & resubmit · v5 of 5',disabled:false});
 });
+test('build verdict: the next step is choosing the logo on the PC (owner only); a pass has none',async()=>{
+ const {NEXT_LOGO}=await import('../src/verdict.js');
+ const built={status:'generating',version:1,maxVersions:5,versions:[{version:1,decision:'build'}],evaluation:{decision:'selected',verdict:'build',latencyMs:300,feedback:{summary:'Build.'}}};
+ assert.equal(verdictModel(built).next,NEXT_LOGO);assert.match(NEXT_LOGO,/choose your logo on your PC/);
+ assert.equal(verdictModel({...built,owner:false}).next,'');
+ assert.equal(verdictModel(passed).next,undefined);
+});

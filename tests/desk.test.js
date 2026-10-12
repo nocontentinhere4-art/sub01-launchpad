@@ -418,3 +418,37 @@ test('app edits: copy by path, fields (add, remove, kinds, choices), schedule, c
  app=appSetCard(app,m().card,{heading:'LAWSON-ISH'});assert.equal(appProblem(app),'');
  assert.deepEqual(Object.keys(appPayload(app)),['app']);
 });
+// ---------------------------------------------------------------- the logo choice (desk-flows.js artModel/showArtOn, desk.js renderArtPick)
+import {artModel,showArtOn,renderArtPick} from '../src/desk.js';
+const ART={choice:0,chosen:false,locked:false,lockedWhy:null,candidates:[
+ {index:0,label:'Option 1',provider:'local',symbol:'ramen',live:true,logoUrl:'/api/projects/ramen/art/logo-0.png',bannerUrl:'/api/projects/ramen/art/banner-0.png'},
+ {index:1,label:'Option 2',provider:'higgsfield',symbol:'ramen',live:false,logoUrl:'/api/projects/ramen/art/logo-1.png',bannerUrl:'/api/projects/ramen/art/banner-1.png'}]};
+test('artModel: owner, preview_ready/approved/launch_prepared, two same-origin options; older coins and visitors get nothing',()=>{
+ const m=artModel(ART,view('preview_ready'));
+ assert.deepEqual(m.options.map(o=>[o.index,o.label,o.live,o.by]),[[0,'Option 1',true,'drawn by SUB-01 (no AI)'],[1,'Option 2',false,'drawn with Higgsfield']]);
+ assert.deepEqual([m.choice,m.chosen,m.editable],[0,false,true]);assert.match(m.note,/Option 1 is used unless you pick/);
+ assert.equal(artModel(ART,view('generating')),null,'not while SUB-01 builds');assert.equal(artModel(ART,view('launched')),null);
+ assert.equal(artModel(ART,view('preview_ready',{owner:false})),null,'owner only');
+ assert.equal(artModel({...ART,candidates:[]},view('preview_ready')),null,'a coin from before the options');assert.equal(artModel(null,view('approved')),null);
+ assert.equal(artModel({...ART,candidates:[ART.candidates[0],{...ART.candidates[1],logoUrl:'https://evil.test/x.png'}]},view('approved')),null,'only our own /api/projects/…/art URLs reach an <img>');
+ const chosen=artModel({...ART,choice:1,chosen:true},view('launch_prepared'));assert.equal(chosen.choice,1);assert.match(chosen.note,/Option 2 is your logo/);
+ const locked=artModel({...ART,locked:true,lockedWhy:'a launch transaction exists; cancel it first to change the logo'},view('launch_prepared'));
+ assert.equal(locked.editable,false);assert.match(locked.note,/cancel it first/);
+ assert.deepEqual(['site','approve','clear','launch','devbuy','live'].map(id=>showArtOn(m,id)),[false,true,true,true,false,false]);
+ assert.equal(showArtOn(m,'launch',true),false,'not under the review card');assert.equal(showArtOn(locked,'approve'),false);
+});
+test('renderArtPick: two cards, the live one marked; a tap sends the other index',async()=>{
+ class El{constructor(tag){this.tagName=tag.toUpperCase();this.children=[];this.attrs={};this.classList={toggle(){}};this.textContent='';}
+  append(...k){for(const c of k){if(c==null||c===false)throw new Error('append(null)');this.children.push(typeof c==='string'?{text:c}:c);}}
+  setAttribute(k,v){this.attrs[k]=v;}
+  all(){const out=[],walk=n=>{for(const c of n.children||[]){out.push(c);walk(c);}};walk(this);return out;}}
+ globalThis.document={createElement:t=>new El(t),createElementNS:(_ns,t)=>new El(t)};
+ try{
+  const picked=[];const box=renderArtPick(artModel(ART,view('preview_ready')),{onPick:async i=>{picked.push(i);}});
+  const cards=box.all().filter(n=>/^pc-art-opt/.test(n.className||''));
+  assert.deepEqual(cards.map(c=>c.className),['pc-art-opt is-on','pc-art-opt']);
+  const imgs=box.all().filter(n=>n.tagName==='IMG').map(i=>i.src);assert.deepEqual(imgs,['/api/projects/ramen/art/logo-0.png','/api/projects/ramen/art/banner-0.png','/api/projects/ramen/art/logo-1.png','/api/projects/ramen/art/banner-1.png']);
+  const buttons=box.all().filter(n=>n.tagName==='BUTTON');assert.deepEqual(buttons.map(b=>b.disabled),[true,false]);
+  await buttons[1].onclick();assert.deepEqual(picked,[1]);
+ }finally{delete globalThis.document;}
+});

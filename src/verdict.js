@@ -39,12 +39,14 @@ export function verdictModel(idea,now=Date.now()){
   suggestions:(Array.isArray(f.suggestions)?f.suggestions:[]).map(s=>s&&typeof s==='object'?{what:str(s.what),why:str(s.why),how:str(s.how)}:null).filter(s=>s&&s.what),
   wouldBuildIf:str(f.wouldBuildIf)||null,counter,history,version,nextVersionAt:idea.nextVersionAt!=null&&Number.isFinite(Number(idea.nextVersionAt))?Number(idea.nextVersionAt):null,
   canRevise:idea.canRevise===true,owner:idea.owner!==false,latency:latencyLabel(Number(ev?.latencyMs))};
- if(ev&&(ev.verdict==='build'||ev.decision==='selected'))return {...base,state:'build',headline:'He builds it.',summary:str(f.summary)||'SUB-01 voted to build it. The building rises while he works.',waitNote:'',canRevise:false,wouldBuildIf:null};
+ if(ev&&(ev.verdict==='build'||ev.decision==='selected'))return {...base,state:'build',headline:'He builds it.',summary:str(f.summary)||'SUB-01 voted to build it. The building rises while he works.',waitNote:'',canRevise:false,wouldBuildIf:null,next:base.owner?NEXT_LOGO:''};
  if(ev&&(ev.verdict==='pass'||ev.decision==='declined'))return {...base,state:'pass',headline:'He passed.',summary:str(f.summary)||'SUB-01 voted pass. Nothing is built.',waitNote:''};
  if(idea.status==='failed')return {...base,state:'failed',headline:'He could not read it.',summary:str(idea.statusNote)||'His brain did not answer. Nothing was decided; a reviewer will retry it.',waitNote:'',canRevise:false};
  if(READING.has(idea.status))return {...base,state:'waiting',headline:'SUB-01 is reading…',summary:'',waitNote:waitingLine(idea,now),canRevise:false};
- return {...base,state:'build',headline:'He builds it.',summary:str(f.summary)||'SUB-01 is building it.',waitNote:'',canRevise:false,wouldBuildIf:null};
+ return {...base,state:'build',headline:'He builds it.',summary:str(f.summary)||'SUB-01 is building it.',waitNote:'',canRevise:false,wouldBuildIf:null,next:base.owner?NEXT_LOGO:''};
 }
+// 2026-10-12: SUB-01 draws two logo options with the build; the author picks one on the room computer (desk.js, Launch tab)
+export const NEXT_LOGO='Next: choose your logo on your PC. SUB-01 draws two black-and-white options while he builds; open the computer in your room, Launch tab, and pick one.';
 /** The Revise button: {label, disabled, title}; counts down to nextVersionAt when the wallet just resubmitted. */
 export function reviseButton(m,now=Date.now()){
  if(m.state!=='pass')return null;
@@ -55,7 +57,7 @@ export function reviseButton(m,now=Date.now()){
 }
 
 /** Draws the card into `root`. `onRevise()` opens the form prefilled; `onClose()` closes the sheet. */
-export function renderVerdict(root,m,{onRevise,onClose,icon}={}){
+export function renderVerdict(root,m,{onRevise,onClose,onChooseLogo,icon}={}){
  if(!root)return;
  const el=(tag,props={},...kids)=>{const n=Object.assign(document.createElement(tag),props);n.append(...kids);return n;};
  const sec=(title,items,ordered)=>items.length?[el('span',{className:'eyebrow',textContent:title}),el(ordered?'ol':'ul',{className:'verdict-list'},...items.map(x=>el('li',{},...(typeof x==='string'?[x]:[el('b',{textContent:x.what}),x.why?el('span',{className:'why',textContent:' — '+x.why}):'',x.how?el('small',{textContent:x.how}):'']))))]:[];
@@ -69,10 +71,12 @@ export function renderVerdict(root,m,{onRevise,onClose,icon}={}){
   if(m.state==='pass'&&m.wouldBuildIf)kids.push(el('span',{className:'eyebrow',textContent:'He would build it if…'}),el('p',{className:'verdict-if',textContent:m.wouldBuildIf}));
   if(m.context.length)kids.push(el('p',{className:'fine verdict-context',textContent:m.context.join(' ')}));
   if(m.history&&m.history.includes('→'))kids.push(el('p',{className:'fine',textContent:'Verdicts: '+m.history}));
+  if(m.state==='build'&&m.next)kids.push(el('p',{className:'fine verdict-next',textContent:m.next}));
  }
  const row=el('div',{className:'verdict-actions'});
  const rb=reviseButton(m);
  if(rb){const b=el('button',{type:'button',className:'button button-orange',id:root.id+'-revise',disabled:rb.disabled,textContent:rb.label});if(!rb.disabled&&onRevise)b.onclick=onRevise;row.append(b);}
+ if(m.state==='build'&&m.next&&onChooseLogo)row.append(el('button',{type:'button',className:'button button-orange',textContent:'Choose your logo on your PC',onclick:onChooseLogo}));
  if(onClose)row.append(el('button',{type:'button',className:'button button-ghost',textContent:m.state==='waiting'?'Close, I will come back':m.state==='build'?'Watch the building':'Close',onclick:onClose}));
  if(row.childElementCount)kids.push(row);
  root.replaceChildren(...kids);

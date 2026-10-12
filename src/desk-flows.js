@@ -153,6 +153,29 @@ export function parseDevBuy(value,max=DEV_BUY_MAX_SOL){
  return {sol};
 }
 
+// ---------------------------------------------------------------- the logo choice (backend art-choice.js, 2026-10-12)
+// GET /api/projects/:slug/art (owner) -> {choice, chosen, locked, lockedWhy, candidates:[{index,label,provider,symbol,live,logoUrl,bannerUrl}]};
+// PUT {choice:0|1}. SUB-01 draws two black-and-white logo+banner pairs; option 1 is live until the author picks.
+// Shown on the open step while it can still change (approve, clearance wait, launch before a transaction); older coins
+// (no options) and visitors get null.
+const ART_STATES=new Set(['preview_ready','approved','launch_prepared']);
+/** artModel(art, view) -> null | {options:[{index,label,logo,banner,live,by}], choice, chosen, editable, note} */
+export function artModel(art,view){
+ const a=art&&typeof art==='object'?art:null,v=view&&typeof view==='object'?view:null;
+ if(!a||!v||v.owner!==true||!ART_STATES.has(str(v.status))||!Array.isArray(a.candidates))return null;
+ const sameOrigin=u=>(u=str(u))&&/^\/api\/projects\/[a-z0-9-]+\/art\/(logo|banner)-[01]\.png$/.test(u)?u:null;
+ const by={local:'drawn by SUB-01 (no AI)','owner-supplied':'your own art',higgsfield:'drawn with Higgsfield',recraft:'drawn with Recraft'};
+ const options=a.candidates.filter(c=>c&&(c.index===0||c.index===1)&&sameOrigin(c.logoUrl)&&sameOrigin(c.bannerUrl))
+  .map(c=>({index:c.index,label:`Option ${c.index+1}`,logo:sameOrigin(c.logoUrl),banner:sameOrigin(c.bannerUrl),live:c.live===true,by:by[str(c.provider)]||''}));
+ if(options.length<2)return null;
+ const choice=a.choice===1?1:0,editable=a.locked!==true;
+ return {options,choice,chosen:a.chosen===true,editable,
+  note:!editable?(str(a.lockedWhy)||'The logo is locked.'):a.chosen===true?`Option ${choice+1} is your logo. You can still switch until you prepare the launch transaction.`:
+   'SUB-01 drew two options. Option 1 is used unless you pick the other; the site preview and the token logo follow your pick.'};
+}
+/** Where the picker goes: the open step, never the site/live/dev-buy steps or the review card. */
+export const showArtOn=(m,stepId,reviewing=false)=>!!m&&m.editable&&(stepId==='approve'||stepId==='clear'||stepId==='launch')&&!reviewing;
+
 // ---------------------------------------------------------------- review before sign
 // The directly called programs a launch may use (server LAUNCH_DIRECT, by name); anything else direct is flagged red.
 // 'Associated Token Account': the dev buy creates the author's own token account (the SPL/Token-2022 programs are only

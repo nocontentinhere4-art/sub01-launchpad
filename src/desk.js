@@ -3,9 +3,9 @@ import {icon,tile} from './icons.js';
 import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
 import {verdictModel,renderVerdict} from './verdict.js';
-import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,trustCount,TRUST_GROUP,
+import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,trustCount,TRUST_GROUP,
  appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS} from './desk-flows.js';
-export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn} from './desk-flows.js';
+export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
 // the Computer overlay: the project's site, its X account, the launch stepper and (owner only) the ideas in flight.
@@ -122,6 +122,22 @@ export function renderDevBuy(m,{onSave}={}){
  save.disabled=!m.editable;
  return el('div',{className:'pc-devbuy'+(m.locked?' is-locked':'')},el('label',{className:'pc-devbuy-row'},el('span',{className:'pc-devbuy-k',textContent:'Dev buy (SOL)'}),input,save),
   el('p',{className:'pc-note',textContent:m.locked?`${m.text} · ${m.lockNote}`:m.note}),err);
+}
+// "Choose your logo" (desk-flows.js artModel): the two logo+banner pairs side by side, one tap picks; onPick(index)
+// does the PUT and the refresh (the site preview and the token logo follow); errors stay under the pair.
+export function renderArtPick(m,{onPick}={}){
+ const err=el('p',{className:'pc-err'});
+ const cards=m.options.map(o=>{
+  const on=o.index===m.choice;
+  const pick=btn(on?'button-dark button-sm':'button-orange button-sm',on?'Your logo':`Use ${o.label.toLowerCase()}`,async()=>{if(on)return;err.textContent='';busy(pick,true);
+   try{await onPick?.(o.index);}catch(x){err.textContent=explainError(x);busy(pick,false);}},on?'check':null);
+  pick.disabled=on||!m.editable;
+  return el('div',{className:'pc-art-opt'+(on?' is-on':'')},
+   el('img',{className:'pc-art-logo',src:o.logo,alt:`${o.label}: logo`,loading:'lazy',width:96,height:96}),
+   el('img',{className:'pc-art-banner',src:o.banner,alt:`${o.label}: banner`,loading:'lazy'}),
+   el('div',{className:'pc-art-foot'},el('b',{textContent:o.label}),o.by?el('small',{textContent:o.by}):null),pick);
+ });
+ return el('div',{className:'pc-art'},el('span',{className:'pc-devbuy-k',textContent:'Choose your logo'}),el('div',{className:'pc-art-row'},...cards),el('p',{className:'pc-note',textContent:m.note}),err);
 }
 // The banner is an SVG; X wants PNG/JPG for the header: draw it on a canvas at 1500×500 (same-origin, so the canvas stays clean).
 async function savePng(url,name,{w,h}){
@@ -398,6 +414,12 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    // 2026-10-10 the owner: the dev buy must be settable before approving, not only inside step 4. It goes on whichever
    // step is open while it can still change (approve, the clearance wait, launch); on the launch step it stays, read-only,
    // once a transaction exists; while the review card is open its row is on the card instead (showDevBuyOn).
+   // the logo choice (2026-10-12): the two options SUB-01 drew, on the open step while the pick can change
+   if(view?.owner===true&&['approve','clear','launch'].includes(s.id)&&!flight?.tx){const slot=el('div',{className:'pc-art-slot'});main.append(slot);
+    api(`/api/projects/${encodeURIComponent(cur.slug)}/art`).then(a=>{const am=artModel(a,view);if(alive(e)&&tab==='launch'&&showArtOn(am,s.id,!!flight?.tx))slot.replaceWith(renderArtPick(am,{onPick:async i=>{
+     await api(`/api/projects/${encodeURIComponent(cur.slug)}/art`,{method:'PUT',body:{choice:i}});
+     try{const l=await api(`/api/projects/${encodeURIComponent(cur.slug)}/preview-link`);if(l?.url)cur.previewLink=l.url;}catch{}
+     await refresh();}}));}).catch(()=>{});}
    const dev=devBuyModel(view);
    if(showDevBuyOn(dev,s.id,!!flight?.tx))main.append(renderDevBuy(dev,{onSave:async sol=>{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/options`,{method:'PUT',body:{initialBuySol:sol}});await refresh();}}));
    // the review card sits on its own step: the launch (step 1) or the dev buy (step 2)
