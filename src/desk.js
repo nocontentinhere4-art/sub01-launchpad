@@ -249,12 +249,23 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   const state=el('span',{className:'pc-side-state'}),pill=el('span',{className:'pc-side-pill'});
   const root=el('details',{className:'pc-side'},el('summary',null,icon('brush','i lead'),el('span',{className:'pc-side-title',textContent:'Logo and site'}),state,pill),
    el('div',{className:'pc-side-body'},el('p',{className:'pc-note pc-side-intro',textContent:'1. Pick the logo and banner: they go on your site, on the token and on X. 2. If the site does not match your idea, ask SUB-01 to build it again.'}),artSlot,rw));
+  const intro=root.querySelector('.pc-side-intro');
   if(saved==='1')root.open=true;
   const syncPill=()=>{pill.textContent=root.open?'Hide ▴':'Show ▾';};
   root.addEventListener('toggle',()=>{syncPill();try{localStorage.setItem(KEY,root.open?'1':'0');}catch{}});syncPill();
   const reloadSite=async()=>{try{const l=await api(`/api/projects/${slug}/preview-link`);if(l?.url)p.previewLink=l.url;}catch{}views.delete(p.slug);if(alive(e)&&tab==='site')show('site');};
   load(p.slug).then(view=>{if(!alive(e))return;
-   api(`/api/projects/${slug}/art`).then(a=>{const am=artModel(a,view);if(!alive(e)||!am)return;if(!am.chosen&&am.editable&&saved===null)root.open=true;
+   api(`/api/projects/${slug}/art`).then(a=>{const am=artModel(a,view);if(!alive(e))return;
+    if(!am){   // launched (or a launch transaction exists): the pair is on chain; show it, say why it cannot change
+     const cs=Array.isArray(a?.candidates)?a.candidates:[],c=cs.find(x=>x&&x.index===(a.choice===1?1:0))||cs[0];
+     const ok=u=>typeof u==='string'&&/^\/api\/projects\/[a-z0-9-]+\/art\/(logo|banner)-[01]\.png$/.test(u)?u:null;
+     const why=typeof a?.lockedWhy==='string'&&a.lockedWhy?a.lockedWhy:'the coin is launched: its logo is on chain';
+     state.textContent='Logo: locked on chain';
+     intro.textContent=`Your logo and banner can no longer change (${why}). You can still look at them and download them for X from the X tab.`;
+     if(c&&ok(c.logoUrl))artSlot.replaceWith(el('div',{className:'pc-art pc-art-locked'},el('span',{className:'pc-devbuy-k',textContent:'1 · Your logo and banner (locked)'}),
+      el('div',{className:'pc-art-row'},el('div',{className:'pc-art-opt is-on'},el('img',{className:'pc-art-logo',src:ok(c.logoUrl),alt:'Your logo',loading:'lazy',width:96,height:96}),
+       ok(c.bannerUrl)?el('img',{className:'pc-art-banner',src:ok(c.bannerUrl),alt:'Your banner',loading:'lazy'}):null,el('div',{className:'pc-art-foot'},el('b',{textContent:`Option ${(c.index??0)+1}`}),el('small',{textContent:'on chain'}))))));
+     return;}if(!am.chosen&&am.editable&&saved===null)root.open=true;
     state.textContent=`Logo: option ${am.choice+1}${am.chosen?'':' (not picked yet)'}`;
     artSlot.replaceWith(renderArtPick(am,{title:'1 · Your logo and banner',onPick:async i=>{await api(`/api/projects/${slug}/art`,{method:'PUT',body:{choice:i}});await reloadSite();}}));}).catch(()=>{});});
   // the rewrite: POST, then the job is polled every 3 s; when it lands the preview shows the new version
@@ -293,9 +304,13 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
     if(alive(e))show('site');}catch(x){b.disabled=false;const er=root.querySelector('.pc-err');if(er)er.textContent=explainError(x);}};
   function draw(v,msg){
    const m=qaModel(v,p.slug);root.className=`pc-qa is-${m.state}`;
-   const body=el('div',{className:'pc-qa-body'});body.hidden=!(m.state==='fail'&&m.held);
-   const toggle=el('button',{className:'pc-qa-line',type:'button',onclick:()=>{body.hidden=!body.hidden;toggle.setAttribute('aria-expanded',String(!body.hidden));}},el('i',{className:'pc-qa-dot'}),m.line);
-   toggle.setAttribute('aria-expanded',String(!body.hidden));
+   const body=el('div',{className:'pc-qa-body'});
+   // a visible Show/Hide (2026-10-12 the owner), remembered: once hidden it stays down, even on a failed check
+   const pref=(()=>{try{return localStorage.getItem('sz.pc-qa-open');}catch{return null;}})();
+   body.hidden=pref==='0'?true:pref==='1'?false:!(m.state==='fail'&&m.held);
+   const pill=el('span',{className:'pc-side-pill'});const sync=()=>{pill.textContent=body.hidden?'Show ▾':'Hide ▴';toggle.setAttribute('aria-expanded',String(!body.hidden));};
+   const toggle=el('button',{className:'pc-qa-line pc-qa-toggle',type:'button',onclick:()=>{body.hidden=!body.hidden;try{localStorage.setItem('sz.pc-qa-open',body.hidden?'0':'1');}catch{}sync();}},el('i',{className:'pc-qa-dot'}),el('span',{textContent:m.line}),pill);
+   sync();
    const acts=[];
    if(m.canOverride){const b=el('button',{className:'button pc-cta',type:'button',textContent:`Publish v${m.version} anyway`,onclick:()=>act(`/api/projects/${slug}/site/qa/${m.version}/override`,'',b)});acts.push(b);}
    if(m.canRecheck){const b=el('button',{className:'pc-link',type:'button',textContent:'Check the live site again',onclick:()=>act(`/api/projects/${slug}/site/qa/recheck`,'',b)});acts.push(b);}

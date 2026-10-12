@@ -1359,6 +1359,8 @@ span.pc-qa-line{cursor:default;color:var(--ink-3)}
 .pc-side-pill{margin-left:auto;flex:none;border:1px solid var(--stroke);border-radius:999px;padding:4px 10px;font:600 11.5px/1 var(--f-ui);color:var(--ink);background:var(--bg-2,transparent)}
 .pc-side>summary:hover .pc-side-pill{border-color:var(--ink)}
 .pc-side-intro{margin:0}
+.pc-qa-toggle{display:flex;width:100%;text-align:left}.pc-qa-toggle>span:first-of-type{min-width:0}
+.pc-art-locked .pc-art-opt{opacity:1}
 .pc-side>summary svg.i{width:15px;height:15px;color:var(--ink-2)}
 .pc-side-body{display:grid;gap:12px;padding:2px 0 12px;max-height:34vh;overflow:auto}
 /* compact pairs beside the preview: logo + banner thumbnail on the left, the label and the pick on the right */
