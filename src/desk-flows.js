@@ -194,3 +194,65 @@ export function profileKit(p,xm){
  return {files,texts,note:'X has no API for the picture, header or bio: download these and set them in the X app.'};
 }
 
+
+// ---------------------------------------------------------------- site tools (the Site tab's Tools panel, owner only)
+// Contract (backend docs/SITE-KIT.md, docs/CITY-API.md "Site tools"): GET /api/projects/:slug/tools → {editable, lockedNote,
+// tools:[{id,config}], catalog:{id:{name,line,kind,lib,fields:[{key,label,type,max,min,count,choices}]}}, libs, holderChecks,
+// inbox:{drop,wall,map,poll}}; PUT …/tools {tools:[{id,config}]} (the enabled ones, in order); POST …/tools/entries/:id {hidden}|{featured}.
+export const TOOL_MAX=6;
+const HHMM=/^([01]\d|2[0-3]):[0-5]\d$/,LOCAL=/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
+const fieldValue=(f,v)=>f.type==='bool'?v===true:f.type==='options'?Array.from({length:Math.max(2,num(f.count)||4)},(_,i)=>str(Array.isArray(v)?v[i]:'')):v==null?'':String(v);
+/** toolsModel(view) -> {loading, editable, lockedNote, holderNote, rows:[{id,name,line,kind,lib,on,fields:[{key,label,type,value,…}]}], inbox:{drop,wall,map}, poll} */
+export function toolsModel(view){
+ const v=view&&typeof view==='object'?view:null;
+ if(!v||!v.catalog||typeof v.catalog!=='object')return {loading:!v,editable:false,lockedNote:'',holderNote:'',rows:[],inbox:{drop:[],wall:[],map:[]},poll:null};
+ const on=new Map((Array.isArray(v.tools)?v.tools:[]).filter(t=>t&&typeof t.id==='string').map(t=>[t.id,t.config&&typeof t.config==='object'?t.config:{}]));
+ const rows=Object.entries(v.catalog).filter(([,c])=>c&&typeof c==='object').map(([id,c])=>({id,name:str(c.name)||id,line:str(c.line),kind:c.kind==='extra'?'extra':'generic',
+  lib:str(v.libs?.[c.lib]?.name)||null,on:on.has(id),fields:(Array.isArray(c.fields)?c.fields:[]).filter(f=>f&&str(f.key)).map(f=>({...f,value:fieldValue(f,on.get(id)?.[f.key])}))}))
+  .sort((a,b)=>(a.kind==='extra')-(b.kind==='extra'));
+ const entries=(xs,tool)=>(Array.isArray(xs)?xs:[]).filter(e=>e&&str(e.id)).slice(0,50).map(e=>({id:str(e.id),tool,text:str(e.text).slice(0,500),at:num(e.at),by:str(e.by)||null,hidden:e.hidden===true,featured:e.featured===true,
+  featuredBy:str(e.featuredBy)||null}));
+ const p=v.inbox?.poll;
+ return {loading:false,editable:v.editable===true,lockedNote:str(v.lockedNote),
+  holderNote:v.holderChecks?'':'Holders-only checks are off on this server (no chain reader): any wallet that signs can take part, and the site says so.',
+  rows,inbox:{drop:entries(v.inbox?.drop,'drop'),wall:entries(v.inbox?.wall,'wall'),map:entries(v.inbox?.map,'map')},
+  poll:p&&Array.isArray(p.options)?{question:str(p.question),options:p.options.map(str),counts:(Array.isArray(p.counts)?p.counts:[]).map(x=>num(x)||0),total:num(p.total)||0}:null};
+}
+/** Switch a tool; switching an idea-specific one on switches the other extras off (one at a time). -> new rows */
+export function toggleTool(rows,id,on){
+ const r=rows.find(x=>x.id===id);if(!r)return rows;
+ return rows.map(x=>x.id===id?{...x,on:!!on}:on&&r.kind==='extra'&&x.kind==='extra'?{...x,on:false}:x);
+}
+export const setField=(rows,id,key,value,index=null)=>rows.map(r=>r.id!==id?r:{...r,fields:r.fields.map(f=>f.key!==key?f:{...f,value:index==null?value:f.value.map((v,i)=>i===index?value:v)})});
+/** The plain-words problem with the current switches, or '' when they can be saved. */
+export function toolsProblem(rows){
+ const on=rows.filter(r=>r.on),val=(r,k)=>r.fields.find(f=>f.key===k)?.value;
+ if(on.length>TOOL_MAX)return `At most ${TOOL_MAX} tools on one site.`;
+ if(on.filter(r=>r.kind==='extra').length>1)return 'One idea-specific tool at a time (map, sound toy, mini-game or chart).';
+ for(const r of on){
+  for(const f of r.fields){const v=f.value;
+   if(f.type==='time'&&str(v)&&!HHMM.test(str(v)))return `${r.name}: ${f.label} is a time like 23:00.`;
+   if(f.type==='datetime'&&str(v)&&!LOCAL.test(str(v)))return `${r.name}: ${f.label} is a date and time like 2026-12-31T23:00.`;
+   if(f.type==='url'&&str(v)&&!/^https:\/\//.test(str(v)))return `${r.name}: the link starts with https://.`;
+   if(f.type==='text'&&f.max&&[...str(v)].length>f.max)return `${r.name}: ${f.label} is at most ${f.max} characters.`;
+   if(f.type==='number'&&str(v)&&!(Number(v)>=(num(f.min)??-Infinity)&&Number(v)<=(num(f.max)??Infinity)))return `${r.name}: ${f.label} between ${f.min} and ${f.max}.`;}
+  if(r.id==='poll'){const q=str(val(r,'question')),opts=(val(r,'options')||[]).map(str).filter(Boolean);
+   if([...q].length<3)return 'Poll: write the question.';if(opts.length<2)return 'Poll: at least two answers.';if(new Set(opts.map(o=>o.toLowerCase())).size!==opts.length)return 'Poll: the answers must differ.';}
+  if(r.id==='drop'&&str(val(r,'prompt'))&&[...str(val(r,'prompt'))].length<3)return 'Drop box: the prompt is too short.';
+  if(r.id==='event'&&str(val(r,'title'))&&[...str(val(r,'title'))].length<2)return 'Next event: name it.';
+ }
+ return '';
+}
+/** PUT body: the enabled tools in order, each with the fields the author filled (empty ones left to SUB-01's defaults). */
+export function toolsPayload(rows){
+ return {tools:rows.filter(r=>r.on).map(r=>{const config={};
+  for(const f of r.fields){const v=f.value;
+   if(f.type==='bool')config[f.key]=v===true;
+   else if(f.type==='options'){const o=(Array.isArray(v)?v:[]).map(str).filter(Boolean);if(o.length)config[f.key]=o;}
+   else if(f.type==='number'){if(str(v)!==''&&Number.isFinite(Number(v)))config[f.key]=Number(v);}
+   else if(f.type==='choice'){if((f.choices||[]).includes(v))config[f.key]=v;}
+   else if(str(v))config[f.key]=str(v);}
+  if(r.id==='event'&&config.at)delete config.daily;
+  return {id:r.id,config};})};
+}
+export const toolsCount=rows=>rows.filter(r=>r.on).length;

@@ -3,7 +3,7 @@ import {icon,tile} from './icons.js';
 import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
 import {verdictModel,renderVerdict} from './verdict.js';
-import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn} from './desk-flows.js';
+import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount} from './desk-flows.js';
 export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
@@ -15,10 +15,11 @@ import {solText,splitRows} from './desk-flows.js';
 
 // ---------------------------------------------------------------- data (pure, tested)
 export const SCREEN_ITEMS=new Set(['computerScreen','laptop','televisionModern']);
-// iframe sandboxes, matching the server: a public project site is static (no scripts) and itself sends a CSP sandbox with
-// allow-popups allow-popups-to-escape-sandbox; the owner's preview is framed with sandbox="" like the review page;
+// iframe sandboxes, matching the server: a public project site runs the audited site kit (backend docs/SITE-KIT.md) on
+// its OWN origin (<slug>.projects…, never the city's), so it gets scripts + that origin + downloads (meme PNG, .ics), and
+// still no top navigation and no forms; the owner's preview is framed with sandbox="" like the review page (static);
 // /projects pages are the launchpad's own app, which needs scripts and its cookie.
-export const SANDBOX={site:'allow-popups allow-popups-to-escape-sandbox',preview:'',page:'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox'};
+export const SANDBOX={site:'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads',preview:'',page:'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox'};
 export const TAB_LABELS={site:'Site',x:'X',launch:'Launch',ideas:'Ideas'},TAB_ICONS={site:'globe',x:'xlogo',launch:'rocket',ideas:'mail'};
 const str=v=>typeof v==='string'?v.trim():'';
 // Only http(s) URLs and same-origin paths ever reach an href or an iframe (no javascript:, data:, protocol-relative).
@@ -180,9 +181,66 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    el('span',{className:'pc-chips'},el('span',{className:'pc-chip'+(p.launched?' is-live':''),textContent:p.launched?'Live':p.stageLabel}),x?el('span',{className:'pc-chip pc-chip-x '+x.cls,textContent:x.text}):null)),extra);
   row.dataset.head='';return row;
  }
+ let siteView='site';   // the owner's Site tab: the site itself, or the Tools panel in its place
  function siteTab(){const s=siteFor(cur,model.mine);
   if(!s.src)return [headRow(cur),el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),s.empty),el('p',{textContent:model.mine?'The site appears here as soon as SUB-01 builds the first version.':'Come back later: the site goes up when it is built.'}))];
-  return [headRow(cur,bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),ext(s.open,'Open in a new tab ↗'))),frame(s.src,s.sandbox,`${cur.name}: website`)];}
+  const tools=model.mine&&siteView==='tools';
+  const toggle=model.mine?el('button',{className:'pc-link pc-tools-toggle',type:'button',textContent:tools?'← Back to the site':'Tools',onclick:()=>{siteView=tools?'site':'tools';show('site');}}):null;
+  return [headRow(cur,bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),toggle,ext(s.open,'Open in a new tab ↗'))),tools?toolsPane():frame(s.src,s.sandbox,`${cur.name}: website`)];}
+
+ // ---------------- Site tools (owner): switches + a few fields, Save = a new site version; the inbox (drop box, wall, pins)
+ function toolsPane(){
+  const p=cur,root=el('div',{className:'pc-tools'},el('p',{className:'pc-note',textContent:'Loading the tools…'})),e=epoch;
+  api(`/api/projects/${encodeURIComponent(p.slug)}/tools`).then(v=>{if(alive(e)&&tab==='site')drawTools(root,toolsModel(v));})
+   .catch(x=>{if(alive(e))root.replaceChildren(el('p',{className:'pc-err',textContent:explainError(x)}));});
+  return root;
+ }
+ function drawTools(root,m,{note=''}={}){
+  const p=cur,slug=encodeURIComponent(p.slug);let rows=m.rows;
+  const err=el('p',{className:'pc-err'}),ok=el('p',{className:'pc-note pc-ok',textContent:note}),list=el('ul',{className:'pc-tools-list'});
+  const check=()=>{err.textContent=toolsProblem(rows);save.disabled=!m.editable||!!err.textContent;count.textContent=`${toolsCount(rows)} on`;};
+  const fieldEl=(r,f)=>{
+   const set=(v,i=null)=>{rows=setField(rows,r.id,f.key,v,i);check();};
+   if(f.type==='bool'){const c=el('input',{type:'checkbox',checked:f.value===true,disabled:!m.editable});c.onchange=()=>set(c.checked);return el('label',{className:'pc-tool-f is-bool'},c,el('span',{textContent:f.label}));}
+   if(f.type==='options')return el('div',{className:'pc-tool-f'},el('span',{className:'pc-tool-k',textContent:f.label}),el('div',{className:'pc-tool-opts'},...f.value.map((v,i)=>{
+    const x=el('input',{type:'text',value:v,maxLength:f.max||40,placeholder:`Answer ${i+1}`,disabled:!m.editable});x.oninput=()=>set(x.value,i);return x;})));
+   if(f.type==='choice'){const c=el('select',{disabled:!m.editable},...(f.choices||[]).map(o=>el('option',{value:o,textContent:o,selected:o===f.value})));c.onchange=()=>set(c.value);
+    return el('label',{className:'pc-tool-f'},el('span',{className:'pc-tool-k',textContent:f.label}),c);}
+   const type=f.type==='time'?'time':f.type==='datetime'?'datetime-local':f.type==='number'?'number':f.type==='url'?'url':'text';
+   const x=el('input',{type,value:f.value,disabled:!m.editable,placeholder:f.type==='url'?'https://x.com/…':''});if(type==='text'&&f.max)x.maxLength=f.max;
+   if(type==='number'){if(f.min!=null)x.min=String(f.min);if(f.max!=null)x.max=String(f.max);}
+   x.oninput=()=>set(x.value);return el('label',{className:'pc-tool-f'},el('span',{className:'pc-tool-k',textContent:f.label}),x);
+  };
+  const rowEl=r=>{
+   const sw=el('input',{type:'checkbox',className:'pc-tool-sw',checked:r.on,disabled:!m.editable});sw.setAttribute('role','switch');sw.setAttribute('aria-label',`${r.name} on the site`);
+   sw.onchange=()=>{rows=toggleTool(rows,r.id,sw.checked);draw();};
+   return el('li',{className:'pc-tool'+(r.on?' is-on':'')},el('label',{className:'pc-tool-head'},el('span',{className:'pc-tool-main'},
+     el('strong',{textContent:r.name}),r.kind==='extra'?el('span',{className:'pc-chip',textContent:r.lib?`idea-specific · ${r.lib}`:'idea-specific'}):null,el('span',{className:'pc-note',textContent:r.line})),sw),
+    r.on&&r.fields.length?el('div',{className:'pc-tool-fields'},...r.fields.map(f=>fieldEl(r,f))):null);
+  };
+  const draw=()=>{list.replaceChildren(...rows.map(rowEl));check();};
+  const count=el('span',{className:'pc-chip'});
+  const save=btn('button-dark button-sm','Save tools',async()=>{busy(save,true);ok.textContent='';
+   try{const r=await api(`/api/projects/${slug}/tools`,{method:'PUT',body:toolsPayload(rows)});
+    try{const l=await api(`/api/projects/${slug}/preview-link`);if(l?.url)cur.previewLink=l.url;}catch{}
+    const done=`Saved: site v${r.version} is live with ${r.tools.length} tool${r.tools.length===1?'':'s'}.`;ok.textContent=done;
+    const v=await api(`/api/projects/${slug}/tools`);if(tab==='site'&&!closed)drawTools(root,toolsModel(v),{note:done});
+   }catch(x){err.textContent=explainError(x);busy(save,false);}});
+  const moderate=(e,body)=>async()=>{try{await api(`/api/projects/${slug}/tools/entries/${encodeURIComponent(e.id)}`,{method:'POST',body});
+   const v=await api(`/api/projects/${slug}/tools`);if(tab==='site'&&!closed)drawTools(root,{...toolsModel(v),rows});}catch(x){err.textContent=explainError(x);}};
+  const entry=e=>el('li',{className:'pc-entry'+(e.hidden?' is-hidden':'')},el('span',{className:'pc-entry-t',textContent:e.text}),
+   el('small',{textContent:[e.at?new Date(e.at).toLocaleString():'',e.by,e.featured?`featured${e.featuredBy==='rule:daily'?' by the daily rule':''}`:'',e.hidden?'hidden':''].filter(Boolean).join(' · ')}),
+   el('span',{className:'pc-entry-acts'},e.tool==='drop'&&!e.featured&&!e.hidden?btn('button-dark button-sm','Feature',moderate(e,{featured:true})):null,
+    btn('button-ghost button-sm',e.hidden?'Show':'Hide',moderate(e,{hidden:!e.hidden}))));
+  const box=(title,note,xs)=>xs.length?el('section',{className:'pc-inbox'},el('h4',{textContent:title}),note?el('p',{className:'pc-note',textContent:note}):null,el('ul',{className:'pc-entries'},...xs.map(entry))):null;
+  const poll=m.poll?el('section',{className:'pc-inbox'},el('h4',{textContent:`Poll · ${m.poll.total} vote${m.poll.total===1?'':'s'}`}),el('p',{className:'pc-note',textContent:m.poll.question}),
+   el('ul',{className:'pc-entries'},...m.poll.options.map((o,i)=>el('li',{className:'pc-entry'},el('span',{className:'pc-entry-t',textContent:o}),el('small',{textContent:String(m.poll.counts[i]||0)}))))):null;
+  draw();
+  root.replaceChildren(...[el('div',{className:'pc-tools-head'},el('h4',{textContent:'Tools on the site'}),count,save),
+   m.lockedNote&&!m.editable?el('p',{className:'pc-note',textContent:m.lockedNote}):null,m.holderNote?el('p',{className:'pc-note',textContent:m.holderNote}):null,err,ok,list,
+   box('Drop box · private until you feature one','Only you see these. Feature one and it shows on the site as today\'s pick; if you do not, the daily rule picks one at the reveal time.',m.inbox.drop),
+   box('Wall','',m.inbox.wall),box('Map pins','',m.inbox.map),poll].filter(Boolean));   // replaceChildren would print a null
+ }
 
  // ---------------- X: planned → connect (OAuth in X's own window) → drafts you approve
  function xTab(){

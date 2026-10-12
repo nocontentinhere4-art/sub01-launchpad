@@ -1,4 +1,4 @@
-import {profileKit,stepIndex} from '../src/desk-flows.js';
+import {profileKit,stepIndex,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,TOOL_MAX} from '../src/desk-flows.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {deskModel,hasDesk,tabsFor,siteFor,screenCard,switcherItems,welcomeText,safeHref,SANDBOX,SCREEN_ITEMS} from '../src/desk.js';
@@ -32,10 +32,10 @@ test('tab availability matrix',()=>{
 test('site tab: the owner sees the preview, visitors the public site; empty state names the stage; sandbox strings',()=>{
  const o=deskModel(payload,true),v=deskModel(payload,false),horse=s=>s.projects.find(p=>p.slug==='horse');
  assert.equal(siteFor(horse(o),true).src,leak.previewLink);assert.equal(siteFor(horse(o),true).sandbox,'','the preview is framed like the review page');
- assert.equal(siteFor(o.projects[0],true).sandbox,'allow-popups allow-popups-to-escape-sandbox','public site: no scripts, popups escape');
+ assert.equal(siteFor(o.projects[0],true).sandbox,'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads','public site: the kit runs on the site\'s own origin, popups escape, downloads work');
  const vs=siteFor(horse(v),false);assert.equal(vs.src,null);assert.match(vs.empty,/SUB-01 hasn't built this yet\. Stage: Preview ready for your review\./);
  assert.equal(siteFor(o.projects[0],true).src,live.siteUrl,'no preview: fall back to the public site');
- assert.ok(!/allow-scripts|allow-same-origin/.test(SANDBOX.site+SANDBOX.preview),'static sites never get scripts or their origin');
+ assert.ok(!/allow-top-navigation|allow-forms|allow-modals/.test(SANDBOX.site),'no top navigation, forms or modals for a coin site');assert.equal(SANDBOX.preview,'','the preview stays static');
  assert.ok(!/allow-top-navigation/.test(SANDBOX.page)&&/allow-scripts/.test(SANDBOX.page)&&/allow-popups-to-escape-sandbox/.test(SANDBOX.page));
 });
 test('URLs: only http(s) and same-origin paths survive',()=>{
@@ -207,4 +207,63 @@ test('showDevBuyOn: on the open step while editable (approve, clearance wait, la
  assert.deepEqual(['site','approve','clear','launch','live'].map(id=>showDevBuyOn(ed,id)),[false,true,true,true,false]);
  assert.deepEqual(['approve','clear','launch','live'].map(id=>showDevBuyOn(ro,id)),[false,false,true,false]);
  assert.equal(showDevBuyOn(ed,'launch',true),false,'the review card carries the row');assert.equal(showDevBuyOn(null,'approve'),false);
+});
+
+// ---------------------------------------------------------------- site tools (Site tab, owner)
+const CATALOG={token:{name:'Token panel',line:'Live price…',kind:'generic',lib:'qrcode',fields:[]},
+ wall:{name:'Community wall',line:'Anyone posts…',kind:'generic',fields:[{key:'title',label:'Title',type:'text',max:60},{key:'holdersOnly',label:'Holders only',type:'bool'}]},
+ poll:{name:'Poll',line:'One question…',kind:'generic',fields:[{key:'question',label:'Question',type:'text',max:120},{key:'options',label:'Answers (2–4)',type:'options',max:40,min:2,count:4},{key:'holdersOnly',label:'Holders only',type:'bool'}]},
+ drop:{name:'Drop box',line:'Private…',kind:'generic',fields:[{key:'title',label:'Title',type:'text',max:60},{key:'prompt',label:'Prompt',type:'text',max:160},{key:'revealJst',label:'Reveal time (JST)',type:'time'},{key:'autoPick',label:'Pick',type:'bool'}]},
+ event:{name:'Next event',line:'Countdown…',kind:'generic',fields:[{key:'title',label:'Event',type:'text',max:80},{key:'daily',label:'Every day at (JST)',type:'time'},{key:'at',label:'Or once on (JST)',type:'datetime'},{key:'link',label:'Link',type:'url',max:200}]},
+ map:{name:'Map of places',line:'A map…',kind:'extra',lib:'leaflet',fields:[{key:'title',label:'Title',type:'text',max:60},{key:'community',label:'Visitors can pin',type:'bool'}]},
+ game:{name:'Mini-game',line:'Catch…',kind:'extra',lib:'kaplay',fields:[{key:'title',label:'Title',type:'text',max:60}]},
+ chart:{name:'Price chart',line:'Price…',kind:'extra',lib:'uplot',fields:[{key:'title',label:'Title',type:'text',max:60},{key:'range',label:'Range',type:'choice',choices:['24h','7d']}]}};
+const TOOLS_VIEW={editable:true,lockedNote:null,catalog:CATALOG,libs:{leaflet:{name:'Leaflet'},kaplay:{name:'KAPLAY'},uplot:{name:'uPlot'},qrcode:{name:'qrcode-generator'}},holderChecks:false,
+ tools:[{id:'token',config:{}},{id:'drop',config:{title:'Drop your confession',prompt:'Drop your confession.',revealJst:'23:00',autoPick:true}},{id:'map',config:{title:'The map',community:true}}],
+ inbox:{drop:[{id:'drp_1',text:'I ate the last onigiri',at:1,hidden:false,featured:false},{id:'drp_2',text:'<b>x</b>',at:2,featured:true,featuredBy:'rule:daily'}],wall:[{id:'wal_1',text:'gm',hidden:true}],map:[],poll:null}};
+
+test('toolsModel: catalog rows with the switches and the saved fields; generic first; the inbox; the holder note; defensive',()=>{
+ const m=toolsModel(TOOLS_VIEW);
+ assert.deepEqual(m.rows.map(r=>[r.id,r.on]),[['token',true],['wall',false],['poll',false],['drop',true],['event',false],['map',true],['game',false],['chart',false]]);
+ assert.equal(m.rows.find(r=>r.id==='map').lib,'Leaflet');
+ assert.deepEqual(m.rows.find(r=>r.id==='drop').fields.map(f=>f.value),['Drop your confession','Drop your confession.','23:00',true]);
+ assert.deepEqual(m.rows.find(r=>r.id==='poll').fields[1].value,['','','',''],'four empty answer boxes');
+ assert.deepEqual(m.inbox.drop.map(e=>[e.id,e.featured,e.featuredBy]),[['drp_1',false,null],['drp_2',true,'rule:daily']]);
+ assert.equal(m.inbox.drop[1].text,'<b>x</b>','text stays text (drawn with textContent)');
+ assert.equal(m.inbox.wall[0].hidden,true);
+ assert.match(m.holderNote,/any wallet that signs can take part/);
+ assert.equal(toolsModel({...TOOLS_VIEW,holderChecks:true}).holderNote,'');
+ for(const bad of [null,undefined,'x',{},{catalog:null},{catalog:{token:null},tools:'all'}])assert.doesNotThrow(()=>toolsModel(bad));
+ assert.equal(toolsModel(null).loading,true);assert.deepEqual(toolsModel({catalog:{token:null},tools:'all'}).rows,[]);
+});
+
+test('toggleTool / setField / toolsProblem: one extra at a time, at most six, the poll needs a question and two answers',()=>{
+ let rows=toolsModel(TOOLS_VIEW).rows;
+ rows=toggleTool(rows,'game',true);
+ assert.deepEqual(rows.filter(r=>r.kind==='extra'&&r.on).map(r=>r.id),['game'],'switching an extra on switches the other one off');
+ rows=toggleTool(rows,'poll',true);
+ assert.equal(toolsProblem(rows),'Poll: write the question.');
+ rows=setField(rows,'poll','question','Best snack?');rows=setField(rows,'poll','options','Onigiri',0);
+ assert.equal(toolsProblem(rows),'Poll: at least two answers.');
+ rows=setField(rows,'poll','options','onigiri',1);assert.equal(toolsProblem(rows),'Poll: the answers must differ.');
+ rows=setField(rows,'poll','options','Oden',1);assert.equal(toolsProblem(rows),'');
+ rows=toggleTool(rows,'event',true);rows=setField(rows,'event','daily','25:00');
+ assert.match(toolsProblem(rows),/Next event: Every day at \(JST\) is a time like 23:00/);
+ rows=setField(rows,'event','daily','');rows=setField(rows,'event','link','http://x.com/a');assert.match(toolsProblem(rows),/link starts with https/);
+ rows=setField(rows,'event','link','');rows=toggleTool(rows,'wall',true);
+ assert.equal(toolsCount(rows),6);assert.equal(toolsProblem(rows),'');
+ const many=rows.map(r=>({...r,on:true}));
+ assert.ok(toolsCount(many)>TOOL_MAX);assert.match(toolsProblem(many),/At most 6 tools/);
+ assert.match(toolsProblem(rows.map(r=>({...r,on:r.id==='token'||r.kind==='extra'}))),/One idea-specific tool at a time/);
+});
+
+test('toolsPayload: the enabled tools in order with the filled fields; empty ones left to SUB-01; a one-off date drops the daily time',()=>{
+ let rows=toolsModel(TOOLS_VIEW).rows;
+ rows=toggleTool(rows,'poll',true);rows=setField(rows,'poll','question',' Best snack? ');rows=setField(rows,'poll','options','Onigiri',0);rows=setField(rows,'poll','options','Oden',2);
+ rows=toggleTool(rows,'event',true);rows=setField(rows,'event','title','Receipt printing');rows=setField(rows,'event','daily','23:00');rows=setField(rows,'event','at','2030-01-01T23:00');
+ rows=toggleTool(rows,'chart',true);rows=setField(rows,'chart','range','7d');
+ assert.deepEqual(toolsPayload(rows),{tools:[{id:'token',config:{}},{id:'poll',config:{question:'Best snack?',options:['Onigiri','Oden'],holdersOnly:false}},
+  {id:'drop',config:{title:'Drop your confession',prompt:'Drop your confession.',revealJst:'23:00',autoPick:true}},{id:'event',config:{title:'Receipt printing',at:'2030-01-01T23:00'}},
+  {id:'chart',config:{range:'7d'}}]});
+ assert.deepEqual(toolsPayload(toggleTool(rows,'chart',false).map(r=>({...r,on:false}))),{tools:[]});
 });
