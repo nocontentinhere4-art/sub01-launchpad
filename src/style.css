@@ -1293,3 +1293,22 @@ button.cal-row:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--a
 .pc-app-field .button,.pc-app-sec .button{width:auto;justify-self:start}
 .pc-app textarea{width:100%;padding:8px 10px;border:0;border-radius:var(--r-sm);background:var(--fill-2);color:var(--ink);font:450 13px/1.4 var(--f-ui);box-shadow:inset 0 0 0 1px var(--stroke-2);resize:vertical;color-scheme:dark}
 @media (max-width:560px){.pc-tool-opts{grid-template-columns:1fr}}
+
+/* SUB-01's QA strip in the Site tab (desk.js qaPane, backend docs/SITE-QA.md) */
+.pc-qa{border-bottom:1px solid var(--stroke);padding:6px 12px;font:500 12px/1.4 var(--f-ui)}
+.pc-qa-line{display:inline-flex;align-items:center;gap:8px;min-height:32px;border:0;background:none;padding:0;color:var(--ink);font:600 12.5px/1.2 var(--f-ui);cursor:pointer}
+span.pc-qa-line{cursor:default;color:var(--ink-3)}
+.pc-qa-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3);flex:none}
+.pc-qa.is-ok .pc-qa-dot{background:var(--ok)}.pc-qa.is-fail .pc-qa-dot{background:var(--danger)}.pc-qa.is-override .pc-qa-dot{background:#FFD27A}
+.pc-qa.is-run .pc-qa-dot{background:var(--ink-2);animation:pcQaPulse 1s ease-in-out infinite alternate}
+@keyframes pcQaPulse{to{opacity:.3}}
+.pc-qa.is-fail .pc-qa-line{color:var(--danger-ink)}
+.pc-qa-body{display:grid;gap:8px;padding:4px 0 8px}
+.pc-qa-issues{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+.pc-qa-issues li{font:450 12px/1.45 var(--f-ui);color:var(--ink-2)}.pc-qa-issues b{display:inline-block;min-width:58px;margin-right:6px;font:600 10.5px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.pc-qa-shots{display:flex;gap:10px;flex-wrap:wrap}
+.pc-qa-shots a{display:grid;gap:4px;color:var(--ink-2);text-decoration:none;font:500 10.5px/1.2 var(--f-mono)}
+.pc-qa-shots img{display:block;height:120px;width:auto;max-width:220px;object-fit:cover;object-position:top;border:1px solid var(--stroke);background:#000}
+.pc-qa-acts{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pc-qa-acts .pc-cta{--h:32px;font-size:12px;padding:0 12px}
+@media(prefers-reduced-motion:reduce){.pc-qa.is-run .pc-qa-dot{animation:none}}

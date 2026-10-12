@@ -461,3 +461,22 @@ test('requestComputer: the next computer on the owner\'s desk opens that project
  requestComputer({slug:'soba',tab:'launch'});assert.equal(takeComputerRequest({...model,mine:false}),null,'never on someone else\'s desk');
  requestComputer({slug:'soba',tab:'launch'});assert.equal(takeComputerRequest(model,Date.now()+121000),null,'stale');
 });
+
+// ---------------------------------------------------------------- SUB-01's QA strip (backend docs/SITE-QA.md)
+import {qaModel} from '../src/desk-flows.js';
+test('qaModel: passed, held with reasons and screenshots, overridden, running, nothing yet; defensive',()=>{
+ const shots=[{name:'v7-desktop-fold.jpg',viewport:'desktop',kind:'fold'},{name:'v7-mobile-fold.jpg',viewport:'mobile',kind:'fold'},{name:'../../x.jpg',viewport:'mobile',kind:'fold'}];
+ const failed=qaModel({liveSiteVersion:6,reports:[{version:7,status:'failed',held:true,line:'2 issues',browserNote:'Chromium',issues:[{viewport:'mobile',check:'overflow',detail:'the page is 412px wide at 390px'},{viewport:'html',check:'img-alt',detail:'1 image(s) without an alt attribute'}],warnings:[{detail:'3 text element(s) under WCAG AA'}],shots}]},'q-wave');
+ assert.equal(failed.state,'fail');assert.equal(failed.line,"SUB-01's QA: 2 issues");assert.equal(failed.held,true);assert.equal(failed.canOverride,true);
+ assert.match(failed.note,/Version 7 was held back: version 6 stays live/);
+ assert.deepEqual(failed.issues,[{where:'mobile',text:'the page is 412px wide at 390px'},{where:'page',text:'1 image(s) without an alt attribute'}]);
+ assert.deepEqual(failed.shots.map(s=>s.url),['/api/projects/q-wave/site/qa/7/v7-desktop-fold.jpg','/api/projects/q-wave/site/qa/7/v7-mobile-fold.jpg'],'only names the server could have made');
+ assert.equal(failed.shots[1].label,'Phone · first screen');
+ const ok=qaModel({liveSiteVersion:7,reports:[{version:7,status:'passed',line:'passed',browserNote:'Chromium (chromium-headless-shell), 1440×900 and 390×844',issues:[],shots:[]}]},'q-wave');
+ assert.equal(ok.state,'ok');assert.equal(ok.canOverride,false);assert.equal(ok.canRecheck,true);assert.match(ok.note,/^Checked in Chromium/);
+ assert.equal(qaModel({liveSiteVersion:7,reports:[{version:7,status:'overridden',line:'published anyway by the author (1 issue)'}]},'x').state,'override');
+ const run=qaModel({liveSiteVersion:6,reports:[{version:7,status:'running'}]},'x');assert.equal(run.state,'run');assert.equal(run.canRecheck,false);
+ const none=qaModel(null,'x');assert.equal(none.state,'none');assert.equal(none.canOverride,false);assert.equal(none.canRecheck,false);
+ assert.equal(qaModel({liveSiteVersion:3,reports:['junk',{version:'x',status:'weird'}]},'x').state,'none');
+ assert.equal(qaModel({liveSiteVersion:7,reports:[{version:7,status:'failed',held:false,line:'1 issue'}]},'x').canOverride,false,'the live version itself has nothing to publish');
+});

@@ -447,3 +447,26 @@ export function appInboxRows(m){
   pick:canPick&&!e.hidden&&!e.published&&!e.picked,unpick:e.picked,publish:!e.hidden&&!e.published,toggle:e.hidden?'Show':'Hide'}));
 }
 export const REVEAL_WORDS={owner:"your pick",votes:"the holders' votes",random:'the draw',empty:'nothing to choose'};
+
+// ---------------------------------------------------------------- SUB-01's QA of the site (the Site tab, owner only)
+// Contract (backend docs/SITE-QA.md): GET /api/projects/:slug/site/qa → {liveSiteVersion, reports:[{version, status:
+// 'running'|'passed'|'failed'|'overridden', line, held, browser, browserNote, issues:[{viewport, check, detail}], warnings,
+// shots:[{name, viewport, kind, width}]}]} (newest first); POST …/site/qa/:version/override publishes a held version;
+// POST …/site/qa/recheck checks the live one again; screenshots at GET …/site/qa/:version/:name (owner only).
+const QA_SHOT=/^v\d+-(desktop|mobile)-(fold|full)\.jpg$/;
+/** qaModel(view, slug) -> {state:'none'|'run'|'ok'|'fail'|'override', line, note, version, live, held, issues:[{where,text}],
+ * warnings:[text], shots:[{label,url,viewport,kind}], canOverride, canRecheck}. Defensive: anything missing reads as "not checked". */
+export function qaModel(view,slug){
+ const reports=Array.isArray(view?.reports)?view.reports.filter(r=>r&&typeof r==='object'):[],r=reports[0]||null,live=num(view?.liveSiteVersion);
+ const enc=encodeURIComponent(str(slug));
+ if(!r)return {state:'none',line:"SUB-01's QA: not checked yet",note:'The next site version is checked before it goes live.',version:null,live,held:false,issues:[],warnings:[],shots:[],canOverride:false,canRecheck:live>0};
+ const version=num(r.version),state={running:'run',passed:'ok',overridden:'override',failed:'fail'}[str(r.status)]||'none';
+ const issues=(Array.isArray(r.issues)?r.issues:[]).slice(0,12).map(i=>({where:str(i?.viewport)==='html'?'page':str(i?.viewport)||'page',text:str(i?.detail).slice(0,240)})).filter(i=>i.text);
+ const warnings=(Array.isArray(r.warnings)?r.warnings:[]).slice(0,6).map(w=>str(w?.detail).slice(0,240)).filter(Boolean);
+ const held=Boolean(r.held)&&version!==live;
+ const note=state==='run'?'Rendering it at 1440 and 390 px…':held?`Version ${version} was held back: version ${live} stays live until it is fixed or you publish it anyway.`
+  :state==='override'?`You published version ${version} despite the QA.`:str(r.browserNote)?`Checked in ${str(r.browserNote)}.`:'';
+ const shots=(Array.isArray(r.shots)?r.shots:[]).filter(s=>QA_SHOT.test(str(s?.name))).map(s=>({label:`${s.viewport==='mobile'?'Phone':'Desktop'} · ${s.kind==='full'?'whole page':'first screen'}`,
+  url:`/api/projects/${enc}/site/qa/${version}/${str(s.name)}`,viewport:str(s.viewport),kind:str(s.kind)}));
+ return {state,line:`SUB-01's QA: ${str(r.line)||state}`,note,version,live,held,issues,warnings,shots,canOverride:state==='fail'&&version!==live&&version>0,canRecheck:live>0&&state!=='run'};
+}

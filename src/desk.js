@@ -4,7 +4,7 @@ import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
 import {verdictModel,renderVerdict} from './verdict.js';
 import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,trustCount,TRUST_GROUP,
- appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS} from './desk-flows.js';
+ appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS,qaModel} from './desk-flows.js';
 export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
@@ -216,7 +216,36 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   if(!s.src)return [headRow(cur),el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),s.empty),el('p',{textContent:model.mine?'The site appears here as soon as SUB-01 builds the first version.':'Come back later: the site goes up when it is built.'}))];
   const tools=model.mine&&siteView==='tools';
   const toggle=model.mine?el('button',{className:'pc-link pc-tools-toggle',type:'button',textContent:tools?'← Back to the site':'Tools',onclick:()=>{siteView=tools?'site':'tools';show('site');}}):null;
-  return [headRow(cur,bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),toggle,ext(s.open,'Open in a new tab ↗'))),tools?toolsPane():frame(s.src,s.sandbox,`${cur.name}: website`)];}
+  return [headRow(cur,bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),toggle,ext(s.open,'Open in a new tab ↗'))),model.mine?qaPane(cur):null,tools?toolsPane():frame(s.src,s.sandbox,`${cur.name}: website`)].filter(Boolean);}
+
+ // ---------------- SUB-01's QA (owner): every new site version is rendered and checked before it goes live; a failed one
+ // stays offline with the reasons and screenshots, and the owner can publish it anyway (backend docs/SITE-QA.md)
+ function qaPane(p){
+  const root=el('div',{className:'pc-qa is-none'},el('span',{className:'pc-qa-line',textContent:"SUB-01's QA…"})),e=epoch,slug=encodeURIComponent(p.slug);
+  const refresh=async(msg='')=>{try{const v=await api(`/api/projects/${slug}/site/qa`);if(alive(e))draw(v,msg);}catch{if(alive(e))root.replaceChildren();}};
+  const act=async(path,done,b)=>{b.disabled=true;try{await api(path,{method:'POST',body:{}});
+    try{const l=await api(`/api/projects/${slug}/preview-link`);if(l?.url)p.previewLink=l.url;}catch{}
+    if(alive(e))show('site');}catch(x){b.disabled=false;const er=root.querySelector('.pc-err');if(er)er.textContent=explainError(x);}};
+  function draw(v,msg){
+   const m=qaModel(v,p.slug);root.className=`pc-qa is-${m.state}`;
+   const body=el('div',{className:'pc-qa-body'});body.hidden=!(m.state==='fail'&&m.held);
+   const toggle=el('button',{className:'pc-qa-line',type:'button',onclick:()=>{body.hidden=!body.hidden;toggle.setAttribute('aria-expanded',String(!body.hidden));}},el('i',{className:'pc-qa-dot'}),m.line);
+   toggle.setAttribute('aria-expanded',String(!body.hidden));
+   const acts=[];
+   if(m.canOverride){const b=el('button',{className:'button pc-cta',type:'button',textContent:`Publish v${m.version} anyway`,onclick:()=>act(`/api/projects/${slug}/site/qa/${m.version}/override`,'',b)});acts.push(b);}
+   if(m.canRecheck){const b=el('button',{className:'pc-link',type:'button',textContent:'Check the live site again',onclick:()=>act(`/api/projects/${slug}/site/qa/recheck`,'',b)});acts.push(b);}
+   const shots=m.shots.filter(x=>x.kind==='fold');
+   body.append(...[m.note?el('p',{className:'pc-note',textContent:m.note}):null,
+    m.issues.length?el('ul',{className:'pc-qa-issues'},...m.issues.map(i=>el('li',null,el('b',{textContent:i.where}),i.text))):null,
+    m.warnings.length?el('p',{className:'pc-note',textContent:'Also noted: '+m.warnings.join(' · ')}):null,
+    shots.length?el('div',{className:'pc-qa-shots'},...shots.map(x=>el('a',{href:x.url,target:'_blank',rel:'noopener noreferrer',title:'Open the screenshot'},el('img',{src:x.url,alt:`${x.label} of version ${m.version}`,loading:'lazy',decoding:'async'}),el('span',{textContent:x.label})))):null,
+    acts.length?el('div',{className:'pc-qa-acts'},...acts):null,el('p',{className:'pc-err',textContent:msg})].filter(Boolean));
+   root.replaceChildren(toggle,body);
+   if(m.state==='run')later(3000,refresh);
+  }
+  refresh();
+  return root;
+ }
 
  // ---------------- Site tools (owner): switches + a few fields, Save = a new site version; the inbox (drop box, wall, pins)
  function toolsPane(){
