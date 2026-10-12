@@ -1,5 +1,6 @@
 import {cityPlots,districts,ROAD_Z,BOULEVARD_X} from './city-state.js';
 import {cleanStats} from './coin-tier.js';
+import {cleanFamily} from './family.js';
 // Pure helpers that turn the server's /api/world snapshot into what the city draws.
 export const HOME_DESK={x:-4.5,z:-5.75},HOME_BED={x:-7.75,z:-5.4};   // hero-home.js: the gaming chair, the bedside in the loft
 const PALETTE=['orange','mint','violet','sand'];
@@ -26,7 +27,9 @@ export function worldBuildings(world){
    out.push({plotId:p.plotId,type:'project',phase,progress:Math.max(0,Math.min(1,Number(x.progress)||0)),name:x.name,ticker:priv?null:x.ticker||null,stageLabel:x.stageLabel,slug:x.slug||null,launched:!!x.launched,mint:priv?null:x.mint||null,
     logoUrl:priv?null:x.logoUrl||null,bannerUrl:priv?null:x.bannerUrl||null,private:priv,color:PALETTE[hash(p.plotId)%4],stats:priv||!x.launched?null:cleanStats(x.stats),
     // a coin launched from another coin's site (backend child-launch.js) names its parent; a launchpad coin counts its children
-    parent:!priv&&x.parent&&typeof x.parent.name==='string'?{slug:String(x.parent.slug||'').slice(0,40),name:String(x.parent.name).slice(0,32)}:null,childrenLaunched:priv?0:Math.max(0,Math.floor(Number(x.childrenLaunched)||0))});}
+    parent:!priv&&x.parent&&typeof x.parent.name==='string'?{slug:String(x.parent.slug||'').slice(0,40),name:String(x.parent.name).slice(0,32)}:null,childrenLaunched:priv?0:Math.max(0,Math.floor(Number(x.childrenLaunched)||0)),
+    // the coin's own site (the visit button: "Open the coin site"); a launchpad's family, drawn around it (family.js)
+    siteUrl:!priv&&typeof x.siteUrl==='string'&&/^https?:\/\/[^\s]+$/.test(x.siteUrl)?x.siteUrl.slice(0,200):null,family:priv?null:cleanFamily(x.family)});}
   else if(p.kind==='apartment'&&p.resident)out.push({plotId:p.plotId,type:'apartment',phase:'home',progress:1,name:p.resident.name,resident:p.resident,color:PALETTE[hash(p.resident.name)%4]});
  }
  return out;

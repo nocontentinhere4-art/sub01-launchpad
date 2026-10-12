@@ -12,6 +12,7 @@ const ALL_BOULEVARDS=[...BOULEVARD_X,...OUTER_BOULEVARD_X];
 import {cityLayout,rng,BASE_Y,GROUND,STOREY,sidewalkSides,isCommercial,isRing3,builtHeight,TOWER_PITCH,TOWER_PARK,TRANSMITTER_YARD} from './lots.js';
 import {boulevardFurniture,LIGHT} from './city-street.js';
 import {coinVisuals} from './coin-tier.js';
+import {familySlots,familyWall,familyPlace} from './family.js';
 const wallMaterial=params=>(T.wallMaterial||T.toon)(params);
 // Night multipliers are plain 0–1 factors (brief 3.9: walls ×#6F7D99, ground ×#55617A), not sRGB colours.
 const factor=hex=>new THREE.Color().setHex(parseInt(hex.slice(1),16),THREE.LinearSRGBColorSpace);
@@ -554,13 +555,30 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
  }
  let renderGroups=[],style,life,currentNight=false,pools=[],showDetail=true;
  const applyPools=()=>{if(!life?.addLightPool)return;style?.bindLife?.(life);life.clearLightPools('konbini');life.clearLightPools('coin');for(const [x,z,c,r,s,g='konbini'] of pools)life.addLightPool(x,z,c,r,{group:g,strength:s});};const heights=new Map(),counts={};
- const picks=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial({visible:false}),cityPlots.length);
+ // the plots' pick boxes, then (after them, in the same invisible mesh) the launchpad family members' (family.js)
+ const FAM_PICKS=96;let famSlots=[];
+ const picks=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial({visible:false}),cityPlots.length+FAM_PICKS);picks.count=cityPlots.length;
  picks.userData.cityPlot=true;root.add(picks);interactive.push(picks);
+ // A family member's building: the lot as laid out, in the family's colour, with a rooftop sign; launchpads add a mast
+ // and a warm beacon (their own site launches the next generation). On its way (not launched yet): a building site.
+ function drawFamily(lot,f){
+  const m=f.member;
+  if(!m.launched){drawSite(lot,{phase:'scaffold',progress:.5});return;}
+  const wall=familyWall(f.root,m.depth);
+  drawLot({...lot,wall,facade:lot.facade==='glass'?'concrete':lot.facade},{});
+  const fz=lot.front==='+z'?1:-1,top=BASE_Y+lot.height;
+  add('windows',lot.x,top+.55,lot.z+fz*(lot.depth/2-.3),Math.min(2.6,lot.width-.3),.75,.14,'#f4f1ea',{light:'#ffffff',glow:.8});
+  if(m.launchpad){add('walls',lot.x,top+1.6,lot.z,.14,3.2,.14,'#d9d6cf');add('windows',lot.x,top+3.3,lot.z,.5,.5,.5,'#ffcf6e',{light:'#ffcf6e',glow:1.1});}
+ }
  const setPick=(i,x,z,w,h,d)=>{dummy.position.set(x,BASE_Y+h/2,z);dummy.rotation.set(0,0,0);dummy.scale.set(w,h,d);dummy.updateMatrix();picks.setMatrixAt(i,dummy.matrix);};
  function redraw(next){buildings=next;for(const g of renderGroups){root.remove(g);g.dispose();g.geometry.dispose();}renderGroups=[];
   batches=Object.fromEntries(KEYS.map(k=>[k,[]]));details=Object.fromEntries(KEYS.map(k=>[k,[]]));heights.clear();pools=[];ground();towerPark();
   const layout=cityLayout(buildings),userPlots=new Set(layout.lots.filter(l=>l.user).map(l=>l.plotId));
+  // launchpad families (family.js): members take over existing smaller lots around their root, in the same batches
+  famSlots=familySlots(layout,buildings);const famBy=new Map(famSlots.map(s=>[s.lot.id,s]));
   for(const lot of layout.lots){
+   const fm=famBy.get(lot.id);
+   if(fm){drawFamily(lot,fm);if(lot.plotId&&!userPlots.has(lot.plotId))heights.set(lot.plotId,Math.max(heights.get(lot.plotId)||0,lot.height));continue;}
    const b=lot.user?buildings.find(x=>x.plotId===lot.plotId):null;
    if(b&&['thinking','scaffold','stopped'].includes(b.phase)){heights.set(lot.plotId,drawSite(lot,b));continue;}
    drawLot(lot,{dark:b?.phase==='review',coin:b?.phase==='open'?coinVisuals(b.stats):null});
@@ -574,6 +592,8 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
    else if(user)setPick(i,user.x,user.z,user.width+.1,Math.max(1.5,heights.get(p.id)),user.depth+.1);
    else if(p.vacant){heights.set(p.id,.5);setPick(i,p.x,p.z,5.8,1,5.4);}
    else setPick(i,p.x,p.z,5.8,heights.get(p.id)||1,5.4);});
+  famSlots.slice(0,FAM_PICKS).forEach((f,i)=>{const l=f.lot;dummy.position.set(l.x,BASE_Y+l.height/2,l.z);dummy.rotation.set(0,0,0);dummy.scale.set(l.width+.1,Math.max(1.5,l.height),l.depth+.1);dummy.updateMatrix();picks.setMatrixAt(cityPlots.length+i,dummy.matrix);});
+  picks.count=cityPlots.length+Math.min(famSlots.length,FAM_PICKS);
   picks.instanceMatrix.needsUpdate=true;picks.computeBoundingSphere();
   for(const key of KEYS){const core=batches[key].length,all=core+details[key].length;counts[key]=all;counts[key+'Detail']=all-core;
    const mesh=batch(batches[key].concat(details[key]),root,MATS[key],key==='windows',GEOS[key]||geometry);mesh.userData.lod={core,all};mesh.count=showDetail?all:core;renderGroups.push(mesh);}
@@ -601,5 +621,9 @@ export function createCity(scene,interactive,showPlace,buildings,options={}){
   setNight(value){currentNight=value;for(const m of [windowMat,towerMat,ribbonMat])m.userData.night.value=value?1:0;
    for(const m of [wallMat,windowMat,towerMat,ribbonMat])m.color.copy(value?NIGHT_WALL:DAY);groundMat.color.copy(value?NIGHT_GROUND:DAY);
    style.setNight(value);life.setNight(value);},
-  select(hit){if(hit.object.userData.cityPlot&&hit.instanceId!==undefined){showPlace(plotView(cityPlots[hit.instanceId],buildings));return true;}return false;}};
+  select(hit){if(!hit.object.userData.cityPlot||hit.instanceId===undefined)return false;
+   if(hit.instanceId<cityPlots.length){showPlace(plotView(cityPlots[hit.instanceId],buildings));return true;}
+   const fam=famSlots[hit.instanceId-cityPlots.length];if(fam){showPlace(familyPlace(fam));return true;}return false;},
+  // launchpad families (family.js): where each member stands, for deep links (#project/<slug>) and the tests
+  get familySlots(){return famSlots;},familyPlaceOf:slug=>{const f=famSlots.find(s=>s.member.slug===slug);return f?familyPlace(f):null;}};
 }

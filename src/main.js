@@ -274,7 +274,7 @@ function placeFor(plot){
   const mine=me?.plots?.some(p=>p.plotId===plot.id);
   if(b.type==='apartment')return{...plot,name:b.name+"'s apartment",kind:`RESIDENT / ${plot.districtName}`,status:mine?'Your home':'Home of '+b.name,description:mine?'Your apartment. Enter to arrange your room.':`${b.name} lives here.`,color:'#69a694',claimed:true,building:b,mine};
   const building=b.phase==='scaffold'?buildLineOf(plot.id):null;
-  return{...plot,name:b.name,kind:`PROJECT / ${plot.districtName}`,status:b.phase==='open'?statusLine(b.stageLabel,b.stats,b.ticker):building||b.stageLabel+(b.ticker?' · $'+b.ticker:''),description:{thinking:'SUB-01 is deciding whether to build it.',scaffold:'SUB-01 is building it right now.',stopped:'Work stopped; it needs attention.',review:'Built. Waiting for its author to review.',launch:'Getting ready to launch.',open:'Launched. Its building is open.'}[b.phase]+(b.parent?` Launched from ${b.parent.name}'s site.`:'')+(b.childrenLaunched?` ${b.childrenLaunched} coin${b.childrenLaunched===1?'':'s'} launched from its site.`:''),color:'#fb752b',claimed:true,building:b,mine};
+  return{...plot,name:b.name,kind:`PROJECT / ${plot.districtName}`,status:b.phase==='open'?statusLine(b.stageLabel,b.stats,b.ticker):building||b.stageLabel+(b.ticker?' · $'+b.ticker:''),description:{thinking:'SUB-01 is deciding whether to build it.',scaffold:'SUB-01 is building it right now.',stopped:'Work stopped; it needs attention.',review:'Built. Waiting for its author to review.',launch:'Getting ready to launch.',open:'Launched. Its building is open.'}[b.phase]+(b.parent?` Launched from ${b.parent.name}'s site.`:'')+(b.childrenLaunched?` ${b.childrenLaunched} coin${b.childrenLaunched===1?'':'s'} launched from its site.`:'')+(b.family?` Its family grows around it: ${b.family.total} launchpad${b.family.total===1?'':'s'} and coin${b.family.total===1?'':'s'} born from it, the lighter buildings nearby (a mast: a launchpad).`:''),color:'#fb752b',claimed:true,building:b,mine};
 }
 // "Building · 62% · ~1 min left" while SUB-01 builds it (verdict.js placeBuildLine), on the server's clock
 const buildSum=plotId=>buildByPlot.get(plotId)||null;
@@ -309,7 +309,9 @@ function showPlace(p) {
   $('detail-milestones').style.setProperty('--line',step<0?'0%':`${Math.min(100,step*50)}%`);
   const seal=step<0||p.color==='#9a9d92'?null:step===0?['構想','IDEA','']:step===3?['開業','LAUNCHED','ok']:b?.phase==='stopped'?['待機','ON HOLD','idle']:['建設中','BUILDING',''];
   $('detail-hanko').hidden=!seal;if(seal){$('detail-hanko').className='hanko'+(seal[2]?' '+seal[2]:'');$('detail-hanko').firstElementChild.textContent=seal[0];$('detail-hanko').lastElementChild.textContent=seal[1];}
-  $('detail-disclosure').textContent=project?'Creator fees are fixed at launch: 80% to the idea author, 20% to SUB-01. The token is created by the author\'s own wallet signature.':b?'':'Example place. Real projects appear when someone drops an idea in SUB-01\'s mailbox.';
+  // a family member's split depends on its generation (backend family.js): 70/10/20 below the root, 60/10/10/20 deeper
+  $('detail-fees').textContent=p.family?(p.generation>1?'60% creator · 10% parent · 10% grandparent · 20% SUB\u201101':'70% creator · 10% parent · 20% SUB\u201101'):'80% author · 20% SUB\u201101';
+  $('detail-disclosure').textContent=p.family?'Creator fees of a family coin are split on-chain and locked at launch: its creator, the parent launchpad\'s author, from generation 2 the grandparent\'s author, and SUB-01 (20%). Nobody earns anything for buying or holding it.':project?'Creator fees are fixed at launch: 80% to the idea author, 20% to SUB-01. The token is created by the author\'s own wallet signature.':b?'':'Example place. Real projects appear when someone drops an idea in SUB-01\'s mailbox.';
   $('takeover-button').hidden=true;$('detail-roles').hidden=true;
   // Rituals: build-or-pass on a thinking public project, SUB-01's diary on his desk, the server's share card.
   const predictable=project&&b.phase==='thinking'&&!b.private;$('detail-predict').hidden=true;
@@ -711,7 +713,7 @@ async function pollWorld(){
   const opened=items.filter(b=>b.phase==='open'&&!cityBuildings.some(o=>o.plotId===b.plotId&&o.phase==='open'));
   cityBuildings=items;cityRenderer.redraw(items);cityGreen?.redraw(items);residents.set(residentList());renderList();
   for(const l of worldLabels){l.element.remove();labels.splice(labels.indexOf(l),1);}worldLabels.length=0;
-  for(const b of items.filter(b=>b.type==='project')){const plot=cityPlots.find(p=>p.id===b.plotId);addLabel({...placeFor(plot),name:b.ticker?`${b.name} · $${b.ticker}`:b.name,color:b.phase==='open'?'#ffcf6e':'#fb752b'},(cityRenderer.heightOf(b.plotId)??3)+(b.phase==='open'?2.6:1.4)+(b.phase==='open'?coinVisuals(b.stats)?.labelLift||0:0));worldLabels.push(labels.at(-1));}
+  for(const b of items.filter(b=>b.type==='project')){const plot=cityPlots.find(p=>p.id===b.plotId);addLabel({...placeFor(plot),name:(b.ticker?`${b.name} · $${b.ticker}`:b.name)+(b.family?` · family ${b.family.total}`:''),color:b.phase==='open'?'#ffcf6e':'#fb752b'},(cityRenderer.heightOf(b.plotId)??3)+(b.phase==='open'?2.6:1.4)+(b.phase==='open'?coinVisuals(b.stats)?.labelLift||0:0));worldLabels.push(labels.at(-1));}
   if(opened.length&&worldKey&&$('activity-text'))notify(`${opened[0].name} just opened its doors.`);
   updateShrines();
  }
@@ -927,7 +929,9 @@ function deepLink(k,arg){
   if(pc){let n=0;const press=()=>{const b=document.querySelector('.room-pc-btn');if(b)b.click();else if(++n<40)setTimeout(press,200);};setTimeout(press,700);}};
  if(k==='room'){toRoom(arg==='pc');return;}
  if(k==='idea'){const i=arg&&(me?.ideas||[]).find(x=>String(x.id)===String(arg));if(i)toRoom(true);else openBuildForm();return;}
- if(k==='project'){const b=cityBuildings.find(b=>b.slug===arg);const plot=b&&cityPlots.find(p=>p.id===b.plotId);if(plot){focusPlot(plot.id);showPlace(placeFor(plot));}else notify('That project is not on the map.');return;}
+ if(k==='project'){const b=cityBuildings.find(b=>b.slug===arg);const plot=b&&cityPlots.find(p=>p.id===b.plotId);if(plot){focusPlot(plot.id);showPlace(placeFor(plot));return;}
+  // a coin launched from a launchpad's site lives in its family's neighbourhood (family.js), not on an address
+  const fam=cityRenderer?.familyPlaceOf(arg);if(fam){focusPlace(fam);showPlace(fam);}else notify('That project is not on the map.');return;}
  if(k==='account'){if(me?.user)openAccount();else openSignIn();return;}
  if(k==='about'){rituals.openAbout();return;}
  if(k==='token'){const t=lookOptions?.sub01;notify(t?.mint?`SUBZERONE ($${t.ticker||'SUB-01'}) · CA ${t.mint} · tap the CA chip by the logo to copy it`:'SUBZERONE token: see the CA chip by the logo');}
