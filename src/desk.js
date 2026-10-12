@@ -244,11 +244,19 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
  function sidePanel(p){
   const e=epoch,slug=encodeURIComponent(p.slug);
   const artSlot=el('div',{className:'pc-art-slot'}),rw=el('div',{className:'pc-rewrite'});
-  const root=el('details',{className:'pc-side'},el('summary',null,icon('brush','i lead'),el('span',{textContent:'Logo and words'})),el('div',{className:'pc-side-body'},artSlot,rw));
+  // folds down with a clear Show/Hide button (2026-10-12 the owner: "si possa togliere e abbassare"); the choice is remembered
+  const KEY='sz.pc-side-open',saved=(()=>{try{return localStorage.getItem(KEY);}catch{return null;}})();
+  const state=el('span',{className:'pc-side-state'}),pill=el('span',{className:'pc-side-pill'});
+  const root=el('details',{className:'pc-side'},el('summary',null,icon('brush','i lead'),el('span',{className:'pc-side-title',textContent:'Logo and site'}),state,pill),
+   el('div',{className:'pc-side-body'},el('p',{className:'pc-note pc-side-intro',textContent:'1. Pick the logo and banner: they go on your site, on the token and on X. 2. If the site does not match your idea, ask SUB-01 to build it again.'}),artSlot,rw));
+  if(saved==='1')root.open=true;
+  const syncPill=()=>{pill.textContent=root.open?'Hide ▴':'Show ▾';};
+  root.addEventListener('toggle',()=>{syncPill();try{localStorage.setItem(KEY,root.open?'1':'0');}catch{}});syncPill();
   const reloadSite=async()=>{try{const l=await api(`/api/projects/${slug}/preview-link`);if(l?.url)p.previewLink=l.url;}catch{}views.delete(p.slug);if(alive(e)&&tab==='site')show('site');};
   load(p.slug).then(view=>{if(!alive(e))return;
-   api(`/api/projects/${slug}/art`).then(a=>{const am=artModel(a,view);if(!alive(e)||!am)return;if(!am.chosen&&am.editable)root.open=true;
-    artSlot.replaceWith(renderArtPick(am,{onPick:async i=>{await api(`/api/projects/${slug}/art`,{method:'PUT',body:{choice:i}});await reloadSite();}}));}).catch(()=>{});});
+   api(`/api/projects/${slug}/art`).then(a=>{const am=artModel(a,view);if(!alive(e)||!am)return;if(!am.chosen&&am.editable&&saved===null)root.open=true;
+    state.textContent=`Logo: option ${am.choice+1}${am.chosen?'':' (not picked yet)'}`;
+    artSlot.replaceWith(renderArtPick(am,{title:'1 · Your logo and banner',onPick:async i=>{await api(`/api/projects/${slug}/art`,{method:'PUT',body:{choice:i}});await reloadSite();}}));}).catch(()=>{});});
   // the rewrite: POST, then the job is polled every 3 s; when it lands the preview shows the new version
   const err=el('p',{className:'pc-err'});let asked=false;
   const draw=v=>{const m=rewriteModel(v);if(!m){rw.replaceChildren();return;}
@@ -256,7 +264,7 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    const b=btn(m.busy?'button-ghost button-sm':'button-dark button-sm',m.label,async()=>{busy(b,true);err.textContent='';
     try{await api(`/api/projects/${slug}/rewrite`,{method:'POST',body:{}});asked=true;poll();}catch(x){err.textContent=explainError(x);busy(b,false);}},m.busy?null:'rotate');
    b.disabled=!m.canAsk;if(m.busy){b.classList.add('is-busy');asked=true;later(3000,poll);}
-   rw.replaceChildren(...[el('span',{className:'pc-devbuy-k',textContent:'The words on the site'}),el('div',{className:'pc-rewrite-row'},b,el('span',{className:'pc-note',textContent:m.note})),
+   rw.replaceChildren(...[el('span',{className:'pc-devbuy-k',textContent:'2 · Build the site again'}),el('div',{className:'pc-rewrite-row'},b,el('span',{className:'pc-note',textContent:m.note})),
     m.line?el('p',{className:'pc-note pc-rewrite-line',textContent:m.line}):null,err].filter(Boolean));};
   const poll=async()=>{try{const v=await api(`/api/projects/${slug}/rewrite`);if(alive(e)&&tab==='site')draw(v);}catch(x){if(alive(e))err.textContent=explainError(x);}};
   poll();

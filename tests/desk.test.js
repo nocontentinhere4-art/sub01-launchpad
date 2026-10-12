@@ -508,12 +508,12 @@ test('kitArt + profileKit: the downloads are the chosen pair (never the room\'s 
 });
 test('rewriteModel: ask, running, done (live / held / template), failed, locked, none left',()=>{
  const base={allowed:true,lockedWhy:null,perDay:3,left:3,last:null};
- let m=rewriteModel(base);assert.deepEqual([m.canAsk,m.label,m.line],[true,'Ask SUB-01 to rewrite','']);assert.match(m.note,/3 of 3 left today/);assert.match(m.note,/name and the ticker stay/);
- m=rewriteModel({...base,left:2,last:{state:'running',progress:'building the site and checking it'}});assert.deepEqual([m.busy,m.canAsk,m.label,m.line],[true,false,'SUB-01 is rewriting…','building the site and checking it']);
- m=rewriteModel({...base,left:2,last:{state:'done',version:4,live:true,generator:'anthropic:claude-sonnet-5-5'}});assert.equal(m.line,'Rewritten: site v4 is live.');assert.equal(m.done,true);assert.equal(m.version,4);
+ let m=rewriteModel(base);assert.deepEqual([m.canAsk,m.label,m.line],[true,'Ask SUB-01 to rebuild the site','']);assert.match(m.note,/3 of 3 left today/);assert.match(m.note,/name, the ticker and your logo stay/);
+ m=rewriteModel({...base,left:2,last:{state:'running',progress:'building the site and checking it'}});assert.deepEqual([m.busy,m.canAsk,m.label,m.line],[true,false,'SUB-01 is rebuilding…','building the site and checking it']);
+ m=rewriteModel({...base,left:2,last:{state:'done',version:4,live:true,generator:'anthropic:claude-sonnet-5-5'}});assert.equal(m.line,'Rebuilt: site v4 is live.');assert.equal(m.done,true);assert.equal(m.version,4);
  assert.match(rewriteModel({...base,last:{state:'done',version:4,live:true,fallback:'generator HTTP 529'}}).line,/fixed template/);
  assert.match(rewriteModel({...base,last:{state:'done',version:5,live:false}}).line,/held back by SUB-01's QA/);
- assert.match(rewriteModel({...base,last:{state:'failed',error:'generated spec invalid: x'}}).line,/^The rewrite failed: generated spec invalid/);
+ assert.match(rewriteModel({...base,last:{state:'failed',error:'generated spec invalid: x'}}).line,/^The rebuild failed: generated spec invalid/);
  m=rewriteModel({...base,allowed:false,lockedWhy:'the coin is launched: its logo is on chain'});assert.equal(m.canAsk,false);assert.match(m.note,/locked: the coin is launched/);
  m=rewriteModel({...base,left:0});assert.equal(m.canAsk,false);assert.match(m.note,/none left today/);
  assert.equal(rewriteModel(null),null);

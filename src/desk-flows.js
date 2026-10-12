@@ -295,12 +295,13 @@ export function rewriteModel(v){
  const x=v&&typeof v==='object'?v:null;if(!x)return null;
  const last=x.last&&typeof x.last==='object'?x.last:null,state=str(last?.state),busy=state==='queued'||state==='running';
  const per=num(x.perDay)??3,left=Math.max(0,num(x.left)??0),allowed=x.allowed===true;
- const line=busy?(str(last.progress)||'SUB-01 is rewriting the copy…'):
-  state==='done'?(last.live?`Rewritten: site v${num(last.version)} is live${last.fallback?', written by the fixed template (the language model failed)':''}.`:`Rewritten as v${num(last.version)}, held back by SUB-01's QA (above).`):
-  state==='failed'?`The rewrite failed${str(last.error)?`: ${str(last.error)}`:''}. Try again later.`:state==='skipped'?`Not rewritten: ${str(last.skipped)}.`:'';
- const note=!allowed?(str(x.lockedWhy)?`The words are locked: ${str(x.lockedWhy)}.`:'Nothing to rewrite yet.'):
-  left>0?`SUB-01 writes the words again for the app and tools the site has now; the name and the ticker stay. ${left} of ${per} left today.`:`${per} rewrites a day: none left today.`;
- return {allowed,busy,canAsk:allowed&&!busy&&left>0,label:busy?'SUB-01 is rewriting…':'Ask SUB-01 to rewrite',note,line,state,version:num(last?.version),done:state==='done'};
+ // 2026-10-12: the request is a full rebuild (backend rewrite.js): the app, the tools and the words; name, ticker, logo stay
+ const line=busy?(str(last.progress)||'SUB-01 is rebuilding the site…'):
+  state==='done'?(last.live?`Rebuilt: site v${num(last.version)} is live${last.fallback?', words by the fixed template (the language model failed)':''}.`:`Rebuilt as v${num(last.version)}, held back by SUB-01's QA (above).`):
+  state==='failed'?`The rebuild failed${str(last.error)?`: ${str(last.error)}`:''}. Try again later.`:state==='skipped'?`Not rebuilt: ${str(last.skipped)}.`:'';
+ const note=!allowed?(str(x.lockedWhy)?`The site is locked: ${str(x.lockedWhy)}.`:'Nothing to rebuild yet.'):
+  left>0?`SUB-01 builds the site again from your idea: the app, the tools and the words. The name, the ticker and your logo stay. ${left} of ${per} left today.`:`${per} rebuilds a day: none left today, more tomorrow.`;
+ return {allowed,busy,canAsk:allowed&&!busy&&left>0,label:busy?'SUB-01 is rebuilding…':'Ask SUB-01 to rebuild the site',note,line,state,version:num(last?.version),done:state==='done'};
 }
 
 
