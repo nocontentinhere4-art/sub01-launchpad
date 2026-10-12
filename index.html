@@ -88,6 +88,7 @@
     <symbol id="i-face" viewBox="0 0 24 24"><circle cx="12" cy="9" r="5.2"/><path d="M8.2 8.8h7.6M5 21a7 7 0 0 1 14 0"/></symbol>
     <symbol id="i-dance" viewBox="0 0 24 24"><circle cx="13" cy="4.5" r="1.9"/><path d="M8 21l3.2-6 3.3 2V21M10.2 15l1.3-5.4L8 10.5 5 8M12.8 9.6l3.5 1.4 2.7-2.5"/></symbol>
     <symbol id="i-selfie" viewBox="0 0 24 24"><rect x="7" y="3.5" width="10" height="17" rx="2.5"/><path d="M12 17.5h.01M10 7h4"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.6M12 16.9v.2"/></symbol>
     <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol>
   </defs></svg>
   <div id="app">
@@ -98,6 +99,8 @@
       <!-- 2026-10-10 owner: the SUBZERONE token's contract address next to the logo; tap = copy, arrow = pump.fun -->
       <div class="ca-chip" id="ca-chip" hidden><button type="button" id="ca-copy" title="Copy the SUBZERONE token address"><b>CA</b><span id="ca-addr"></span></button><a id="ca-open" href="#" target="_blank" rel="noopener noreferrer" aria-label="SUBZERONE token on pump.fun"><svg class="i" aria-hidden="true"><use href="#i-ne"/></svg></a></div>
       <div class="preview-badge" id="server-badge"><i></i><span id="server-status">CONNECTING</span></div>
+      <!-- Help / support (support-ui.js): always there, small; a report reaches the team with the launch's state attached -->
+      <button class="help-button" id="help-button" type="button" aria-haspopup="dialog" aria-controls="support-backdrop" title="Help: report a problem"><svg class="i" aria-hidden="true"><use href="#i-help"/></svg><span class="lbl">Help</span></button>
       <button class="account-chip" id="account-button" type="button"><svg class="i" aria-hidden="true"><use href="#i-wallet"/></svg><span class="nm">Sign in</span></button>
       <!-- SIMPLIFY 2026-10-10: the three primary actions are #idea-button, #explore-button (Walk) and #tour-button (Visit SUB-01).
            On phones main.js moves all three into #walk-dock, which becomes the dock's Idea · Walk · SUB-01 bar (.lbl-s = short labels). -->
@@ -337,6 +340,16 @@
         <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
         <span class="eyebrow" id="postcard-eyebrow">POSTCARD · 絵葉書</span><h2 id="postcard-title">Wish you <em>were here.</em></h2>
         <div class="sheet-body" id="postcard-body"></div>
+      </section>
+    </div>
+    <!-- Help / support (support-ui.js draws #support-body): a new report, or "My reports" with the team's replies -->
+    <div class="dialog-backdrop" id="support-backdrop" hidden>
+      <section class="idea-card sheet-card support-card" role="dialog" aria-modal="true" aria-labelledby="support-title">
+        <span class="grabber" aria-hidden="true"></span>
+        <button class="close-button" data-close type="button" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        <span class="eyebrow">HELP · サポート</span><h2 id="support-title">Something <em>not working?</em></h2>
+        <div class="sheet-tabs" id="support-tabs"></div>
+        <div class="sheet-body" id="support-body"></div>
       </section>
     </div>
     <div class="toast" id="toast" role="status" hidden></div>

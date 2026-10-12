@@ -40,7 +40,8 @@ import {awayCard} from './away.js';
 import {cityLayout} from './lots.js';
 import {createChat} from './chat.js'; // chat:
 import {verdictModel,renderVerdict,renderBuild,prefillFrom,pollPlan,counterLabel,placeBuildLine,summaryOf,cleanBuild} from './verdict.js'; // verdict: SUB-01 answers the drop in seconds
-import {requestComputer} from './desk.js'; // the verdict's "Choose your logo on your PC" opens the room computer on Launch
+import {requestComputer} from './desk.js';
+import {createSupport} from './support-ui.js'; // Help / support: the top bar's Help button and the PC's "Report a problem" // the verdict's "Choose your logo on your PC" opens the room computer on Launch
 import {createGovernor,settingsFor,startLevel,gpuName,createFuse,packResume,unpackResume,safeStore,timeoutSignal,nextPollDelay,GOV,RESUME_KEY,RESUME_MAX_AGE} from './quality.js';
 // Never a white page: an uncaught error or rejection is one quiet console line. If the city never drew its first frame
 // (no WebGL, a module that failed), the loading screen says so instead of spinning forever.
@@ -906,6 +907,10 @@ control('photo-button',icon('camera'),()=>photo.toggle(),'more-photo');
 for(const [id,text] of [['diary-button',"SUB-01's diary"],['photo-button','Postcard: frame the city, save a card']])label($(id),text);
 $('about-button').onclick=()=>rituals.openAbout();
 $('more-button').onclick=()=>openDialog('more-backdrop');
+// Help / support (support-ui.js): the sheet; desk.js opens it with a `sub01:support` event (launch step + error prefilled)
+const support=createSupport({openDialog,closeDialog,me:()=>me,place:()=>selectedPlace?.mine?selectedPlace:null,notify});   // only your own place rides along
+$('help-button').onclick=()=>{if(currentDialog)closeDialog();support.open();};
+window.__city.support=support;
 // Rows in the More and Today sheets that open something else or move the camera close their sheet first (capture: before the row's own handler).
 for(const id of ['more-backdrop','calendar-backdrop'])$(id).addEventListener('click',e=>{if(e.target.closest('#city-tour,#reset-view,#photo-button,#about-button,#diary-button,#shrine-button'))closeDialog();},true);
 // The Today chip's small line: the week theme, then the next event (tickRituals keeps it fresh).

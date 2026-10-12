@@ -7,6 +7,7 @@ import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_W
  appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS,qaModel,kitArt,rewriteModel} from './desk-flows.js';
 export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn,kitArt,rewriteModel} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
+import {noteLaunch} from './support.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
 // the Computer overlay: the project's site, its X account, the launch stepper and (owner only) the ideas in flight.
 // The Launch and X tabs read GET /api/projects/:slug themselves (owner view when signed in); desk-flows.js has the models.
@@ -109,6 +110,17 @@ const el=(tag,props={},...kids)=>{const n=Object.assign(document.createElement(t
 const ext=(href,text,cls='pc-link')=>el('a',{className:cls,href,target:'_blank',rel:'noopener noreferrer'},text.replace(/\s*↗\s*$/,''),icon('ne'));
 const frame=(src,sandbox,title)=>{const f=el('iframe',{className:'pc-frame',src,title,loading:'lazy',referrerPolicy:'no-referrer'});f.setAttribute('sandbox',sandbox);return f;};
 // (the label is a plain span: the city's .lbl is the dock's long label, hidden on phones)
+// Help / support (support-ui.js listens for `sub01:support`): "Report this problem" right after an error line, shown only
+// while the line has text (style.css .pc-err:empty + .pc-report); the error, the step and the source travel with it.
+export const askSupport=detail=>dispatchEvent(new CustomEvent('sub01:support',{detail}));
+export function reportLink(err,{source='launch_error',step=''}={}){
+ const b=el('button',{className:'pc-link pc-report',type:'button'},icon('help'),'Report this problem');
+ b.onclick=()=>askSupport({source,step,error:err.textContent});
+ return b;
+}
+// A failed launch / dev-buy call, for the report's context (support.js noteLaunch): the words shown, the server's code.
+export const noteFail=(x,step,message)=>noteLaunch({step,message:message||x?.body?.message||x?.message||'failed',httpStatus:x?.status,
+ code:x?.body?.error||(x?.rejected?'wallet_rejected':x?.timeout?'wallet_timeout':x?.unsupported?'wallet_unsupported':x?.name||'')});
 const btn=(cls,text,onclick,lead=null)=>{const b=el('button',{className:'button '+cls,type:'button',onclick},lead?icon(lead,'i lead'):null,el('span',{className:'pc-lbl',textContent:text}));return b;};
 const busy=(b,on)=>{b.disabled=on;b.classList.toggle('is-busy',on);};
 // The dev buy field (desk-flows.js devBuyModel): one number input + Save above "Prepare the transaction"; read-only with
@@ -118,10 +130,10 @@ export function renderDevBuy(m,{onSave}={}){
  input.setAttribute('aria-label','Dev buy in SOL');
  const err=el('p',{className:'pc-err'});
  const save=btn('button-dark button-sm pc-devbuy-save','Save',async()=>{const r=parseDevBuy(input.value,m.max);if(r.error){err.textContent=r.error;return;}err.textContent='';busy(save,true);
-  try{await onSave?.(r.sol);}catch(x){err.textContent=explainError(x);busy(save,false);}});
+  try{await onSave?.(r.sol);}catch(x){err.textContent=explainError(x);noteFail(x,'devbuy',err.textContent);busy(save,false);}});
  save.disabled=!m.editable;
  return el('div',{className:'pc-devbuy'+(m.locked?' is-locked':'')},el('label',{className:'pc-devbuy-row'},el('span',{className:'pc-devbuy-k',textContent:'Dev buy (SOL)'}),input,save),
-  el('p',{className:'pc-note',textContent:m.locked?`${m.text} · ${m.lockNote}`:m.note}),err);
+  el('p',{className:'pc-note',textContent:m.locked?`${m.text} · ${m.lockNote}`:m.note}),err,reportLink(err,{source:'devbuy_error',step:'devbuy'}));
 }
 // "Choose your logo" (desk-flows.js artModel): the two logo+banner pairs side by side, one tap picks; onPick(index)
 // does the PUT and the refresh (the site preview, the token logo and the X kit follow); errors stay under the pair.
@@ -500,6 +512,8 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
  const lpath=(fl,what)=>`/api/projects/${encodeURIComponent(cur.slug)}/launch/${isStep2(fl)?'devbuy/':''}${what}`;
  function drawLaunch(root,view,extra={}){
   const m=launchSteps(view,me),out=[],e=epoch;syncStage(m);
+  noteLaunch({slug:cur.slug,name:cur.name,projectStatus:m.status,intentId:view?.intent?.id,intentStatus:view?.intent?.status,step:m.current});
+  if(extra.error)noteLaunch({step:m.current,message:extra.error});
   if(m.loading){root.replaceChildren(el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),'The launch page is not reachable.'),el('p',{textContent:'The project could not be loaded. Close the computer and try again.'})));return;}
   const err=el('p',{className:'pc-err',textContent:extra.error||''});
   const list=el('ol',{className:'pc-steps'});list.style.setProperty('--step',String(stepIndex(m.current==='stopped'?'site':m.current,m.steps)));
@@ -542,9 +556,12 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
     if(s.id==='launch'&&m.phase==='resume')acts.append(el('button',{className:'pc-link pc-abandon',type:'button',textContent:'Cancel this transaction',onclick:()=>abandon(root,b,err,refresh,'cancelled')}));
     if(s.secondary?.id==='devbuy-skip')acts.append(skipLink(b,err,refresh));
     main.append(acts);}
-   if(!errPlaced&&(s.state==='current'||s.state==='blocked')){main.append(err);errPlaced=true;}
+   if(!errPlaced&&(s.state==='current'||s.state==='blocked')){main.append(err,reportLink(err,{source:s.id==='devbuy'?'devbuy_error':'launch_error',step:s.id}));errPlaced=true;}
   }
   out.push(list);
+  // the stepper's own way to the team, whatever happened (the last error, or the intent's, rides along)
+  const lastErr=()=>err.textContent||(['failed','expired','cancelled'].includes(view?.intent?.status)?String(view.intent.error||''):'');
+  out.push(el('p',{className:'pc-help'},el('button',{className:'pc-link pc-report-any',type:'button',onclick:()=>askSupport({source:'stepper',step:m.current||'',error:lastErr()})},icon('help'),'Something wrong with the launch? Report a problem')));
   if(!model.mine&&!m.owner)out.push(el('p',{className:'pc-note',textContent:'Only the author launches from this computer; you see where it stands.'}));
   out.push(brainLine(view));
   root.replaceChildren(...out);
@@ -589,13 +606,13 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    else if(id==='prepare'||id==='resume'||id==='devbuy'){const tx=await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/${id==='devbuy'?'devbuy/':''}transaction`,{method:'POST',body:{}});
     const v=await load(cur.slug,true);flight={tx,review:reviewModel(tx,v,me?.user?.wallet)};if(!closed&&tab==='launch')drawLaunch(root,v);return;}
    await refresh();
-  }catch(x){err.textContent=explainError(x);busy(b,false);if(x?.status===409&&/changed/.test(x.body?.error||''))refresh(explainError(x));}
+  }catch(x){err.textContent=explainError(x);noteFail(x,m.current||id,err.textContent);busy(b,false);if(x?.status===409&&/changed/.test(x.body?.error||''))refresh(explainError(x));}
  }
  async function abandon(root,b,err,refresh,reason,fl=flight){
   if(b)busy(b,true);err.textContent='';
   // which transaction: the one on the card (step 2 = the dev buy); the launch step's own Cancel is always step 1
   const path=lpath(fl,'abandon');flight=null;
-  try{await api(path,{method:'POST',body:{reason}});}catch(x){err.textContent=explainError(x);}
+  try{await api(path,{method:'POST',body:{reason}});}catch(x){err.textContent=explainError(x);noteFail(x,isStep2(fl)?'devbuy':'launch',err.textContent);}
   await refresh();
  }
  // "Skip the dev buy" is final: the first tap asks, the second skips (a waiting, unsigned buy is cancelled with it).
@@ -605,7 +622,7 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   link.onclick=async()=>{
    if(!armed){armed=true;link.textContent='Skip it for good? Tap again';later(5000,()=>{armed=false;if(link.isConnected)link.textContent='Skip the dev buy';});return;}
    busy(link,true);if(b)b.disabled=true;err.textContent='';flight=null;
-   try{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/devbuy/skip`,{method:'POST',body:{}});}catch(x){err.textContent=explainError(x);}
+   try{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/devbuy/skip`,{method:'POST',body:{}});}catch(x){err.textContent=explainError(x);noteFail(x,'devbuy',err.textContent);}
    await refresh();};
   return link;
  }
@@ -633,7 +650,7 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   // 2026-10-11: Phantom flags city.subzerone.live as a new domain (domain review requested); say so before the popup
   const walletNote=el('p',{className:'pc-note pc-wallet-note',textContent:'Your wallet may warn that this site is new or unreviewed: city.subzerone.live is days old and under review. The transaction is exactly the one above; take your time, this page waits up to 2 minutes.'});
   const cancel=el('button',{className:'pc-link pc-abandon',type:'button',textContent:'Cancel this transaction',onclick:()=>abandon(root,sign,err,refresh,'cancelled')});
-  card.append(walletNote,el('div',{className:'pc-step-acts'},sign,cancel),err);
+  card.append(walletNote,el('div',{className:'pc-step-acts'},sign,cancel),err,reportLink(err,{source:'launch_error',step:'launch'}));
   return card;
  }
  // Step 2's own small review: what the buy costs, its cap, the tokens, the programs, one signature (yours).
@@ -653,7 +670,7 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   const err=el('p',{className:'pc-err'}),sign=btn('button-orange button-sm',`Buy with ${wallet}`,()=>signNow(root,fl,sign,err,refresh),'wallet');sign.disabled=!r.canSign;
   const cancel=el('button',{className:'pc-link pc-abandon',type:'button',textContent:'Cancel',onclick:()=>abandon(root,sign,err,refresh,'cancelled',fl)});
   card.append(el('p',{className:'pc-note',textContent:r.mock?'The wallet asks you to sign a labelled text message; nothing is bought.':'Your wallet shows the transaction again before you sign: the same amount, one signature.'}),
-   el('div',{className:'pc-step-acts'},sign,cancel,skipLink(sign,err,refresh)),err);
+   el('div',{className:'pc-step-acts'},sign,cancel,skipLink(sign,err,refresh)),err,reportLink(err,{source:'devbuy_error',step:'devbuy'}));
   return card;
  }
  async function signNow(root,fl,b,err,refresh){
@@ -673,8 +690,8 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    await api(lpath(fl,'signed'),{method:'POST',body:{signed}});
    flight=null;await refresh();
   }catch(x){
-   if(x?.rejected){await abandon(root,b,err,refresh,'rejected',fl);err.textContent='Cancelled in the wallet. Nothing was signed or sent.';return;}
-   err.textContent=x?.status?explainError(x):describeError(x);busy(b,false);
+   if(x?.rejected){await abandon(root,b,err,refresh,'rejected',fl);err.textContent='Cancelled in the wallet. Nothing was signed or sent.';noteFail(x,isStep2(fl)?'devbuy':'launch',err.textContent);return;}
+   err.textContent=x?.status?explainError(x):describeError(x);noteFail(x,isStep2(fl)?'devbuy':'launch',err.textContent);busy(b,false);
    if(x?.status===400||x?.status===409){flight=null;later(1500,()=>refresh(explainError(x)));}
   }
  }
@@ -703,7 +720,8 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   const drop=el('button',{className:'button button-orange pc-cta',type:'button'},icon('mail','i lead'),'Drop a new idea'),note=el('p',{className:'pc-note'});
   drop.onclick=()=>{if(onIdea){close({quiet:true});onIdea();}else note.textContent='The mailbox is in the city: go back and use “Drop an idea”.';};
   return [list,drop,note];}
- const onKey=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();return;}
+ const onKey=e=>{if(document.querySelector('.dialog-backdrop:not([hidden])'))return;   // a sheet over the PC (Help) handles its own keys
+  if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();return;}
   if((e.key==='ArrowRight'||e.key==='ArrowLeft')&&e.target?.classList?.contains('pc-tab')){const list=tabsFor(model,cur),k=list.indexOf(tab),n=list[(k+(e.key==='ArrowRight'?1:-1)+list.length)%list.length];show(n);tabs.querySelector(`[data-tab="${n}"]`)?.focus();}};
  document.addEventListener('keydown',onKey,true);
  function close({quiet=false}={}){if(closed)return;closed=true;document.removeEventListener('keydown',onKey,true);clearBody();back.remove();if(prevFocus?.isConnected)prevFocus.focus?.({preventScroll:true});onClose?.({quiet});}
