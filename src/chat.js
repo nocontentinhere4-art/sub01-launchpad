@@ -275,6 +275,9 @@ export function createChat(ctx){
   if(e.event==='presence'){online=d?.online??[];chrome();renderOnline();return;}
   if(e.event==='walker'||e.event==='walkers'){ctx.presence?.apply(Array.isArray(d)?d:[d]);renderOnline();return;}   // live walkers (presence.js)
   if(e.event==='sub01'){sub01=d;chrome();return;}
+  // SUB-01's verdict and the build's steps (backend build-steps.js): relayed as window events for the verdict card, the
+  // building's card and the room computer (main.js, desk.js); the stamp lets them count down on the server's clock
+  if(e.event==='verdict'||e.event==='build'){try{dispatchEvent(new CustomEvent('sub01:'+e.event,{detail:{...d,receivedAt:Date.now()}}));}catch{}return;}
   if(e.event==='del'){const id=String(d?.id);log.del(id);const k=bubbles.remove(id);if(k)drawStack(k);render();return;}
   if(e.event!=='msg')return;
   const r=log.add(d);if(r!=='new')return render();

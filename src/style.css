@@ -584,13 +584,13 @@ h1 em{filter:drop-shadow(0 6px 24px rgba(251,117,43,.35))}
 .pc-toolbar .pc-cta{--h:32px;font-size:12px;padding:0 12px}
 .pc-body h4{margin:8px 0 0;font:500 11px/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
 .pc-posts,.pc-ideas{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
-.pc-posts li,.pc-ideas li{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:11px 14px;border-radius:var(--r-row);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke);font:450 13.5px/1.45 var(--f-ui)}
-.pc-ideas li strong{font-weight:650}
+.pc-posts li,.pc-ideas>li{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:11px 14px;border-radius:var(--r-row);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke);font:450 13.5px/1.45 var(--f-ui)}
+.pc-ideas>li>strong{font-weight:650}
 .pc-posts li span{overflow-wrap:anywhere;color:var(--ink-2)}
-.pc-posts small,.pc-ideas small{font:500 10px/1.2 var(--f-mono);letter-spacing:.06em;color:var(--ink-3);white-space:nowrap;text-transform:uppercase}
+.pc-posts small,.pc-ideas>li>small{font:500 10px/1.2 var(--f-mono);letter-spacing:.06em;color:var(--ink-3);white-space:nowrap;text-transform:uppercase}
 .pc-post-approved,.pc-post-posted,.pc-post-scheduled{color:var(--ok)!important}
 .pc-post-rejected,.pc-post-failed{color:var(--danger-ink)!important}
-.pc-ideas li.is-focus{box-shadow:inset 0 0 0 1.5px var(--accent);background:var(--accent-soft)}
+.pc-ideas>li.is-focus{box-shadow:inset 0 0 0 1.5px var(--accent);background:var(--accent-soft)}
 .pc-note{margin:0;font:450 12.5px/1.5 var(--f-ui);color:var(--ink-2)}
 .pc-note:empty{display:none}
 .pc-stage{display:flex;align-items:center;gap:10px;flex:1;min-width:140px}
@@ -1248,6 +1248,43 @@ button.cal-row:hover{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--a
 .verdict-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.verdict-actions .button{flex:1 1 auto;width:auto}
 .verdict-actions .button[disabled]{opacity:.55;cursor:not-allowed}
 @media (prefers-reduced-motion:reduce){.verdict-eyebrow .pulse{animation:none}}
+/* SUB-01's build, step by step (verdict.js renderBuild): the verdict card after "He builds it", the building's sheet and
+   the room PC (Launch step 1, Ideas tab). Countdown on top, the bar, one row per step: icon, label + provider, time. */
+.build{display:grid;gap:10px;margin-top:4px;padding:14px;border-radius:var(--r-md);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
+.build-head{display:grid;gap:2px}
+.build-count{font:700 24px/1.15 var(--f-ui);letter-spacing:-.01em;color:var(--ink);font-variant-numeric:tabular-nums}
+.build.is-ready .build-count{color:var(--ok)}.build.is-failed .build-count{color:var(--danger-ink)}
+.build-sub{font:500 12px/1.35 var(--f-mono);letter-spacing:.04em;color:var(--ink-2)}
+.build-bar{height:6px;border-radius:var(--r-pill);background:var(--fill-2);overflow:hidden}
+.build-bar i{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--accent-lo),var(--accent));transition:width .9s linear}
+.build.is-ready .build-bar i{background:var(--ok)}
+.build-steps{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.build-step{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:start;padding:6px 4px;border-radius:var(--r-sm)}
+.build-step::before{content:"";position:absolute;left:17px;top:34px;bottom:-4px;width:2px;background:var(--stroke);border-radius:2px}
+.build-step:last-child::before{display:none}
+.build-step.is-done::before{background:var(--accent-line)}
+.build-dot{position:relative;z-index:1;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--stroke-2);color:var(--ink-3)}
+.build-dot .i{width:15px;height:15px}
+.build-step.is-done .build-dot{background:var(--accent);color:var(--on-accent);box-shadow:none}
+.build-step.is-running{background:var(--accent-soft)}
+.build-step.is-running .build-dot{color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent);animation:build-ring 1.4s ease-in-out infinite}
+.build-step.is-failed .build-dot{color:var(--danger);box-shadow:inset 0 0 0 1.5px var(--danger)}
+.build-step.is-skipped,.build-step.is-todo{opacity:.62}
+@keyframes build-ring{0%,100%{box-shadow:inset 0 0 0 1.5px var(--accent)}50%{box-shadow:inset 0 0 0 1.5px var(--accent),0 0 0 4px var(--accent-soft)}}
+.build-main{display:grid;gap:1px;min-width:0;padding-top:4px}
+.build-main b{font:600 14px/1.3 var(--f-ui);color:var(--ink)}
+.build-prov{font:500 11px/1.3 var(--f-mono);letter-spacing:.04em;color:var(--ink-3);text-transform:uppercase}
+.build-step.is-running .build-prov,.build-step.is-done .build-prov{color:var(--ink-2)}
+.build-note{font:450 12px/1.4 var(--f-ui);color:var(--ink-3)}
+.build-step.is-failed .build-note{color:var(--danger-ink)}
+.build-time{padding-top:6px;font:500 12px/1.2 var(--f-mono);color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.build-ready{margin:2px 0 0;font:600 15px/1.45 var(--f-ui);color:var(--ink)}
+.verdict-why{border-radius:var(--r-sm);padding:2px 0}
+.verdict-why>summary{cursor:pointer;font:500 11px/1.2 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);padding:6px 0}
+.verdict-why[open]>summary{margin-bottom:6px}
+.pc-ideas .pc-build{margin-top:8px}
+@media (max-width:420px){.build{padding:12px}.build-count{font-size:21px}.build-step{grid-template-columns:26px minmax(0,1fr) auto;gap:8px}.build-dot{width:26px;height:26px}.build-step::before{left:16px}}
+@media (prefers-reduced-motion:reduce){.build-step.is-running .build-dot{animation:none}.build-bar i{transition:none}}
 /* Profile kit for X (room PC, X tab, owner only): files to download and texts to copy for the X profile. 2026-10-10 */
 .pc-kit{display:flex;flex-direction:column;gap:12px;margin:14px 0;padding:14px;border-radius:var(--r-row);background:var(--fill-1);box-shadow:inset 0 0 0 1px var(--stroke)}
 .pc-kit-head{display:flex;gap:12px;align-items:center}.pc-kit-head img{width:56px;height:56px;border-radius:14px;flex:none;background:#0f0d0b}
@@ -1312,3 +1349,5 @@ span.pc-qa-line{cursor:default;color:var(--ink-3)}
 .pc-qa-acts{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .pc-qa-acts .pc-cta{--h:32px;font-size:12px;padding:0 12px}
 @media(prefers-reduced-motion:reduce){.pc-qa.is-run .pc-qa-dot{animation:none}}
+.pc-ideas>li:has(.pc-build){flex-wrap:wrap}.pc-ideas .pc-build{flex:1 0 100%}
+.pc-step-main .pc-build{margin-top:8px}

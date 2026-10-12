@@ -480,3 +480,10 @@ test('qaModel: passed, held with reasons and screenshots, overridden, running, n
  assert.equal(qaModel({liveSiteVersion:3,reports:['junk',{version:'x',status:'weird'}]},'x').state,'none');
  assert.equal(qaModel({liveSiteVersion:7,reports:[{version:7,status:'failed',held:false,line:'1 issue'}]},'x').canOverride,false,'the live version itself has nothing to publish');
 });
+test('requestComputer with an idea still being built: the Ideas tab on that idea; isBuilding',async()=>{
+ const {requestComputer,takeComputerRequest,isBuilding}=await import('../src/desk.js');
+ const idea={id:'idea_1',title:'Ramen',status:'generating'},model={mine:true,projects:[{slug:'soba'}],ideas:[idea]};
+ requestComputer({slug:null,ideaId:'idea_1',tab:'launch'});assert.deepEqual(takeComputerRequest(model),{project:null,idea,tab:'launch'});
+ requestComputer({slug:'soba',ideaId:'idea_1',tab:'launch'});assert.deepEqual(takeComputerRequest(model),{project:{slug:'soba'},tab:'launch'},'the project wins once it exists');
+ assert.equal(isBuilding({status:'generating'}),true);assert.equal(isBuilding({status:'selected'}),true);assert.equal(isBuilding({stage:'preview_ready'}),false);assert.equal(isBuilding(null),false);
+});

@@ -21,7 +21,7 @@ import {renderLookFields,readLook,isUnlocked} from './creator.js';
 import {loadCharacter,HEIGHT} from './characters.js';
 import {api,short,ApiError} from './api.js';
 import {listWallets,onWallets,signIn,signOut,scanWallets,walletHelp,describeError} from './wallet.js';
-import {worldBuildings,sub01Goal,planRoute,frontOf,HOME_DESK} from './world-sync.js';
+import {worldBuildings,sub01Goal,planRoute,frontOf,HOME_DESK,worldBuilds} from './world-sync.js';
 import {buildHeroHome} from './hero-home.js';
 import {createCity} from './city.js';
 import {createCityEvents,freshEvents} from './city-events.js';
@@ -39,7 +39,7 @@ import {startTelemetry} from './telemetry.js';
 import {awayCard} from './away.js';
 import {cityLayout} from './lots.js';
 import {createChat} from './chat.js'; // chat:
-import {verdictModel,renderVerdict,prefillFrom,pollPlan,counterLabel} from './verdict.js'; // verdict: SUB-01 answers the drop in seconds
+import {verdictModel,renderVerdict,renderBuild,prefillFrom,pollPlan,counterLabel,placeBuildLine,summaryOf,cleanBuild} from './verdict.js'; // verdict: SUB-01 answers the drop in seconds
 import {requestComputer} from './desk.js'; // the verdict's "Choose your logo on your PC" opens the room computer on Launch
 import {createGovernor,settingsFor,startLevel,gpuName,createFuse,packResume,unpackResume,safeStore,timeoutSignal,nextPollDelay,GOV,RESUME_KEY,RESUME_MAX_AGE} from './quality.js';
 // Never a white page: an uncaught error or rejection is one quiet console line. If the city never drew its first frame
@@ -52,6 +52,7 @@ addEventListener('unhandledrejection',e=>{console.warn('[city] unhandled:',e.rea
 const $ = id => document.getElementById(id);
 const mobile = matchMedia('(max-width:600px)').matches;
 const reducedMotion = matchMedia('(prefers-reduced-motion:reduce)').matches;
+let buildByPlot=new Map();   // plotId -> the build summary while SUB-01 builds (world-sync.js worldBuilds, `build` frames)
 let roomView=null,cityBuildings=[],cityRenderer,world=null,me=null,lookOptions=null,walker=null,goal=null,serverUp=null,worldKey='';
 const resident=()=>me?.resident||null;
 let selectedPlace = places[0], night = false, follow = false, currentDialog = null, previousFocus = null;
@@ -272,8 +273,21 @@ function placeFor(plot){
   const b=cityBuildings.find(b=>b.plotId===plot.id);if(!b)return plot;
   const mine=me?.plots?.some(p=>p.plotId===plot.id);
   if(b.type==='apartment')return{...plot,name:b.name+"'s apartment",kind:`RESIDENT / ${plot.districtName}`,status:mine?'Your home':'Home of '+b.name,description:mine?'Your apartment. Enter to arrange your room.':`${b.name} lives here.`,color:'#69a694',claimed:true,building:b,mine};
-  return{...plot,name:b.name,kind:`PROJECT / ${plot.districtName}`,status:b.phase==='open'?statusLine(b.stageLabel,b.stats,b.ticker):b.stageLabel+(b.ticker?' · $'+b.ticker:''),description:{thinking:'SUB-01 is deciding whether to build it.',scaffold:'SUB-01 is building it right now.',stopped:'Work stopped; it needs attention.',review:'Built. Waiting for its author to review.',launch:'Getting ready to launch.',open:'Launched. Its building is open.'}[b.phase]+(b.parent?` Launched from ${b.parent.name}'s site.`:'')+(b.childrenLaunched?` ${b.childrenLaunched} coin${b.childrenLaunched===1?'':'s'} launched from its site.`:''),color:'#fb752b',claimed:true,building:b,mine};
+  const building=b.phase==='scaffold'?buildLineOf(plot.id):null;
+  return{...plot,name:b.name,kind:`PROJECT / ${plot.districtName}`,status:b.phase==='open'?statusLine(b.stageLabel,b.stats,b.ticker):building||b.stageLabel+(b.ticker?' · $'+b.ticker:''),description:{thinking:'SUB-01 is deciding whether to build it.',scaffold:'SUB-01 is building it right now.',stopped:'Work stopped; it needs attention.',review:'Built. Waiting for its author to review.',launch:'Getting ready to launch.',open:'Launched. Its building is open.'}[b.phase]+(b.parent?` Launched from ${b.parent.name}'s site.`:'')+(b.childrenLaunched?` ${b.childrenLaunched} coin${b.childrenLaunched===1?'':'s'} launched from its site.`:''),color:'#fb752b',claimed:true,building:b,mine};
 }
+// "Building · 62% · ~1 min left" while SUB-01 builds it (verdict.js placeBuildLine), on the server's clock
+const buildSum=plotId=>buildByPlot.get(plotId)||null;
+function buildLineOf(plotId){const s=buildSum(plotId);return s?placeBuildLine(s,s.now+(Date.now()-s.receivedAt)):null;}
+// The open place card follows the build: the state line and the bar, every second and on every `build` frame.
+function refreshPlaceBuild(){
+ const p=selectedPlace,b=p?.building;if($('detail-backdrop').hidden||b?.type!=='project'||b.phase!=='scaffold')return;
+ const line=buildLineOf(p.id),s=buildSum(p.id);if(line)$('detail-state').textContent=line;
+ if(s&&s.state!=='ready'){const pct=Math.round(s.percent)+'%';$('detail-progress-head').firstElementChild.textContent='Site build';$('detail-progress').firstElementChild.style.width=pct;$('detail-pct').textContent=pct;}
+}
+setInterval(refreshPlaceBuild,1000);
+addEventListener('sub01:build',e=>{const d=e.detail;if(!d?.plotId||!d.build)return;const b=cleanBuild(d.build,d.receivedAt||Date.now()),s=summaryOf(b);
+ if(s)buildByPlot.set(d.plotId,{...s,receivedAt:b.receivedAt});refreshPlaceBuild();if(b?.state==='ready'||b?.state==='failed')pollWorld();});
 // The leading tile of a place (icons.js tile()): the real thing, never a glyph. A project shows its coin logo (private →
 // a lock), a resident their initials on their colour, SUB-01 the brand mark, landmarks an SVG glyph, a free lot its kanji.
 function tileSpec(p){const b=p.building;
@@ -287,7 +301,7 @@ function tileSpec(p){const b=p.building;
 function showPlace(p) {
   if(p.id&&cityPlots.some(c=>c.id===p.id))p=placeFor(cityPlots.find(c=>c.id===p.id));
   selectedPlace=p;const b=p.building,project=b?.type==='project';
-  $('detail-progress').hidden=$('detail-progress-head').hidden=!project;if(project){const pct=Math.round(b.progress*100)+'%';$('detail-progress').firstElementChild.style.width=pct;$('detail-pct').textContent=pct;}
+  $('detail-progress').hidden=$('detail-progress-head').hidden=!project;if(project){const pct=Math.round(b.progress*100)+'%';$('detail-progress-head').firstElementChild.textContent='Build progress';$('detail-progress').firstElementChild.style.width=pct;$('detail-pct').textContent=pct;}
   $('detail-fees-box').hidden=!project;$('detail-milestones').hidden=b?.type==='apartment';
   // The metro line (idea → build → launch) and the hanko seal show the same phase; the seal is decorative (aria-hidden).
   const step=project?{thinking:0,open:3,launch:2}[b.phase]??1:p.ideaId?0:-1;
@@ -308,7 +322,7 @@ function showPlace(p) {
   $('detail-description').textContent=p.description;$('detail-state').textContent=p.status;
   const vacant=!b&&!p.ideaId&&cityPlots.some(l=>l.id===p.id),noLogo=project&&p.mine&&!b.private&&!b.logoUrl;$('detail-icon').replaceChildren(tile(vacant?{empty:true,label:'Your logo here'}:tileSpec(p),'lg'));$('detail-tile-cap').hidden=!(vacant||noLogo);$('detail-tile-cap').textContent=noLogo?'Your coin logo goes here':'Your logo here';
   visitWalk(p);cta($('visit-button'),p.ideaId?'Open it on your PC →':b?.type==='apartment'?(p.mine?'Enter your room →':'Visit '+b.name+'\'s room →'):project?(p.mine?'Open it on your PC →':b.launched&&b.slug?'Open the coin site ↗':'Watch the site →'):cityPlots.some(l=>l.id===p.id)?'Drop an idea here →':'Visit this place →');
-  openDialog('detail-backdrop');
+  openDialog('detail-backdrop');refreshPlaceBuild();
 }
 // ON-CHAIN (coin-tier.js, CITY-API.md "Coin stats"): the launched coin's numbers with their source and age. Honest data:
 // a missing number reads "no data yet" (never 0), a mock source is labelled MOCK DATA in orange, stale values are dimmed.
@@ -422,24 +436,36 @@ function openSignIn(next){
  scanWallets();draw();walletsUnsub?.();walletsUnsub=onWallets(draw);openDialog('signin-backdrop');
 }
 // verdict: SUB-01 answers the drop while the dialog is open. GET /api/ideas/:id every 2 s for at most 30 s (the
-// stream's `verdict` frame, when the chat relays it as a window event, cuts the wait short); then the card.
+// stream's `verdict` frame, relayed by chat.js as a window event, cuts the wait short); then the card.
+// After "He builds it" the card follows the build (verdict.js buildModel): the stream's `build` frames redraw it when a
+// step changes, a 1 s tick counts down in between, and a frame-less 20 s (the stream is down) reads the idea again.
 let revising=null,watch=null;
+const BUILD_REFETCH_MS=20000;
 function watchVerdict(ideaId,root,{plot=null,dialog=null,closable=true}={}){
  if(watch)watch.stop();
- const started=Date.now();let timer=0,stopped=false,last=null;
- const stop=()=>{stopped=true;clearTimeout(timer);removeEventListener('sub01:verdict',onFrame);if(watch?.ideaId===ideaId)watch=null;};
+ const started=Date.now();let timer=0,stopped=false,last=null,ticker=0,lastFrame=0;
+ const stop=()=>{stopped=true;clearTimeout(timer);clearInterval(ticker);removeEventListener('sub01:verdict',onFrame);removeEventListener('sub01:build',onBuild);if(watch?.ideaId===ideaId)watch=null;};
  const close=dialog&&closable?m=>()=>{stop();closeDialog();if(m?.state==='build'&&plot)focusPlace(plot);}:()=>null;
  // a build: "Choose your logo on your PC" → the author's room, the computer on this project's Launch tab (desk.js requestComputer)
- const chooseLogo=idea=>()=>{stop();if(dialog)closeDialog();requestComputer({slug:idea?.project?.slug,tab:'launch'});deepLink('room','pc');};
- const draw=idea=>{last=idea;const m=verdictModel(idea);renderVerdict(root,m,{onRevise:m.canRevise?()=>{stop();closeDialog();openBuildForm(plot,idea);}:null,onClose:close(m),
-  onChooseLogo:m.state==='build'&&m.next?chooseLogo(idea):null});return m;};
+ const chooseLogo=idea=>()=>{stop();if(dialog)closeDialog();requestComputer({slug:idea?.project?.slug,ideaId,tab:'launch'});deepLink('room','pc');};
+ const draw=idea=>{last=idea;const m=verdictModel(idea),why=root.querySelector('.verdict-why')?.open;renderVerdict(root,m,{icon,onRevise:m.canRevise?()=>{stop();closeDialog();openBuildForm(plot,idea);}:null,onClose:close(m),
+  onChooseLogo:m.state==='build'&&m.next?chooseLogo(idea):null});if(why){const d=root.querySelector('.verdict-why');if(d)d.open=true;}return m;};
  const onFrame=e=>{if(e.detail?.ideaId===ideaId)tick(true);};
+ const onBuild=e=>{const d=e.detail;if(stopped||d?.ideaId!==ideaId||!last||!d.build)return;lastFrame=Date.now();
+  const m=draw({...last,status:d.status||last.status,build:d.build,receivedAt:d.receivedAt||Date.now()});
+  if(m.build&&(m.build.ready||m.build.failed))tick(true);};      // the end: read the idea once more (its project, the owner's reason)
+ const follow=()=>{if(ticker)return;lastFrame=Date.now();addEventListener('sub01:build',onBuild);
+  ticker=setInterval(()=>{if(stopped)return;if(dialog&&$(dialog).hidden){stop();return;}
+   const m=verdictModel(last),box=root.querySelector('.build');if(box&&m.build)renderBuild(box,m.build,{icon,onChooseLogo:m.build.ready&&m.owner?chooseLogo(last):null});
+   if(Date.now()-lastFrame>BUILD_REFETCH_MS){lastFrame=Date.now();tick(true);}},1000);};
  async function tick(now=false){
   if(stopped)return;
   if(dialog&&$(dialog).hidden){stop();return;}                           // the author closed it; the building tells the rest
   let idea=null;try{idea=await getJSON(`/api/ideas/${encodeURIComponent(ideaId)}`);}catch(err){if(err instanceof ApiError&&err.status===404){draw(null);stop();return;}}
   if(stopped)return;
+  if(idea)idea.receivedAt=Date.now();
   const m=idea?draw(idea):null;
+  if(m?.state==='build'&&m.build&&!m.build.ready&&!m.build.failed){follow();return;}
   if(m&&m.state!=='waiting'){stop();refreshMe();pollWorld();return;}
   const plan=pollPlan(started,Date.now());
   if(!plan.again&&!now){if(last)renderVerdict(root,{...verdictModel(last),waitNote:'He is taking longer than usual. Nothing is decided yet; the building shows his answer when it comes.'},{onClose:close(null)});stop();return;}
@@ -453,7 +479,8 @@ function watchVerdict(ideaId,root,{plot=null,dialog=null,closable=true}={}){
 }
 // The building's sheet: the same card for the author (a private idea is only ever shown to its author).
 function loadDetailVerdict(ideaId,plot){
- watchVerdict(ideaId,$('detail-verdict'),{plot,dialog:'detail-backdrop',closable:false});   // the sheet has its own close
+ // after showPlace has opened the sheet (it opens it last): a watch started on a hidden sheet would stop at once
+ setTimeout(()=>{if(selectedPlace?.id===plot?.id)watchVerdict(ideaId,$('detail-verdict'),{plot,dialog:'detail-backdrop',closable:false});},0);   // the sheet has its own close
 }
 const IDEA_STATUS={submitted:'In his mailbox',evaluating:'SUB-01 is thinking',selected:'He will build it',declined:'He passed',generating:'Being built',preview_ready:'Ready for your review',approved:'Approved by you',launch_prepared:'Launch ready',awaiting_signature:'Waiting for your signature',confirming:'Confirming on-chain',launched:'Launched',failed:'Stopped: needs attention',cancelled:'Cancelled'};
 let knownStatus=null;
@@ -677,7 +704,7 @@ function pollLoop(run,delay){let timer=0;const tick=async()=>{try{if(!document.h
  timer=setTimeout(tick,delay());return ()=>clearTimeout(timer);}
 async function pollWorld(){
  let next;try{next=await getJSON('/api/world');if(!Array.isArray(next?.plots))throw new Error('not the city server');if(!lookOptions){lookOptions=await getJSON('/api/world/options');caChip(lookOptions?.sub01);cityRenderer.crowd.setLookOptions(lookOptions);}setServer(true);worldFails=0;}catch{worldFails++;setServer(false);return;}
- world=next;setCityWorld(world);const items=applyCoinOverrides(worldBuildings(world)),key=JSON.stringify(items);let flipped=[];
+ world=next;setCityWorld(world);buildByPlot=worldBuilds(world);const items=applyCoinOverrides(worldBuildings(world)),key=JSON.stringify(items);let flipped=[];
  if(key!==worldKey){worldKey=key;
   // A party only for a site seen building and now open, not for one that was already open when first seen.
   flipped=items.filter(b=>b.phase==='open'&&cityBuildings.some(o=>o.plotId===b.plotId&&o.type==='project'&&o.phase!=='open'));
@@ -896,7 +923,8 @@ window.__city.rituals={get calendar(){return calendar;},get rituals(){return rit
 // /me → #account, /how and /fees → #about, /token → #token, /ideas/<id> → #idea/<id>). The hash is consumed once.
 function deepLink(k,arg){
  const toRoom=pc=>{const r=resident();if(!r){openSignIn(()=>deepLink('room',arg));return;}closeDialog();stopExplore();roomPlot=r.plotId;openRoom({plotId:r.plotId,mine:true,me,onEdit:()=>openCreator()});
-  if(pc)setTimeout(()=>document.querySelector('.room-pc-btn')?.click(),700);};
+  // the room loads its furniture first: wait for its computer button (up to 8 s) rather than a fixed 700 ms
+  if(pc){let n=0;const press=()=>{const b=document.querySelector('.room-pc-btn');if(b)b.click();else if(++n<40)setTimeout(press,200);};setTimeout(press,700);}};
  if(k==='room'){toRoom(arg==='pc');return;}
  if(k==='idea'){const i=arg&&(me?.ideas||[]).find(x=>String(x.id)===String(arg));if(i)toRoom(true);else openBuildForm();return;}
  if(k==='project'){const b=cityBuildings.find(b=>b.slug===arg);const plot=b&&cityPlots.find(p=>p.id===b.plotId);if(plot){focusPlot(plot.id);showPlace(placeFor(plot));}else notify('That project is not on the map.');return;}

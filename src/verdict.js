@@ -39,11 +39,14 @@ export function verdictModel(idea,now=Date.now()){
   suggestions:(Array.isArray(f.suggestions)?f.suggestions:[]).map(s=>s&&typeof s==='object'?{what:str(s.what),why:str(s.why),how:str(s.how)}:null).filter(s=>s&&s.what),
   wouldBuildIf:str(f.wouldBuildIf)||null,counter,history,version,nextVersionAt:idea.nextVersionAt!=null&&Number.isFinite(Number(idea.nextVersionAt))?Number(idea.nextVersionAt):null,
   canRevise:idea.canRevise===true,owner:idea.owner!==false,latency:latencyLabel(Number(ev?.latencyMs))};
- if(ev&&(ev.verdict==='build'||ev.decision==='selected'))return {...base,state:'build',headline:'He builds it.',summary:str(f.summary)||'SUB-01 voted to build it. The building rises while he works.',waitNote:'',canRevise:false,wouldBuildIf:null,next:base.owner?NEXT_LOGO:''};
+ // the build timeline (2026-10-12): replaces the "next" line while he builds; when it is ready, the logo step
+ const raw=cleanBuild(idea.build,Number(idea.receivedAt)||now),build=raw?buildModel(raw,serverNow(raw,now)):null;
+ const nextFor=()=>!base.owner?'':build?(build.ready?READY_LINE:''):NEXT_LOGO;
+ if(ev&&(ev.verdict==='build'||ev.decision==='selected'))return {...base,state:'build',headline:'He builds it.',summary:str(f.summary)||'SUB-01 voted to build it. The building rises while he works.',waitNote:'',canRevise:false,wouldBuildIf:null,next:nextFor(),build,buildRaw:raw};
  if(ev&&(ev.verdict==='pass'||ev.decision==='declined'))return {...base,state:'pass',headline:'He passed.',summary:str(f.summary)||'SUB-01 voted pass. Nothing is built.',waitNote:''};
  if(idea.status==='failed')return {...base,state:'failed',headline:'He could not read it.',summary:str(idea.statusNote)||'His brain did not answer. Nothing was decided; a reviewer will retry it.',waitNote:'',canRevise:false};
  if(READING.has(idea.status))return {...base,state:'waiting',headline:'SUB-01 is reading…',summary:'',waitNote:waitingLine(idea,now),canRevise:false};
- return {...base,state:'build',headline:'He builds it.',summary:str(f.summary)||'SUB-01 is building it.',waitNote:'',canRevise:false,wouldBuildIf:null,next:base.owner?NEXT_LOGO:''};
+ return {...base,state:'build',headline:'He builds it.',summary:str(f.summary)||'SUB-01 is building it.',waitNote:'',canRevise:false,wouldBuildIf:null,next:nextFor(),build,buildRaw:raw};
 }
 // 2026-10-12: SUB-01 draws two logo options with the build; the author picks one on the room computer (desk.js, Launch tab)
 export const NEXT_LOGO='Next: choose your logo on your PC. SUB-01 draws two black-and-white options while he builds; open the computer in your room, Launch tab, and pick one.';
@@ -67,18 +70,134 @@ export function renderVerdict(root,m,{onRevise,onClose,onChooseLogo,icon}={}){
  if(m.state==='waiting')kids.push(el('p',{className:'verdict-wait',textContent:m.waitNote}),el('p',{className:'fine',textContent:'He answers in seconds when he is at his desk. You can close this; the building tells you the rest.'}));
  else{
   if(m.summary)kids.push(el('p',{className:'verdict-summary',textContent:m.summary}));
-  kids.push(...sec('What he liked',m.likes),...sec("What he didn't like",m.dislikes),...sec("What he'd change",m.suggestions,true));
+  // while he builds: the live timeline first, his notes folded under "Why he builds it"
+  const why=[...sec('What he liked',m.likes),...sec("What he didn't like",m.dislikes),...sec("What he'd change",m.suggestions,true)];
+  if(m.state==='build'&&m.build){kids.push(renderBuild(el('div',{className:'build'}),m.build,{icon,onChooseLogo:m.build.ready&&m.owner?onChooseLogo:null}));
+   if(why.length)kids.push(el('details',{className:'verdict-why'},el('summary',{textContent:'Why he builds it'}),...why));}
+  else kids.push(...why);
   if(m.state==='pass'&&m.wouldBuildIf)kids.push(el('span',{className:'eyebrow',textContent:'He would build it if…'}),el('p',{className:'verdict-if',textContent:m.wouldBuildIf}));
   if(m.context.length)kids.push(el('p',{className:'fine verdict-context',textContent:m.context.join(' ')}));
   if(m.history&&m.history.includes('→'))kids.push(el('p',{className:'fine',textContent:'Verdicts: '+m.history}));
-  if(m.state==='build'&&m.next)kids.push(el('p',{className:'fine verdict-next',textContent:m.next}));
+  if(m.state==='build'&&m.next&&!m.build)kids.push(el('p',{className:'fine verdict-next',textContent:m.next}));
  }
  const row=el('div',{className:'verdict-actions'});
  const rb=reviseButton(m);
  if(rb){const b=el('button',{type:'button',className:'button button-orange',id:root.id+'-revise',disabled:rb.disabled,textContent:rb.label});if(!rb.disabled&&onRevise)b.onclick=onRevise;row.append(b);}
- if(m.state==='build'&&m.next&&onChooseLogo)row.append(el('button',{type:'button',className:'button button-orange',textContent:'Choose your logo on your PC',onclick:onChooseLogo}));
+ if(m.state==='build'&&m.next&&!m.build&&onChooseLogo)row.append(el('button',{type:'button',className:'button button-orange',textContent:'Choose your logo on your PC',onclick:onChooseLogo}));
  if(onClose)row.append(el('button',{type:'button',className:'button button-ghost',textContent:m.state==='waiting'?'Close, I will come back':m.state==='build'?'Watch the building':'Close',onclick:onClose}));
  if(row.childElementCount)kids.push(row);
+ root.replaceChildren(...kids);
+ return root;
+}
+
+// ---------------------------------------------------------------- the build, step by step (2026-10-12)
+// GET /api/ideas/:id `build` and the stream's `build` frame (backend build-steps.js, CITY-API.md "The build, step by
+// step"). The server sends a frame when a step changes; between frames the card counts down by itself with the same
+// rule the server uses: the medians of the steps not started + what is left of the running one, a step past its median
+// extended to its p90 and then by another p90 at a time, never negative. `now` is the server clock (build.now + the
+// time since the build arrived), so a phone with a wrong clock still counts right.
+export const BUILD_ICONS={queued:'clock',brief:'think',app:'wrench',art:'brush',site:'globe',qa:'check',ready:'rocket'};
+const WORK=new Set(['brief','app','art','site','qa']),STEP_STATES=new Set(['todo','running','done','failed','skipped']),BUILD_STATES=new Set(['queued','running','retrying','ready','failed']);
+const fin=v=>{if(v==null||v==='')return null;v=Number(v);return Number.isFinite(v)?v:null;};
+/** A build from the server, cleaned (unknown fields dropped, numbers checked). null when there is none. */
+export function cleanBuild(b,receivedAt=Date.now()){
+ if(!b||typeof b!=='object'||!Array.isArray(b.steps))return null;
+ const steps=b.steps.filter(s=>s&&typeof s==='object'&&str(s.id)).slice(0,10).map(s=>({id:str(s.id),label:str(s.label)||str(s.id),state:STEP_STATES.has(s.state)?s.state:'todo',
+  startedAt:fin(s.startedAt),endedAt:fin(s.endedAt),provider:str(s.provider).slice(0,60)||null,plannedProvider:str(s.plannedProvider).slice(0,60)||null,note:str(s.note).slice(0,200)||null,
+  expectedSeconds:fin(s.expectedSeconds),p90Seconds:fin(s.p90Seconds),elapsedSeconds:fin(s.elapsedSeconds)}));
+ const q=b.queue&&typeof b.queue==='object'?{position:Math.max(1,Math.floor(fin(b.queue.position)||1)),startsInSeconds:Math.max(0,fin(b.queue.startsInSeconds)||0)}:null;
+ return {state:BUILD_STATES.has(b.state)?b.state:'running',steps,startedAt:fin(b.startedAt),etaSeconds:fin(b.etaSeconds),percent:Math.max(0,Math.min(100,fin(b.percent)||0)),
+  queue:q,attempt:Math.max(1,fin(b.attempt)||1),now:fin(b.now)??receivedAt,receivedAt};
+}
+/** The server's clock now, for a build received at `receivedAt` (client ms). */
+export const serverNow=(build,clientNow=Date.now())=>build?build.now+(clientNow-(build.receivedAt??build.now)):clientNow;
+/** Seconds left in a running step (the server's rule). */
+export function stepLeft(expected,p90,elapsed){
+ const e=Math.max(0,elapsed||0),x=Math.max(0,expected||0),p=Math.max(x,p90||x);
+ if(e<x)return x-e;if(e<p)return p-e;const c=Math.max(1,p);return c-((e-p)%c);
+}
+/** -> {remaining (s, null when stopped), wait (s in line), percent} at server time t. */
+export function liveEta(build,t){
+ if(!build)return null;
+ if(build.state==='ready')return {remaining:0,wait:0,percent:100};
+ if(build.state==='failed')return {remaining:null,wait:0,percent:build.percent};
+ const retry=build.state==='retrying';let rem=0,done=0;
+ for(const s of build.steps){if(!WORK.has(s.id))continue;
+  const st=retry?'todo':s.state;
+  if(st==='done'||st==='skipped'){done+=Math.max(0,((s.endedAt??s.startedAt??0)-(s.startedAt??0))/1000);continue;}
+  if(st==='failed')continue;
+  if(st==='running'&&s.startedAt!=null){const el=Math.max(0,(t-s.startedAt)/1000);done+=el;rem+=stepLeft(s.expectedSeconds,s.p90Seconds,el);}
+  else rem+=Math.max(0,s.expectedSeconds||0);}
+ const wait=build.queue?Math.max(0,build.queue.startsInSeconds-(t-build.now)/1000):0;
+ const waiting=build.state==='queued'||retry;
+ return {remaining:wait+rem,wait,percent:waiting?0:done+rem>0?Math.min(99,Math.floor(100*done/(done+rem))):0};
+}
+/** "45 s", "1 min 40 s", "12 min" (a countdown: seconds rounded up, to 5 s past a minute). */
+export function durationLabel(s){
+ s=Number(s);if(!Number.isFinite(s)||s<0)return '';
+ if(s<60)return `${Math.max(1,Math.ceil(s))} s`;
+ const r=Math.ceil(s/5)*5,m=Math.floor(r/60),sec=r%60;
+ return m>=10||!sec?`${Math.round(r/60)} min`:`${m} min ${sec} s`;
+}
+/** "~1 min left" for the place card: a coarser word (minutes past a minute, 5 s steps below). */
+export function leftLabel(s){s=Number(s);if(!Number.isFinite(s)||s<0)return '';if(s<60)return `~${Math.max(5,Math.ceil(s/5)*5)} s left`;return `~${Math.round(s/60)} min left`;}
+export const ordinal=n=>{n=Math.floor(Number(n)||0);const t=n%100,o=n%10;return n+(t>=11&&t<=13?'th':o===1?'st':o===2?'nd':o===3?'rd':'th');};
+/** "Next in line, starts in a moment" / "2nd in line, starts in ~1 min". */
+export function queueLine(build,t){
+ if(!build?.queue)return '';const w=Math.max(0,build.queue.startsInSeconds-(t-build.now)/1000),p=build.queue.position;
+ const when=w<5?'starts in a moment':`starts in ~${durationLabel(w)}`;
+ return build.state==='retrying'?`Trying again: ${when}`:p<=1?`Next in line, ${when}`:`${ordinal(p)} in line, ${when}`;
+}
+/**
+ * buildModel(build, t) -> null | {state, ready, failed, countdown, sub, percent, steps:[{id,icon,label,state,provider,time,note}]}
+ * countdown: "Ready in ~1 min 40 s" | "Almost ready…" | "Your site is ready" | "Stopped". t: server time (serverNow).
+ */
+export function buildModel(build,t){
+ if(!build)return null;
+ const e=liveEta(build,t),ready=build.state==='ready',failed=build.state==='failed';
+ const countdown=ready?'Your site is ready':failed?'The build stopped':e.remaining<2?'Almost ready…':`Ready in ~${durationLabel(e.remaining)}`;
+ const sub=ready?`Built in ${durationLabel(build.steps.filter(s=>WORK.has(s.id)).reduce((a,s)=>a+Math.max(0,((s.endedAt??s.startedAt??0)-(s.startedAt??0))/1000),0))}.`
+  :failed?'Nothing was published. A SUBZERONE admin sees it; the reason is in your room computer.'
+  :build.queue?queueLine(build,t):build.attempt>1?`Second try · ${e.percent}% done`:`${e.percent}% done`;
+ const steps=build.steps.map(s=>{
+  const el=s.state==='running'&&s.startedAt!=null?Math.max(0,(t-s.startedAt)/1000):s.state==='done'&&s.startedAt!=null?Math.max(0,((s.endedAt??s.startedAt)-s.startedAt)/1000):null;
+  const time=s.id==='ready'?'':s.state==='done'?(s.id==='queued'&&el<1?'':durationLabel(el)):s.state==='running'?(s.id==='queued'?durationLabel(el):`${durationLabel(el)} of ~${durationLabel(Math.max(s.expectedSeconds||0,el))}`)
+   :s.state==='todo'&&s.expectedSeconds!=null?`~${durationLabel(s.expectedSeconds)}`:s.state==='failed'?'stopped':s.state==='skipped'?'skipped':'';
+  return {id:s.id,icon:BUILD_ICONS[s.id]||'note',label:s.label,state:s.state,provider:s.state==='todo'?(s.plannedProvider||''):(s.provider||''),time,note:s.note||''};
+ });
+ return {state:build.state,ready,failed,countdown,sub,percent:e.percent,remaining:e.remaining,steps};
+}
+/** The building's place card while he builds: "Building · 62% · ~1 min left" / "In line · 2nd · ready in ~3 min". summary: /api/world project.build. */
+export function placeBuildLine(summary,t){
+ if(!summary||typeof summary!=='object')return null;
+ const eta=fin(summary.etaAt),left=eta!=null?Math.max(0,(eta-t)/1000):fin(summary.etaSeconds),pct=Math.max(0,Math.min(100,Math.floor(fin(summary.percent)||0)));
+ if(summary.state==='ready')return 'Built · ready for review';
+ if(summary.state==='failed')return null;
+ if(summary.state==='queued'||summary.state==='retrying'){const p=fin(summary.queuePosition);return `${summary.state==='retrying'?'Trying again':'In line'}${p?` · ${p<=1?'next':ordinal(p)}`:''}${left!=null?` · ready in ~${durationLabel(left)}`:''}`;}
+ return `Building · ${pct}%${left!=null?' · '+(left<2?'almost done':leftLabel(left)):''}`;
+}
+/** The world summary from a full build (a `build` frame updates the building between /api/world reads). */
+export function summaryOf(build){
+ if(!build)return null;const e=liveEta(build,build.now),cur=build.steps.find(s=>s.state==='running'&&s.id!=='queued')||null;
+ return {state:build.state,percent:e.percent,etaSeconds:e.remaining,etaAt:e.remaining==null?null:Math.round(build.now+e.remaining*1000),step:cur?{id:cur.id,label:cur.label}:null,queuePosition:build.queue?.position??null,now:build.now};
+}
+export const READY_LINE='Your site is ready — choose your logo on your PC.';
+
+/** Draws the timeline into `root` (a <div class="build">). {icon} from icons.js; onChooseLogo once it is ready. */
+export function renderBuild(root,bm,{icon,onChooseLogo,readyLine=READY_LINE,buttonLabel='Choose your logo on your PC'}={}){
+ if(!root||!bm)return root;
+ const el=(tag,props={},...kids)=>{const n=Object.assign(document.createElement(tag),props);n.append(...kids.filter(k=>k!=null&&k!==''));return n;};
+ const ic=(id,cls)=>icon?icon(id,cls):null;
+ root.className=['build','is-'+bm.state,...[...root.classList].filter(c=>c!=='build'&&!c.startsWith('is-'))].join(' ');   // keeps the host's own classes (pc-build)
+ const head=el('div',{className:'build-head'},el('strong',{className:'build-count',textContent:bm.countdown}),el('span',{className:'build-sub',textContent:bm.sub}));
+ const bar=el('div',{className:'build-bar'},el('i'));bar.firstChild.style.width=bm.percent+'%';bar.setAttribute('role','progressbar');bar.setAttribute('aria-valuenow',String(bm.percent));bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','100');bar.setAttribute('aria-label','Build progress');
+ const list=el('ol',{className:'build-steps'},...bm.steps.map(s=>el('li',{className:'build-step is-'+s.state},
+  el('span',{className:'build-dot'},s.state==='done'?ic('check'):s.state==='failed'?ic('x'):ic(s.icon)),
+  el('span',{className:'build-main'},el('b',{textContent:s.label}),s.provider?el('small',{className:'build-prov',textContent:s.state==='todo'?s.provider:s.provider}):null,s.note&&s.state!=='todo'?el('small',{className:'build-note',textContent:s.note}):null),
+  el('span',{className:'build-time',textContent:s.time}))));
+ bm.steps.forEach((s,i)=>{list.children[i].dataset.step=s.id;});
+ const kids=[head,bar,list];
+ if(bm.ready){kids.push(el('p',{className:'build-ready',textContent:readyLine}));if(onChooseLogo)kids.push(el('div',{className:'verdict-actions'},el('button',{type:'button',className:'button button-orange',textContent:buttonLabel,onclick:onChooseLogo})));}
  root.replaceChildren(...kids);
  return root;
 }

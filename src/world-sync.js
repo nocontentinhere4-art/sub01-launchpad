@@ -31,6 +31,17 @@ export function worldBuildings(world){
  }
  return out;
 }
+// While SUB-01 builds: the building's summary per plot (backend /api/world project.build, build-steps.js), kept beside
+// the buildings rather than in them so a ticking percentage never redraws the city. receivedAt: when it arrived (the
+// card counts down on the server's clock: summary.now + the time since).
+export function worldBuilds(world,receivedAt=Date.now()){
+ const out=new Map(),num=v=>{if(v==null||v==='')return null;v=Number(v);return Number.isFinite(v)?v:null;};
+ for(const p of world?.plots||[]){const b=p?.kind==='project'?p.project?.build:null;if(!b||typeof b!=='object'||!p.plotId)continue;
+  out.set(p.plotId,{state:['queued','running','retrying','ready','failed'].includes(b.state)?b.state:'running',percent:Math.max(0,Math.min(100,num(b.percent)||0)),
+   etaSeconds:num(b.etaSeconds),etaAt:num(b.etaAt),queuePosition:num(b.queuePosition),step:b.step&&typeof b.step.label==='string'?{id:String(b.step.id||''),label:b.step.label.slice(0,60)}:null,
+   now:num(b.now)??receivedAt,receivedAt});}
+ return out;
+}
 // Streets (city-state.js): an east-west road through every district row, north-south boulevards between columns.
 const nearest=(list,v)=>list.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);
 export function frontOf(plotId){const p=cityPlots.find(c=>c.id===plotId);if(!p)return null;const d=districts.find(d=>d.id===p.district);return{x:p.x,z:d.z+(p.z<d.z?-2.8:2.8)};}

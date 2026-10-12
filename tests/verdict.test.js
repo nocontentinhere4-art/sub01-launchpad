@@ -75,3 +75,74 @@ test('build verdict: the next step is choosing the logo on the PC (owner only); 
  assert.equal(verdictModel({...built,owner:false}).next,'');
  assert.equal(verdictModel(passed).next,undefined);
 });
+
+// ---- the build, step by step (2026-10-12; backend build-steps.js)
+import {cleanBuild,serverNow,stepLeft,liveEta,durationLabel,leftLabel,ordinal,queueLine,buildModel,placeBuildLine,summaryOf,BUILD_ICONS,READY_LINE} from '../src/verdict.js';
+const T=1_000_000;
+const running={state:'running',startedAt:T-60000,etaSeconds:55,percent:38,attempt:1,now:T,queue:null,steps:[
+ {id:'queued',label:'In line',state:'done',startedAt:T-60000,endedAt:T-59800},
+ {id:'brief',label:'Name, ticker and story',state:'done',startedAt:T-59800,endedAt:T-34800,provider:'language model',expectedSeconds:25,p90Seconds:40},
+ {id:'app',label:'The app',state:'running',startedAt:T-10000,provider:'language model',expectedSeconds:20,p90Seconds:32},
+ {id:'art',label:'Two logo + banner options',state:'todo',plannedProvider:'Higgsfield',expectedSeconds:40,p90Seconds:64},
+ {id:'site',label:'The website',state:'todo',plannedProvider:'sandbox',expectedSeconds:5,p90Seconds:8},
+ {id:'ready',label:'Ready for your review',state:'todo'},{bogus:true}]};
+
+test('build: cleaned from the server, unknown states and empty rows dropped',()=>{
+ const b=cleanBuild(running,T);
+ assert.equal(b.steps.length,6);assert.equal(b.steps[2].state,'running');assert.equal(b.now,T);assert.equal(b.receivedAt,T);
+ assert.equal(cleanBuild({state:'weird',steps:[{id:'x',state:'nope'}]},T).state,'running');
+ assert.equal(cleanBuild({state:'weird',steps:[{id:'x',state:'nope'}]},T).steps[0].state,'todo');
+ assert.equal(cleanBuild(null),null);assert.equal(cleanBuild({steps:'no'}),null);
+ assert.equal(serverNow({now:T,receivedAt:5000},8000),T+3000,'the server clock, whatever the phone says');
+});
+test('build: the countdown re-estimates like the server (median, then p90, never negative)',()=>{
+ assert.equal(stepLeft(20,32,0),20);assert.equal(stepLeft(20,32,25),7);assert.equal(stepLeft(20,32,33),31);assert.ok(stepLeft(20,32,1e6)>0);
+ const b=cleanBuild(running,T);
+ const e0=liveEta(b,T);assert.equal(e0.remaining,10+40+5);assert.equal(e0.percent,Math.floor(100*35/90));
+ const e1=liveEta(b,T+8000);assert.equal(e1.remaining,2+40+5,'counts down');
+ const e2=liveEta(b,T+15000);assert.equal(e2.remaining,7+40+5,'past the median: extended to the p90');
+ assert.deepEqual(liveEta(cleanBuild({...running,state:'ready'},T),T),{remaining:0,wait:0,percent:100});
+ const q=cleanBuild({...running,state:'queued',queue:{position:2,startsInSeconds:60},steps:running.steps.map(s=>s.id==='queued'?{...s,state:'running',endedAt:null}:s.id==='brief'||s.id==='app'?{...s,state:'todo'}:s)},T);
+ assert.equal(liveEta(q,T).wait,60);assert.equal(liveEta(q,T).percent,0);assert.equal(liveEta(q,T+90000).wait,0,'never negative');
+ assert.equal(liveEta(q,T+90000).remaining,25+20+40+5,'still the whole build when the line takes longer');
+});
+test('build: labels',()=>{
+ assert.equal(durationLabel(0.2),'1 s');assert.equal(durationLabel(45),'45 s');assert.equal(durationLabel(100),'1 min 40 s');assert.equal(durationLabel(98),'1 min 40 s');assert.equal(durationLabel(120),'2 min');assert.equal(durationLabel(900),'15 min');assert.equal(durationLabel(-1),'');
+ assert.equal(leftLabel(62),'~1 min left');assert.equal(leftLabel(12),'~15 s left');assert.equal(leftLabel(150),'~3 min left');
+ assert.deepEqual([1,2,3,4,11,12,13,21,22].map(ordinal),['1st','2nd','3rd','4th','11th','12th','13th','21st','22nd']);
+ assert.equal(queueLine({state:'queued',now:T,queue:{position:2,startsInSeconds:60}},T),'2nd in line, starts in ~1 min');
+ assert.equal(queueLine({state:'queued',now:T,queue:{position:1,startsInSeconds:2}},T),'Next in line, starts in a moment');
+ assert.equal(queueLine({state:'retrying',now:T,queue:{position:1,startsInSeconds:30}},T),'Trying again: starts in ~30 s');
+ assert.deepEqual(BUILD_ICONS,{queued:'clock',brief:'think',app:'wrench',art:'brush',site:'globe',qa:'check',ready:'rocket'});
+});
+test('build model: countdown, step rows with icon, provider and time',()=>{
+ const m=buildModel(cleanBuild(running,T),T);
+ assert.equal(m.countdown,'Ready in ~55 s');assert.equal(m.sub,'38% done');assert.equal(m.ready,false);
+ const by=Object.fromEntries(m.steps.map(s=>[s.id,s]));
+ assert.deepEqual([by.brief.state,by.brief.provider,by.brief.time,by.brief.icon],['done','language model','25 s','think']);
+ assert.deepEqual([by.app.state,by.app.provider,by.app.time],['running','language model','10 s of ~20 s']);
+ assert.deepEqual([by.art.state,by.art.provider,by.art.time,by.art.icon],['todo','Higgsfield','~40 s','brush']);
+ assert.equal(by.ready.time,'');assert.equal(by.queued.time,'','a wait of no time says nothing');
+ const later=buildModel(cleanBuild(running,T),T+40000);assert.equal(later.countdown,'Ready in ~59 s','the app ran past its p90: another p90, the estimate grows (55 s → 59 s), honestly');
+ const done=buildModel(cleanBuild({...running,state:'ready',steps:running.steps.map(s=>s.id?{...s,state:'done',endedAt:s.endedAt??s.startedAt??T}:s)},T),T);
+ assert.equal(done.countdown,'Your site is ready');assert.equal(done.ready,true);assert.match(done.sub,/^Built in /);
+ const failed=buildModel(cleanBuild({...running,state:'failed',steps:running.steps.map(s=>s.id==='app'?{...s,state:'failed',note:'stopped here'}:s)},T),T);
+ assert.equal(failed.countdown,'The build stopped');assert.equal(failed.steps.find(s=>s.id==='app').time,'stopped');
+ assert.equal(buildModel(null,T),null);
+});
+test('place card: "Building · 62% · ~1 min left", in line, ready',()=>{
+ assert.equal(placeBuildLine({state:'running',percent:62,etaAt:T+65000,now:T},T),'Building · 62% · ~1 min left');
+ assert.equal(placeBuildLine({state:'running',percent:90,etaAt:T+1000,now:T},T),'Building · 90% · almost done');
+ assert.equal(placeBuildLine({state:'queued',percent:0,etaAt:T+150000,queuePosition:2},T),'In line · 2nd · ready in ~2 min 30 s');
+ assert.equal(placeBuildLine({state:'ready',percent:100},T),'Built · ready for review');
+ assert.equal(placeBuildLine({state:'failed'},T),null);assert.equal(placeBuildLine(null,T),null);
+ const s=summaryOf(cleanBuild(running,T));assert.equal(s.state,'running');assert.equal(s.step.id,'app');assert.equal(s.etaAt,T+55000);assert.equal(s.percent,38);
+});
+test('verdict model: a build shows the timeline; the logo step only once the site is ready',()=>{
+ const idea={status:'generating',version:1,owner:true,evaluation:{decision:'selected',verdict:'build',feedback:{summary:'Build.'}},build:running,receivedAt:T};
+ const m=verdictModel(idea,T);
+ assert.equal(m.state,'build');assert.ok(m.build);assert.equal(m.build.countdown,'Ready in ~55 s');assert.equal(m.next,'','no logo step while he builds');
+ const r=verdictModel({...idea,status:'preview_ready',build:{...running,state:'ready'}},T);assert.equal(r.next,READY_LINE);assert.equal(r.build.ready,true);
+ assert.match(READY_LINE,/Your site is ready — choose your logo on your PC/);
+ const old=verdictModel({...idea,build:null},T);assert.equal(old.build,null);assert.match(old.next,/choose your logo/,'a build from before the timeline: the old line');
+});

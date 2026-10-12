@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {icon,tile} from './icons.js';
 import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
-import {verdictModel,renderVerdict} from './verdict.js';
+import {verdictModel,renderVerdict,cleanBuild,buildModel,renderBuild,serverNow} from './verdict.js';
 import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,trustCount,TRUST_GROUP,
  appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS,qaModel} from './desk-flows.js';
 export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn} from './desk-flows.js';
@@ -169,13 +169,19 @@ const copyBtn=text=>{const b=el('button',{className:'pc-copy',type:'button',titl
 // A one-shot request from outside the room (the verdict card's "Choose your logo on your PC", 2026-10-12): the next
 // computer opened on the owner's own desk shows that project on that tab. Consumed by openComputer; stale after 2 min.
 let pcRequest=null;
-export function requestComputer(r){pcRequest=r&&typeof r==='object'?{slug:str(r.slug)||null,tab:str(r.tab)||null,at:Date.now()}:null;}
+// While SUB-01 still builds there is no project yet: `ideaId` opens the Ideas tab on that idea and its build timeline.
+export function requestComputer(r){pcRequest=r&&typeof r==='object'?{slug:str(r.slug)||null,ideaId:str(r.ideaId)||null,tab:str(r.tab)||null,at:Date.now()}:null;}
 export function takeComputerRequest(model,now=Date.now()){const r=pcRequest;pcRequest=null;if(!r||!model?.mine||now-r.at>120000)return null;
- return {project:(r.slug&&(model.projects||[]).find(p=>p?.slug===r.slug))||null,tab:r.tab};}
+ const project=(r.slug&&(model.projects||[]).find(p=>p?.slug===r.slug))||null;
+ const idea=!project&&r.ideaId?(model.ideas||[]).find(i=>i?.id===r.ideaId)||null:null;
+ return idea?{project:null,idea,tab:r.tab}:{project,tab:r.tab};}
+// Ideas he is building right now (the Ideas tab shows their timeline). Pure.
+export const BUILDING_STAGES=new Set(['selected','generating']);
+export const isBuilding=i=>BUILDING_STAGES.has(str(i?.status||i?.stage));
 export function openComputer({model,project=null,ownerName='',me=null,onIdea=null,onClose}){
- const items=switcherItems(model),prevFocus=document.activeElement,timers=new Set(),views=new Map();
+ let items=switcherItems(model);const prevFocus=document.activeElement,timers=new Set(),views=new Map(),offs=new Set();
  const req=takeComputerRequest(model);
- let cur=req?.project||project||model.projects[0]||null,tab=null,closed=false,focusIdea=null,epoch=0;
+ let cur=req?.idea?null:req?.project||project||model.projects[0]||null,tab=null,closed=false,focusIdea=req?.idea||null,epoch=0;
  const back=el('div',{className:'pc-backdrop'}),win=el('section',{className:'pc-window',tabIndex:-1});win.setAttribute('role','dialog');win.setAttribute('aria-modal','true');
  const title=el('div',{className:'pc-title'}),closeB=el('button',{className:'pc-close',type:'button',title:'Close (Esc)',onclick:()=>close()},icon('x'));closeB.setAttribute('aria-label','Close the computer');
  const tabs=el('div',{className:'pc-tabs'}),body=el('div',{className:'pc-body'});tabs.setAttribute('role','tablist');body.setAttribute('role','tabpanel');
@@ -183,7 +189,7 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
  back.addEventListener('pointerdown',e=>{if(e.target===back)close();});
  // timers die with the tab that set them (clearBody) and with the window (close)
  const later=(ms,fn)=>{const t=setTimeout(()=>{timers.delete(t);if(!closed)fn();},ms);timers.add(t);return t;};
- const stopTimers=()=>{for(const t of timers)clearTimeout(t);timers.clear();epoch++;};
+ const stopTimers=()=>{for(const t of timers)clearTimeout(t);timers.clear();for(const f of offs)f();offs.clear();epoch++;};
  const alive=e=>!closed&&e===epoch;
  // The project view (owner fields when the viewer owns it): cached per slug for the tab's life, refetched on demand.
  async function load(slug,fresh=false){if(!slug)return null;if(!fresh&&views.has(slug))return views.get(slug);
@@ -450,6 +456,8 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    const li=el('li',{className:'pc-step is-'+s.state},el('i',{className:'pc-step-dot'},s.state==='done'?icon('check'):s.state==='blocked'?icon('x'):el('b',{textContent:String(stepIndex(s.id,m.steps)+1)})));
    const main=el('div',{className:'pc-step-main'},el('b',{className:'pc-step-title',textContent:s.title}),el('span',{className:'pc-step-line',textContent:s.line}));
    li.dataset.step=s.id;li.append(main);list.append(li);
+   // while SUB-01 builds: his live timeline on step 1 (verdict.js renderBuild; `build` frames + a 1 s countdown)
+   if(s.id==='site'&&s.state==='current'&&isBuilding(view)&&view?.ideaId)main.append(buildSlot(view.ideaId,{onReady:()=>refresh()}));
    const open=s.state==='current'||s.state==='blocked'||(s.id==='live'&&m.live);
    if(!open){if(s.id==='site'&&s.action)main.append(el('div',{className:'pc-step-acts'},el('button',{className:'pc-link',type:'button',textContent:s.action.label,onclick:()=>show('site')})));continue;}
    if(s.id==='approve'&&m.split.rows.length)main.append(splitBox(m.split,m.approve?.statement));
@@ -618,8 +626,27 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   }
  }
 
+ // The build timeline of one idea: GET /api/ideas/:id once, then the stream's `build` frames and a 1 s countdown; when it
+ // is ready, onReady(idea) (the Launch tab redraws; the Ideas tab opens the new project's Launch tab: choose the logo).
+ function buildSlot(ideaId,{onReady}={}){
+  const box=el('div',{className:'build pc-build'},el('p',{className:'pc-note',textContent:'Reading his build…'})),e=epoch;let raw=null,idea=null;
+  const draw=()=>{if(!alive(e)||!raw)return;const bm=buildModel(raw,serverNow(raw));
+   renderBuild(box,bm,{icon,onChooseLogo:bm.ready&&onReady?()=>onReady(idea):null,readyLine:'Your site is ready. Choose your logo: SUB-01 drew two options.',buttonLabel:'Choose your logo'});};
+  const fetchIdea=()=>api(`/api/ideas/${encodeURIComponent(ideaId)}`).then(v=>{if(!alive(e))return;idea=v;raw=cleanBuild(v?.build);if(!raw){box.replaceChildren();box.hidden=true;return;}box.hidden=false;draw();}).catch(()=>{});
+  const onBuild=ev=>{const d=ev.detail;if(d?.ideaId!==ideaId||!d.build)return;raw=cleanBuild(d.build,d.receivedAt||Date.now());draw();if(raw?.state==='ready'||raw?.state==='failed')fetchIdea();};
+  addEventListener('sub01:build',onBuild);offs.add(()=>removeEventListener('sub01:build',onBuild));
+  const tickBuild=()=>later(1000,()=>{draw();tickBuild();});tickBuild();
+  fetchIdea();return box;
+ }
+ // The project SUB-01 just built, from the idea view (the desk was loaded before it existed): onto the switcher, Launch tab.
+ function openBuilt(i,idea){
+  const pr=idea?.project;if(!pr?.slug){show('ideas');return;}
+  const p=deskModel({projects:[{slug:pr.slug,name:pr.name||i.title,ticker:pr.ticker,stage:idea.status,stageLabel:STAGE_LABELS[idea.status]||'',pagePath:`/projects/${encodeURIComponent(pr.slug)}`}]},true).projects[0];
+  model.projects=[p,...model.projects.filter(x=>x.slug!==p.slug)];model.ideas=model.ideas.filter(x=>x.id!==i.id);items=switcherItems(model);cur=p;focusIdea=null;show('launch');
+ }
  function ideasTab(){
-  const list=model.ideas.length?el('ol',{className:'pc-ideas'},...model.ideas.map(i=>el('li',{className:i===focusIdea?'is-focus':''},el('strong',{textContent:i.title}),el('small',{textContent:i.stageLabel||'in the mailbox'})))):el('p',{className:'pc-note',textContent:'No ideas in flight.'});
+  const list=model.ideas.length?el('ol',{className:'pc-ideas'},...model.ideas.map(i=>el('li',{className:i===focusIdea?'is-focus':''},el('strong',{textContent:i.title}),el('small',{textContent:i.stageLabel||'in the mailbox'}),
+   isBuilding(i)&&i.id?buildSlot(i.id,{onReady:idea=>openBuilt(i,idea)}):null))):el('p',{className:'pc-note',textContent:'No ideas in flight.'});
   const drop=el('button',{className:'button button-orange pc-cta',type:'button'},icon('mail','i lead'),'Drop a new idea'),note=el('p',{className:'pc-note'});
   drop.onclick=()=>{if(onIdea){close({quiet:true});onIdea();}else note.textContent='The mailbox is in the city: go back and use “Drop an idea”.';};
   return [list,drop,note];}

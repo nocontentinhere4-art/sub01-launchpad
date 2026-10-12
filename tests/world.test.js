@@ -74,3 +74,13 @@ test('a coin launched from another coin\'s site names its parent; a launchpad co
   const priv = worldBuildings({ plots: [plot('shiba-1', { slug: null, name: 'Private project', ticker: null, parent: { slug: 'q-wave', name: 'Q-wave' } })] })[0];
   assert.equal(priv.parent, null, 'a private project carries nothing');
 });
+
+test('worldBuilds: the build summary per plot, beside the buildings (a ticking percentage never redraws the city)',async()=>{
+ const {worldBuilds,worldBuildings}=await import('../src/world-sync.js');const {cityPlots}=await import('../src/city-state.js');
+ const plot=cityPlots.find(p=>!p.reserved).id;
+ const world={plots:[{plotId:plot,kind:'project',project:{stage:'generating',name:'Ramen',progress:.5,build:{state:'running',percent:62,etaSeconds:70,etaAt:5000,queuePosition:null,step:{id:'art',label:'Two logo + banner options'},now:1000}}}]};
+ const m=worldBuilds(world,900);assert.deepEqual(m.get(plot),{state:'running',percent:62,etaSeconds:70,etaAt:5000,queuePosition:null,step:{id:'art',label:'Two logo + banner options'},now:1000,receivedAt:900});
+ assert.equal(worldBuildings(world)[0].build,undefined,'not in the buildings');
+ assert.equal(worldBuilds({plots:[{plotId:plot,kind:'project',project:{stage:'review'}}]}).size,0);
+ assert.equal(worldBuilds(null).size,0);
+});
