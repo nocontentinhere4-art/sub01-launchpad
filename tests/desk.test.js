@@ -149,7 +149,7 @@ test('explainError: 429 retry-after, the 409 reasons, wallet errors pass through
 test('profileKit: logo + header files and bio/site texts for the owner; nothing without a logo',()=>{
  const p={slug:'ramen',logoUrl:'/meta/ramen/logo-v1.png',bannerUrl:'/meta/ramen/banner-v1.svg',siteUrl:'https://ramen.projects.subzerone.live/'};
  const kit=profileKit(p,{bio:'Ramen radar for Tokyo nights'});
- assert.deepEqual(kit.files.map(f=>[f.kind,f.name,!!f.render]),[['logo','ramen-logo.png',false],['header','ramen-header.png',true]]);
+ assert.deepEqual(kit.files.map(f=>[f.kind,f.name,!!f.render]),[['logo','ramen-logo.png',false],['header','ramen-banner.png',true]]);
  assert.deepEqual(kit.files[1].render,{w:1500,h:500});
  assert.deepEqual(kit.texts.map(t=>t.label),['Bio','Website']);
  assert.equal(profileKit({slug:'x',logoUrl:null},{bio:'b'}),null);

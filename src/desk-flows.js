@@ -267,12 +267,12 @@ export function profileKit(p,xm,{art=null,siteUrl}={}){
  const logo=art?.logo||p?.logoUrl,banner=art?.logo?art.banner:p?.bannerUrl,slug=str(p?.slug)||'coin';
  if(!logo)return null;
  const files=[{kind:'logo',label:'Profile picture',hint:'PNG 512×512',url:logo,name:`${slug}-logo.png`}];
- if(banner)files.push({kind:'header',label:'Header',hint:'PNG 1500×500',url:banner,name:`${slug}-header.png`,render:{w:1500,h:500}});
+ if(banner)files.push({kind:'header',label:'Banner',hint:'PNG 1500×500',url:banner,name:`${slug}-banner.png`,render:{w:1500,h:500}});
  const texts=[];
  if(xm?.bio)texts.push({label:'Bio',text:xm.bio});
  const site=str(siteUrl===undefined?p?.siteUrl:siteUrl);
  if(site&&/^https?:\/\//.test(site)&&!/\/preview\//.test(site))texts.push({label:'Website',text:site});
- return {files,texts,pair:art?.label||null,note:'X has no API for the picture, header or bio: download these and set them in the X app.'};
+ return {files,texts,pair:art?.label||null,note:'X has no API for the picture, banner or bio: download these and set them in the X app.'};
 }
 /** kitArt(art, project) -> {logo, banner, label} | null: the pair the X kit downloads. When SUB-01 drew two options, the
  *  chosen one's files (option 1 until the author picks); otherwise the live pair (the newest version). Only the
