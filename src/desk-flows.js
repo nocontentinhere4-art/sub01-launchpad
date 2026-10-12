@@ -310,3 +310,111 @@ export function toolsPayload(rows){
   return {id:r.id,config};})};
 }
 export const toolsCount=rows=>rows.filter(r=>r.on).length;
+
+// ---------------------------------------------------------------- the idea app (the Site tab's Tools panel, App section, owner only)
+// Contract (backend docs/APP-COMPOSER.md): GET /api/projects/:slug/app → {editable, app|null, summary, blocks, templates, metrics, inbox:[{id,number,text,
+// fields,at,hidden,published,candidate,votes,picked,how}], round:{slot,start,key}|null, pick, counts, reveals:[{slotAt,method,dev,number,text}], pq, devTrigger};
+// PUT …/app {app} (validated server-side; the checks below only say what is wrong in plain words first); POST …/app/compose → {app,summary,honest,source};
+// POST …/app/items/:id {hidden}|{publish:true}; POST …/app/pick {itemId|null}; POST …/app/announce {text}; POST …/app/reveal-now (dev servers only).
+export const APP_TEMPLATES=['receipt','ticket','poster','postcard','badge'];
+export const APP_FIELD_KINDS=['text','longtext','choice','number'];
+const clone=v=>JSON.parse(JSON.stringify(v));
+const blocksOf=(app,type)=>(Array.isArray(app?.screens)?app.screens:[]).flatMap((s,si)=>(Array.isArray(s?.blocks)?s.blocks:[]).map((b,bi)=>({b,si,bi}))).filter(x=>x.b&&x.b.type===type);
+const COPY_KEYS={submit:['title','prompt','button','thanks'],reveal:['title','empty'],vote:['title','button'],collection:['title','empty'],leaderboard:['title'],counter:['title'],note:['title','body'],pq:['title'],card:['title'],map:['title'],timer:['title'],schedule:['label']};
+const COPY_LABELS={title:'Title',prompt:'Prompt',button:'Button',thanks:'After sending',empty:'When empty',label:'Label',body:'Text'};
+const COPY_MAX={title:60,prompt:160,button:24,thanks:160,empty:120,label:80,body:600};
+const BLOCK_NAMES={submit:'Form',schedule:'Schedule',reveal:'Reveal',vote:'Vote',collection:'Archive',card:'Card',leaderboard:'Leaderboard',counter:'Counter',map:'Map',timer:'Countdown',note:'Note',pq:'Post-quantum registry'};
+/** appModel(view) -> {loading, editable, app (a copy), summary, copy:[{path,label,block,value,max}], form, schedule, card, inbox, reveals, round, pick, pq, devTrigger, counts} */
+export function appModel(view){
+ const v=view&&typeof view==='object'?view:null;
+ const empty={loading:!v,editable:false,app:null,summary:'',copy:[],form:null,schedule:null,card:null,reveal:null,inbox:[],reveals:[],round:null,pick:null,pq:null,devTrigger:false,counts:null};
+ if(!v)return empty;
+ const app=v.app&&typeof v.app==='object'&&Array.isArray(v.app.screens)?clone(v.app):null;
+ const inbox=(Array.isArray(v.inbox)?v.inbox:[]).filter(e=>e&&str(e.id)).slice(0,100).map(e=>({id:str(e.id),number:num(e.number),text:str(e.text).slice(0,500),at:num(e.at),
+  extra:Object.entries(e.fields&&typeof e.fields==='object'?e.fields:{}).slice(1).map(([,x])=>String(x)).join(' · ').slice(0,120),hidden:e.hidden===true,published:e.published===true,
+  candidate:e.candidate===true,votes:num(e.votes)||0,picked:e.picked===true,how:str(e.how)||null}));
+ const out={...empty,loading:false,editable:v.editable===true,app,summary:str(v.summary),inbox,devTrigger:v.devTrigger===true,counts:v.counts&&typeof v.counts==='object'?v.counts:null,
+  round:v.round&&num(v.round.slot)?{slot:num(v.round.slot),start:num(v.round.start)}:null,pick:str(v.pick)||null,
+  reveals:(Array.isArray(v.reveals)?v.reveals:[]).filter(r=>r&&num(r.slotAt)).slice(0,14).map(r=>({slotAt:num(r.slotAt),method:str(r.method),dev:r.dev===true,number:num(r.number),text:str(r.text).slice(0,200)})),
+  pq:v.pq&&typeof v.pq==='object'?{ok:v.pq.ok===true,total:num(v.pq.total)||0,problems:(Array.isArray(v.pq.problems)?v.pq.problems:[]).map(str).slice(0,5),error:str(v.pq.error)||null,publicKey:str(v.pq.publicKey)}:null};
+ if(!app)return out;
+ out.copy=[{path:'title',label:'App title',block:'App',value:str(app.title),max:60},{path:'lede',label:'One-line intro',block:'App',value:str(app.lede),max:240},
+  ...app.screens.flatMap((s,si)=>[{path:`screens.${si}.title`,label:'Tab name',block:`Tab ${si+1}`,value:str(s.title),max:30},
+   ...(Array.isArray(s.blocks)?s.blocks:[]).flatMap((b,bi)=>(COPY_KEYS[b?.type]||[]).filter(k=>typeof b[k]==='string').map(k=>({path:`screens.${si}.blocks.${bi}.${k}`,label:COPY_LABELS[k],block:BLOCK_NAMES[b.type]||b.type,value:b[k],max:COPY_MAX[k]})))])];
+ const f=blocksOf(app,'submit')[0],sc=blocksOf(app,'schedule')[0],cd=blocksOf(app,'card')[0],rv=blocksOf(app,'reveal')[0];
+ if(f)out.form={si:f.si,bi:f.bi,fields:(f.b.fields||[]).map(x=>({key:str(x.key),label:str(x.label),kind:APP_FIELD_KINDS.includes(x.kind)?x.kind:'text',max:num(x.max),min:num(x.min),required:x.required===true,
+  choices:Array.isArray(x.choices)?x.choices.map(str):[]})),holdersOnly:f.b.holdersOnly===true};
+ if(sc)out.schedule={si:sc.si,bi:sc.bi,every:sc.b.every==='week'?'week':'day',at:str(sc.b.at),weekday:num(sc.b.weekday)??5};
+ if(cd)out.card={si:cd.si,bi:cd.bi,template:APP_TEMPLATES.includes(cd.b.template)?cd.b.template:'postcard',heading:str(cd.b.heading),sub:str(cd.b.sub),lines:(cd.b.lines||[]).map(str),footer:str(cd.b.footer)};
+ if(rv)out.reveal={pick:Array.isArray(rv.b.pick)?rv.b.pick.map(str):[]};
+ return out;
+}
+/** Set one copy string by its path ('title', 'screens.0.blocks.2.prompt'). -> a new app */
+export function appSetCopy(app,path,value){
+ const a=clone(app),keys=String(path).split('.');let o=a;
+ for(const k of keys.slice(0,-1)){o=o?.[/^\d+$/.test(k)?Number(k):k];if(o==null||typeof o!=='object')return a;}
+ const last=keys[keys.length-1];if(typeof o[last]==='string'||o[last]==null)o[last]=String(value);return a;
+}
+const blockAt=(a,si,bi)=>a?.screens?.[si]?.blocks?.[bi];
+/** The form's fields: change one property, add (up to 4) or remove (the first stays). -> a new app */
+export function appSetField(app,form,index,key,value){
+ const a=clone(app),b=blockAt(a,form.si,form.bi);if(!b||!Array.isArray(b.fields)||!b.fields[index])return a;
+ const f=b.fields[index];
+ if(key==='choices')f.choices=String(value).split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+ else if(key==='required')f.required=index===0?true:value===true;
+ else if(key==='max'||key==='min'){const n=Number(value);if(value===''||value==null)delete f[key];else f[key]=Number.isFinite(n)?Math.round(n):value;}
+ else if(key==='kind'){if(index===0&&!['text','longtext'].includes(value))return a;f.kind=value;if(value!=='choice')delete f.choices;else if(!Array.isArray(f.choices))f.choices=['Yes','No'];
+  if(value!=='number')delete f.min;delete f.max;}
+ else f[key]=String(value);
+ return a;
+}
+export function appAddField(app,form){
+ const a=clone(app),b=blockAt(a,form.si,form.bi);if(!b||!Array.isArray(b.fields)||b.fields.length>=4)return a;
+ const used=new Set(b.fields.map(f=>f.key));let n=b.fields.length+1;while(used.has(`field${n}`))n++;
+ b.fields.push({key:`field${n}`,label:'New field',kind:'text',required:false});return a;
+}
+export function appRemoveField(app,form,index){const a=clone(app),b=blockAt(a,form.si,form.bi);if(b&&Array.isArray(b.fields)&&index>0&&b.fields.length>1)b.fields.splice(index,1);return a;}
+export function appSetSchedule(app,sched,{every,at,weekday}={}){
+ const a=clone(app),b=blockAt(a,sched.si,sched.bi);if(!b)return a;
+ if(every!=null)b.every=every==='week'?'week':'day';if(at!=null)b.at=String(at);
+ if(b.every==='week')b.weekday=Number.isInteger(Number(weekday))?Number(weekday):(Number.isInteger(b.weekday)?b.weekday:5);else delete b.weekday;
+ if(at!=null||every!=null)delete b.label;    // the server writes the label for the new time
+ return a;
+}
+export function appSetCard(app,card,patch={}){
+ const a=clone(app),b=blockAt(a,card.si,card.bi);if(!b)return a;
+ for(const k of ['template','heading','sub','footer'])if(patch[k]!=null)b[k]=String(patch[k]);
+ if(patch.lines!=null)b.lines=String(patch.lines).split('\n').map(s=>s.trim()).filter(Boolean);
+ return a;
+}
+const HHMM_RE=/^([01]\d|2[0-3]):[0-5]\d$/,BAD_TEXT=/[<>`\u0000-\u001f\u007f]/,LINK=/https?:|www\./i;
+/** The first problem with the app, in plain words, or ''. The server checks everything again (app-blocks.js). */
+export function appProblem(app){
+ if(!app)return '';
+ const m=appModel({app});
+ for(const c of m.copy){if(BAD_TEXT.test(c.value))return `${c.block}: ${c.label} is plain text (no < > or backticks).`;if(LINK.test(c.value))return `${c.block}: ${c.label} cannot carry a link.`;
+  if([...c.value.trim()].length>c.max)return `${c.block}: ${c.label} is at most ${c.max} characters.`;}
+ if([...str(app.title)].length<2)return 'App: give it a title.';
+ if(m.form){const fs=m.form.fields;if(!fs.length||fs.length>4)return 'Form: 1 to 4 fields.';if(!['text','longtext'].includes(fs[0].kind))return 'Form: the first field is the text people send.';
+  if(new Set(fs.map(f=>f.key)).size!==fs.length)return 'Form: two fields have the same key.';
+  for(const f of fs){if(!f.label)return 'Form: every field needs a label.';
+   if(f.kind==='choice'&&(f.choices.length<2||f.choices.length>8))return `Form: "${f.label}" needs 2 to 8 choices.`;
+   if(f.kind==='choice'&&new Set(f.choices.map(c=>c.toLowerCase())).size!==f.choices.length)return `Form: the choices of "${f.label}" must differ.`;
+   if(f.kind==='choice'&&f.choices.some(c=>[...c].length>24))return `Form: a choice of "${f.label}" is longer than 24 characters.`;
+   if(f.kind==='text'&&f.max!=null&&!(f.max>=1&&f.max<=80))return `Form: "${f.label}" can be 1 to 80 characters long.`;
+   if(f.kind==='longtext'&&f.max!=null&&!(f.max>=40&&f.max<=500))return `Form: "${f.label}" can be 40 to 500 characters long.`;}}
+ if(m.schedule&&!HHMM_RE.test(m.schedule.at))return 'Schedule: a time like 23:00 (JST).';
+ if(m.card){if(!m.card.heading)return 'Card: write the heading.';if([...m.card.heading].length>32)return 'Card: the heading is at most 32 characters.';
+  if(m.card.lines.length>6)return 'Card: at most 6 lines.';if(m.card.lines.some(l=>[...l].length>28))return 'Card: each line is at most 28 characters.';
+  for(const t of [m.card.heading,m.card.sub,m.card.footer,...m.card.lines])if(BAD_TEXT.test(t)||LINK.test(t))return 'Card: plain text only, no links.';}
+ return '';
+}
+export const appPayload=app=>({app});
+/** The inbox as rows the owner acts on: what each one is, and which buttons it gets. */
+export function appInboxRows(m){
+ const canPick=!!m.round&&!!m.reveal?.pick?.includes('owner');
+ return m.inbox.map(e=>({...e,state:e.hidden?'hidden':e.published?'published':e.candidate?'candidate':'private',
+  meta:[e.number!=null?`#${e.number}`:'',e.at?new Date(e.at).toLocaleString():'',e.extra,e.votes?`${e.votes} vote${e.votes===1?'':'s'}`:'',e.hidden?'hidden':e.published?`published${e.how?` (${e.how})`:''}`:e.candidate?'in tonight\'s round':'',e.picked?'your pick for the next reveal':''].filter(Boolean).join(' · '),
+  pick:canPick&&!e.hidden&&!e.published&&!e.picked,unpick:e.picked,publish:!e.hidden&&!e.published,toggle:e.hidden?'Show':'Hide'}));
+}
+export const REVEAL_WORDS={owner:"your pick",votes:"the holders' votes",random:'the draw',empty:'nothing to choose'};

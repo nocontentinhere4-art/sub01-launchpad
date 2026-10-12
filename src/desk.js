@@ -3,7 +3,8 @@ import {icon,tile} from './icons.js';
 import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
 import {verdictModel,renderVerdict} from './verdict.js';
-import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount} from './desk-flows.js';
+import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,
+ appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS} from './desk-flows.js';
 export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
@@ -191,9 +192,77 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
  // ---------------- Site tools (owner): switches + a few fields, Save = a new site version; the inbox (drop box, wall, pins)
  function toolsPane(){
   const p=cur,root=el('div',{className:'pc-tools'},el('p',{className:'pc-note',textContent:'Loading the tools…'})),e=epoch;
+  const appRoot=el('div',{className:'pc-app'},el('p',{className:'pc-note',textContent:'Loading the app…'}));
+  api(`/api/projects/${encodeURIComponent(p.slug)}/app`).then(v=>{if(alive(e)&&tab==='site')drawApp(appRoot,appModel(v));})
+   .catch(x=>{if(alive(e))appRoot.replaceChildren(el('p',{className:'pc-err',textContent:explainError(x)}));});
   api(`/api/projects/${encodeURIComponent(p.slug)}/tools`).then(v=>{if(alive(e)&&tab==='site')drawTools(root,toolsModel(v));})
    .catch(x=>{if(alive(e))root.replaceChildren(el('p',{className:'pc-err',textContent:explainError(x)}));});
-  return root;
+  return el('div',{className:'pc-tools-wrap'},appRoot,root);
+ }
+ // ---------------- the idea app (owner): what SUB-01 built from the idea; copy, form fields, schedule, card; tonight's pick; the inbox
+ function drawApp(root,m,{note=''}={}){
+  const p=cur,slug=encodeURIComponent(p.slug);let app=m.app;
+  const err=el('p',{className:'pc-err'}),ok=el('p',{className:'pc-note pc-ok',textContent:note});
+  const reload=async(msg='')=>{const v=await api(`/api/projects/${slug}/app`);if(tab==='site'&&!closed)drawApp(root,appModel(v),{note:msg});};
+  const act=(path,body,msg)=>async()=>{err.textContent='';try{await api(`/api/projects/${slug}/app/${path}`,{method:'POST',body});await reload(msg);}catch(x){err.textContent=explainError(x);}};
+  const head=el('div',{className:'pc-tools-head'},el('h4',{textContent:'App'}),m.summary?el('span',{className:'pc-chip',textContent:m.app?.kind||'app'}):null);
+  if(!app){
+   const make=btn('button-dark button-sm','Ask SUB-01 to build the app',async()=>{busy(make,true);try{const c=await api(`/api/projects/${slug}/app/compose`,{method:'POST',body:{}});
+    await api(`/api/projects/${slug}/app`,{method:'PUT',body:appPayload(c.app)});await reload(`Built: ${c.summary}`);}catch(x){err.textContent=explainError(x);busy(make,false);}});
+   root.replaceChildren(head,el('p',{className:'pc-note',textContent:'This site has no app yet (or you switched it off).'}),m.editable?make:null,err,ok);return;
+  }
+  const save=btn('button-dark button-sm','Save app',async()=>{busy(save,true);ok.textContent='';
+   try{const r=await api(`/api/projects/${slug}/app`,{method:'PUT',body:appPayload(app)});await reload(`Saved: site v${r.version} is live with the app.`);}catch(x){err.textContent=explainError(x);busy(save,false);}});
+  const check=()=>{err.textContent=appProblem(app);save.disabled=!m.editable||!!err.textContent;};
+  const set=next=>{app=next;check();};
+  const redraw=(next,msg='')=>{drawApp(root,appModel({...rawOf(m),app:next}),{note:msg});};
+  const rawOf=x=>({editable:x.editable,summary:x.summary,inbox:x.inbox.map(i=>({...i,fields:{}})),round:x.round,pick:x.pick,reveals:x.reveals,pq:x.pq,devTrigger:x.devTrigger,counts:x.counts});
+  const input=(value,onInput,{max,type='text',placeholder=''}={})=>{const x=el('input',{type,value:value??'',disabled:!m.editable,placeholder});if(max&&type==='text')x.maxLength=max;x.oninput=()=>onInput(x.value);return x;};
+  const field=(label,ctl)=>el('label',{className:'pc-tool-f'},el('span',{className:'pc-tool-k',textContent:label}),ctl);
+  const select=(opts,value,onChange)=>{const c=el('select',{disabled:!m.editable},...opts.map(([v,t])=>el('option',{value:v,textContent:t,selected:String(v)===String(value)})));c.onchange=()=>onChange(c.value);return c;};
+  // copy
+  const copy=el('details',{className:'pc-app-sec'},el('summary',{textContent:'Words on the page'}),el('div',{className:'pc-tool-fields'},...m.copy.map(c=>field(`${c.block} · ${c.label}`,input(c.value,v=>set(appSetCopy(app,c.path,v)),{max:c.max})))));
+  // the form's fields
+  const form=m.form?el('details',{className:'pc-app-sec'},el('summary',{textContent:`Form fields (${m.form.fields.length}/4)`}),el('div',{className:'pc-tool-fields'},
+   ...m.form.fields.map((f,i)=>el('div',{className:'pc-app-field'},
+    field(`Field ${i+1} · label`,input(f.label,v=>set(appSetField(app,m.form,i,'label',v)),{max:40})),
+    field('Kind',select(APP_FIELD_KINDS.filter(k=>i>0||k==='text'||k==='longtext').map(k=>[k,k]),f.kind,v=>redraw(appSetField(app,m.form,i,'kind',v)))),
+    f.kind==='choice'?field('Choices (comma separated)',input(f.choices.join(', '),v=>set(appSetField(app,m.form,i,'choices',v)))):null,
+    f.kind==='text'||f.kind==='longtext'?field('Max characters',input(f.max??'',v=>set(appSetField(app,m.form,i,'max',v)),{type:'number'})):null,
+    i>0?el('label',{className:'pc-tool-f is-bool'},(()=>{const c=el('input',{type:'checkbox',checked:f.required,disabled:!m.editable});c.onchange=()=>set(appSetField(app,m.form,i,'required',c.checked));return c;})(),el('span',{textContent:'Required'})):null,
+    i>0&&m.editable?btn('button-ghost button-sm','Remove field',()=>redraw(appRemoveField(app,m.form,i))):null)),
+   m.editable&&m.form.fields.length<4?btn('button-ghost button-sm','Add a field',()=>redraw(appAddField(app,m.form))):null)):null;
+  // schedule
+  const sch=m.schedule?el('details',{className:'pc-app-sec'},el('summary',{textContent:`Schedule · ${m.schedule.every==='week'?'weekly':'daily'} at ${m.schedule.at} JST`}),el('div',{className:'pc-tool-fields'},
+   field('Every',select([['day','day'],['week','week']],m.schedule.every,v=>redraw(appSetSchedule(app,m.schedule,{every:v})))),
+   m.schedule.every==='week'?field('Weekday',select(['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d,i)=>[i,d]),m.schedule.weekday,v=>set(appSetSchedule(app,m.schedule,{weekday:Number(v)})))):null,
+   field('At (JST)',input(m.schedule.at,v=>set(appSetSchedule(app,m.schedule,{at:v})),{type:'time'})))):null;
+  // card
+  const card=m.card?el('details',{className:'pc-app-sec'},el('summary',{textContent:`Card · ${m.card.template}`}),el('div',{className:'pc-tool-fields'},
+   field('Template',select(APP_TEMPLATES.map(t=>[t,t]),m.card.template,v=>set(appSetCard(app,m.card,{template:v})))),
+   field('Heading',input(m.card.heading,v=>set(appSetCard(app,m.card,{heading:v})),{max:32})),field('Second line',input(m.card.sub,v=>set(appSetCard(app,m.card,{sub:v})),{max:48})),
+   field('Lines (one per row, up to 6)',(()=>{const t=el('textarea',{value:m.card.lines.join('\n'),rows:3,disabled:!m.editable});t.oninput=()=>set(appSetCard(app,m.card,{lines:t.value}));return t;})()),
+   field('Footer',input(m.card.footer,v=>set(appSetCard(app,m.card,{footer:v})),{max:60})))):null;
+  // tonight, the reveals, the inbox
+  const rows=appInboxRows(m);
+  const next=m.round?el('p',{className:'pc-note',textContent:`Next reveal: ${new Date(m.round.slot).toLocaleString()}. ${m.pick?`Your pick: #${m.inbox.find(i=>i.id===m.pick)?.number??'?'}.`:m.reveal?.pick?.length?`Without your pick: ${m.reveal.pick.filter(x=>x!=='owner').map(x=>REVEAL_WORDS[x]).join(', then ')}.`:''}`}):null;
+  const dev=m.devTrigger&&m.editable&&m.round?btn('button-ghost button-sm','Reveal now (dev only)',act('reveal-now',{},'Revealed (dev trigger).')):null;
+  const reveals=m.reveals.length?el('section',{className:'pc-inbox'},el('h4',{textContent:'Last reveals'}),el('ul',{className:'pc-entries'},...m.reveals.map(r=>el('li',{className:'pc-entry'},
+   el('span',{className:'pc-entry-t',textContent:r.number!=null?`#${r.number} ${r.text}`:'Nothing to choose from'}),el('small',{textContent:`${new Date(r.slotAt).toLocaleString()} · ${REVEAL_WORDS[r.method]||r.method}${r.dev?' · dev trigger':''}`}))))):null;
+  const inbox=el('section',{className:'pc-inbox'},el('h4',{textContent:`Inbox · ${rows.length}`}),el('p',{className:'pc-note',textContent:'Everything people sent, private ones included. Hide removes it from the site; publish shows it now; pick makes it the next reveal.'}),
+   rows.length?el('ul',{className:'pc-entries'},...rows.map(r=>el('li',{className:'pc-entry'+(r.hidden?' is-hidden':'')},el('span',{className:'pc-entry-t',textContent:r.text}),el('small',{textContent:r.meta}),
+    el('span',{className:'pc-entry-acts'},r.pick?btn('button-dark button-sm','Pick',act('pick',{itemId:r.id},`#${r.number} is your pick for the next reveal.`)):null,
+     r.unpick?btn('button-ghost button-sm','Unpick',act('pick',{itemId:null},'Pick cleared.')):null,
+     r.publish?btn('button-ghost button-sm','Publish',act(`items/${encodeURIComponent(r.id)}`,{publish:true},`#${r.number} published.`)):null,
+     btn('button-ghost button-sm',r.toggle,act(`items/${encodeURIComponent(r.id)}`,{hidden:!r.hidden},'')))))):el('p',{className:'pc-note',textContent:'Nothing yet.'}));
+  // the post-quantum registry
+  let pq=null;
+  if(m.pq){const t=el('textarea',{rows:2,maxLength:500,placeholder:'A note to sign into the registry (public)',disabled:!m.editable});
+   const sign=btn('button-ghost button-sm','Sign into the registry',async()=>{busy(sign,true);try{await api(`/api/projects/${slug}/app/announce`,{method:'POST',body:{text:t.value}});await reload('Signed into the registry.');}catch(x){err.textContent=explainError(x);busy(sign,false);}});
+   pq=el('section',{className:'pc-inbox'},el('h4',{textContent:'Post-quantum registry'}),el('p',{className:'pc-note',textContent:m.pq.error?m.pq.error:`${m.pq.total} entries · ${m.pq.ok?'every signature and link checks out':'PROBLEM: '+m.pq.problems.join('; ')}`}),m.editable?t:null,m.editable?sign:null);}
+  check();
+  root.replaceChildren(...[head,el('p',{className:'pc-note',textContent:m.summary}),el('div',{className:'pc-tools-head'},m.editable?save:null,m.editable?btn('button-ghost button-sm','Ask SUB-01 again',async()=>{try{const c=await api(`/api/projects/${slug}/app/compose`,{method:'POST',body:{}});redraw(c.app,`SUB-01's proposal (${c.source}): ${c.summary}. ${c.honest||''} Save to use it.`);}catch(x){err.textContent=explainError(x);}}):null),
+   err,ok,copy,form,sch,card,next,dev,reveals,inbox,pq].filter(Boolean));
  }
  function drawTools(root,m,{note=''}={}){
   const p=cur,slug=encodeURIComponent(p.slug);let rows=m.rows;

@@ -1,3 +1,4 @@
+import {appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows} from '../src/desk-flows.js';
 import {devBuyTwoStep,devBuyNote,tokensText} from '../src/desk-flows.js';
 import {profileKit,stepIndex,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,TOOL_MAX} from '../src/desk-flows.js';
 import test from 'node:test';
@@ -334,4 +335,68 @@ test('reviewModel step 1 of a two-step launch: no buy in it, the note about step
  const two=reviewModel({...tx2,signers:2},view('launched',{...LIVE}),me);assert.equal(two.canSign,false);assert.match(two.warnings[0],/signed by your wallet alone/);
  const rogue=reviewModel({...tx2,launchProgramsOnly:false},view('launched',{...LIVE}),me);assert.match(rogue.warnings[0],/not part of a dev buy/);
  const resumed=reviewModel({...tx2,estimate:null,resumed:true},view('launched',{...LIVE}),me);assert.deepEqual([resumed.cost.buy,resumed.cost.buyMax,resumed.tokens],['0.01 SOL','0.0105 SOL','10,493,886'],'a resumed attempt: the attempt\'s own numbers');
+});
+
+// ---------------------------------------------------------------- the idea app (App section of the Tools panel)
+const KONBINI_APP={v:1,kind:'ritual',title:'Konbini Confession: the 23:00 receipt',lede:'Send a confession.',flow:'inbox',noun:{one:'confession',many:'confessions'},screens:[
+ {id:'tonight',title:'Tonight',blocks:[{type:'counter',title:'',metrics:['submitted_today']},{type:'reveal',title:'The latest receipt',pick:['owner','votes','random'],empty:'Nothing.'},
+  {type:'submit',title:'Drop your confession',prompt:'Drop it.',button:'Drop it',fields:[{key:'text',label:'Your confession',kind:'longtext',max:280,required:true},{key:'item',label:'What you bought',kind:'choice',choices:['Onigiri','Ice Cream'],required:false}],holdersOnly:false,anonymous:true,thanks:'Received.'},
+  {type:'vote',title:"Tonight's candidates",of:'candidates',holdersOnly:true,button:'Vote'},{type:'schedule',every:'day',at:'23:00',label:'Every day at 23:00 JST'}]},
+ {id:'archive',title:'Archive',blocks:[{type:'card',title:'Print your own receipt',template:'receipt',heading:'KONBINI CONFESSION',sub:'SHIBUYA, TOKYO',lines:['ONIGIRI ×1'],footer:'$RECEIPT',input:true},
+  {type:'collection',title:'Every receipt',show:'published',layout:'cards',filters:['month','search'],empty:'Soon.'}]}]};
+const APP_VIEW={editable:true,app:KONBINI_APP,summary:'confessions form · signed votes · reveal every day at 23:00 JST · receipt card · archive · counter',
+ inbox:[{id:'itm_1',number:1,text:'I ate the last onigiri',fields:{text:'I ate the last onigiri',item:'Onigiri'},at:1,hidden:false,published:false,candidate:true,votes:2,picked:false},
+  {id:'itm_2',number:2,text:'<b>x</b>',fields:{text:'<b>x</b>'},at:2,hidden:true,published:false,candidate:false,votes:0},
+  {id:'itm_3',number:3,text:'Printed one',fields:{},at:3,published:true,how:'votes',votes:5}],
+ round:{slot:1791900000000,start:1791813600000,key:'slot:1791900000000'},pick:null,reveals:[{slotAt:1791813600000,method:'votes',number:3,text:'Printed one'},{slotAt:1791727200000,method:'empty'}],
+ pq:null,devTrigger:false};
+
+test('appModel: the copy to edit, the form, the schedule, the card, the inbox with its actions; defensive',()=>{
+ const m=appModel(APP_VIEW);
+ assert.equal(m.editable,true);
+ assert.deepEqual(m.copy.slice(0,2).map(c=>[c.path,c.value]),[['title','Konbini Confession: the 23:00 receipt'],['lede','Send a confession.']]);
+ assert.ok(m.copy.some(c=>c.path==='screens.0.blocks.2.prompt'&&c.block==='Form'&&c.max===160));
+ assert.deepEqual(m.form.fields.map(f=>[f.key,f.kind]),[['text','longtext'],['item','choice']]);
+ assert.deepEqual(m.schedule,{si:0,bi:4,every:'day',at:'23:00',weekday:5});
+ assert.equal(m.card.template,'receipt');
+ assert.equal(m.inbox[0].extra,'Onigiri');
+ assert.equal(m.inbox[1].text,'<b>x</b>','text stays text (drawn with textContent)');
+ const rows=appInboxRows(m);
+ assert.deepEqual(rows.map(r=>[r.state,r.pick,r.publish,r.toggle]),[['candidate',true,true,'Hide'],['hidden',false,false,'Show'],['published',false,false,'Hide']]);
+ assert.match(rows[0].meta,/#1 · .* · Onigiri · 2 votes · in tonight's round/);
+ assert.match(rows[2].meta,/published \(votes\)/);
+ assert.equal(appInboxRows(appModel({...APP_VIEW,inbox:[{...APP_VIEW.inbox[0],picked:true}]}))[0].unpick,true);
+ for(const bad of [null,undefined,'x',{},{app:'x'},{app:{screens:'x'}},{inbox:'x',reveals:[null]}])assert.doesNotThrow(()=>appModel(bad));
+ assert.equal(appModel(null).loading,true);assert.equal(appModel({app:null}).app,null);
+ assert.notEqual(appModel(APP_VIEW).app,KONBINI_APP,'a copy, never the view itself');
+});
+
+test('app edits: copy by path, fields (add, remove, kinds, choices), schedule, card; problems in plain words; the payload',()=>{
+ let app=appModel(APP_VIEW).app;const m=()=>appModel({app});
+ app=appSetCopy(app,'screens.0.blocks.2.prompt','Tell the konbini.');
+ assert.equal(app.screens[0].blocks[2].prompt,'Tell the konbini.');
+ assert.equal(KONBINI_APP.screens[0].blocks[2].prompt,'Drop it.','never mutates its input');
+ app=appSetCopy(app,'title','<script>');assert.match(appProblem(app),/plain text/);
+ app=appSetCopy(app,'title','see https://x.com');assert.match(appProblem(app),/cannot carry a link/);
+ app=appSetCopy(app,'title','Konbini');assert.equal(appProblem(app),'');
+ app=appSetField(app,m().form,1,'choices','Onigiri, onigiri');assert.match(appProblem(app),/must differ/);
+ app=appSetField(app,m().form,1,'choices','Onigiri, Oden, Melon pan');assert.deepEqual(app.screens[0].blocks[2].fields[1].choices,['Onigiri','Oden','Melon pan']);
+ assert.equal(appSetField(app,m().form,0,'kind','choice').screens[0].blocks[2].fields[0].kind,'longtext','the first field stays the text');
+ app=appAddField(app,m().form);app=appAddField(app,m().form);app=appAddField(app,m().form);
+ assert.equal(m().form.fields.length,4,'at most four');
+ app=appSetField(app,m().form,2,'kind','number');app=appSetField(app,m().form,2,'label','Hour');
+ assert.equal(app.screens[0].blocks[2].fields[2].kind,'number');
+ app=appRemoveField(app,m().form,3);app=appRemoveField(app,m().form,0);
+ assert.deepEqual(m().form.fields.map(f=>f.key),['text','item','field3'],'the first field cannot be removed');
+ app=appSetField(app,m().form,0,'max','20');assert.match(appProblem(app),/40 to 500/);
+ app=appSetField(app,m().form,0,'max','');assert.equal(appProblem(app),'');
+ app=appSetSchedule(app,m().schedule,{at:'25:00'});assert.match(appProblem(app),/a time like 23:00/);
+ app=appSetSchedule(app,m().schedule,{every:'week',at:'20:00',weekday:5});
+ assert.deepEqual(app.screens[0].blocks[4],{type:'schedule',every:'week',at:'20:00',weekday:5},'the server writes the new label');
+ app=appSetSchedule(app,m().schedule,{every:'day'});assert.equal(app.screens[0].blocks[4].weekday,undefined);
+ app=appSetCard(app,m().card,{template:'ticket',lines:'A\n\nB\n'});assert.deepEqual(app.screens[1].blocks[0].lines,['A','B']);
+ app=appSetCard(app,m().card,{lines:'a\nb\nc\nd\ne\nf\ng'});assert.match(appProblem(app),/at most 6 lines/);
+ app=appSetCard(app,m().card,{lines:'ONIGIRI ×1'});app=appSetCard(app,m().card,{heading:''});assert.match(appProblem(app),/write the heading/);
+ app=appSetCard(app,m().card,{heading:'LAWSON-ISH'});assert.equal(appProblem(app),'');
+ assert.deepEqual(Object.keys(appPayload(app)),['app']);
 });
