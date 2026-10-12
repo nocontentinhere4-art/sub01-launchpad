@@ -139,11 +139,17 @@ export function renderArtPick(m,{onPick}={}){
  });
  return el('div',{className:'pc-art'},el('span',{className:'pc-devbuy-k',textContent:'Choose your logo'}),el('div',{className:'pc-art-row'},...cards),el('p',{className:'pc-note',textContent:m.note}),err);
 }
-// The banner is an SVG; X wants PNG/JPG for the header: draw it on a canvas at 1500×500 (same-origin, so the canvas stays clean).
+// X wants PNG/JPG for the header: draw the banner on a canvas at 1500×500 (same-origin, so the canvas stays clean). An
+// older coin's banner is a 3:1 SVG and fills it; a new coin's (2026-10-12) is a 16:9 black-and-white PNG: kept whole,
+// scaled to the header's height and set on the right on black, where the lettermark is (X puts the avatar bottom-left).
 async function savePng(url,name,{w,h}){
- const svg=await (await fetch(url,{credentials:'same-origin'})).text();
- const img=new Image();await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('could not read the banner'));img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);});
- const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);
+ const r=await fetch(url,{credentials:'same-origin'});const svg=/svg/.test(r.headers.get('content-type')||'');
+ const src=svg?'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(await r.text()):URL.createObjectURL(await r.blob());
+ const img=new Image();await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('could not read the banner'));img.src=src;});
+ if(!svg)URL.revokeObjectURL(src);
+ const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');
+ if(svg)g.drawImage(img,0,0,w,h);
+ else{const k=Math.min(w/img.naturalWidth,h/img.naturalHeight),dw=img.naturalWidth*k,dh=img.naturalHeight*k;g.fillStyle='#000';g.fillRect(0,0,w,h);g.drawImage(img,w-dw,(h-dh)/2,dw,dh);}
  const blob=await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('could not render the PNG')),'image/png'));
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
 }
