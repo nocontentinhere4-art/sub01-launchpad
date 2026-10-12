@@ -4,8 +4,8 @@ import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
 import {verdictModel,renderVerdict,cleanBuild,buildModel,renderBuild,serverNow} from './verdict.js';
 import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,trustCount,TRUST_GROUP,
- appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS,qaModel} from './desk-flows.js';
-export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn} from './desk-flows.js';
+ appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS,qaModel,kitArt,rewriteModel} from './desk-flows.js';
+export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn,kitArt,rewriteModel} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
 // The computer in a resident's room: each screen shows one of the owner's projects (a CanvasTexture), and tapping it opens
 // the Computer overlay: the project's site, its X account, the launch stepper and (owner only) the ideas in flight.
@@ -124,8 +124,9 @@ export function renderDevBuy(m,{onSave}={}){
   el('p',{className:'pc-note',textContent:m.locked?`${m.text} · ${m.lockNote}`:m.note}),err);
 }
 // "Choose your logo" (desk-flows.js artModel): the two logo+banner pairs side by side, one tap picks; onPick(index)
-// does the PUT and the refresh (the site preview and the token logo follow); errors stay under the pair.
-export function renderArtPick(m,{onPick}={}){
+// does the PUT and the refresh (the site preview, the token logo and the X kit follow); errors stay under the pair.
+// Shown on the Launch tab's open step, the Site tab beside the preview and the X tab's profile kit (title differs).
+export function renderArtPick(m,{onPick,title='Choose your logo'}={}){
  const err=el('p',{className:'pc-err'});
  const cards=m.options.map(o=>{
   const on=o.index===m.choice;
@@ -137,7 +138,7 @@ export function renderArtPick(m,{onPick}={}){
    el('img',{className:'pc-art-banner',src:o.banner,alt:`${o.label}: banner`,loading:'lazy'}),
    el('div',{className:'pc-art-foot'},el('b',{textContent:o.label}),o.by?el('small',{textContent:o.by}):null),pick);
  });
- return el('div',{className:'pc-art'},el('span',{className:'pc-devbuy-k',textContent:'Choose your logo'}),el('div',{className:'pc-art-row'},...cards),el('p',{className:'pc-note',textContent:m.note}),err);
+ return el('div',{className:'pc-art'},el('span',{className:'pc-devbuy-k',textContent:title}),el('div',{className:'pc-art-row'},...cards),el('p',{className:'pc-note',textContent:m.note}),err);
 }
 // X wants PNG/JPG for the header: draw the banner on a canvas at 1500×500 (same-origin, so the canvas stays clean). An
 // older coin's banner is a 3:1 SVG and fills it; a new coin's (2026-10-12) is a 16:9 black-and-white PNG: kept whole,
@@ -160,7 +161,8 @@ function kitBlock(kit,p){
   if(f.render)b.onclick=ev=>{ev.preventDefault();b.classList.add('is-busy');savePng(f.url,f.name,f.render).catch(e=>{err.textContent=e.message;}).finally(()=>b.classList.remove('is-busy'));};
   return b;});
  const texts=kit.texts.map(t=>el('div',{className:'pc-kit-text'},el('span',{className:'eyebrow',textContent:t.label}),el('span',{className:'pc-kit-val',textContent:t.text}),copyBtn(t.text)));
- return el('section',{className:'pc-kit'},el('div',{className:'pc-kit-head'},el('img',{src:p.logoUrl,alt:'',width:56,height:56,decoding:'async'}),el('div',null,el('h4',{textContent:'Profile kit for X'}),el('p',{className:'pc-note',textContent:kit.note}))),
+ return el('section',{className:'pc-kit'},el('div',{className:'pc-kit-head'},el('img',{src:kit.files[0].url,alt:'',width:56,height:56,decoding:'async'}),el('div',null,el('h4',{textContent:'Profile kit for X'}),
+   el('p',{className:'pc-note',textContent:kit.pair?`${kit.note} The files are ${kit.pair}, your current pick.`:kit.note}))),
   el('div',{className:'pc-kit-files'},...files),texts.length?el('div',{className:'pc-kit-texts'},...texts):null,err);
 }
 const copyBtn=text=>{const b=el('button',{className:'pc-copy',type:'button',title:'Copy',onclick:async()=>{try{await navigator.clipboard.writeText(text);b.classList.add('is-ok');setTimeout(()=>b.classList.remove('is-ok'),1200);}catch{}}},icon('check'));b.setAttribute('aria-label','Copy '+short(text,6));return b;};
@@ -222,7 +224,32 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   if(!s.src)return [headRow(cur),el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),s.empty),el('p',{textContent:model.mine?'The site appears here as soon as SUB-01 builds the first version.':'Come back later: the site goes up when it is built.'}))];
   const tools=model.mine&&siteView==='tools';
   const toggle=model.mine?el('button',{className:'pc-link pc-tools-toggle',type:'button',textContent:tools?'← Back to the site':'Tools',onclick:()=>{siteView=tools?'site':'tools';show('site');}}):null;
-  return [headRow(cur,bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),toggle,ext(s.open,'Open in a new tab ↗'))),model.mine?qaPane(cur):null,tools?toolsPane():frame(s.src,s.sandbox,`${cur.name}: website`)].filter(Boolean);}
+  return [headRow(cur,bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),toggle,ext(s.open,'Open in a new tab ↗'))),model.mine?qaPane(cur):null,
+   model.mine&&!tools?sidePanel(cur):null,tools?toolsPane():frame(s.src,s.sandbox,`${cur.name}: website`)].filter(Boolean);}
+
+ // ---------------- beside the preview (owner, until a launch transaction exists): the logo pick and "Ask SUB-01 to
+ // rewrite" (backend art-choice.js, rewrite.js). Both end in a new site version; the preview reloads on it.
+ function sidePanel(p){
+  const e=epoch,slug=encodeURIComponent(p.slug);
+  const artSlot=el('div',{className:'pc-art-slot'}),rw=el('div',{className:'pc-rewrite'});
+  const root=el('details',{className:'pc-side'},el('summary',null,icon('brush','i lead'),el('span',{textContent:'Logo and words'})),el('div',{className:'pc-side-body'},artSlot,rw));
+  const reloadSite=async()=>{try{const l=await api(`/api/projects/${slug}/preview-link`);if(l?.url)p.previewLink=l.url;}catch{}views.delete(p.slug);if(alive(e)&&tab==='site')show('site');};
+  load(p.slug).then(view=>{if(!alive(e))return;
+   api(`/api/projects/${slug}/art`).then(a=>{const am=artModel(a,view);if(!alive(e)||!am)return;if(!am.chosen&&am.editable)root.open=true;
+    artSlot.replaceWith(renderArtPick(am,{onPick:async i=>{await api(`/api/projects/${slug}/art`,{method:'PUT',body:{choice:i}});await reloadSite();}}));}).catch(()=>{});});
+  // the rewrite: POST, then the job is polled every 3 s; when it lands the preview shows the new version
+  const err=el('p',{className:'pc-err'});let asked=false;
+  const draw=v=>{const m=rewriteModel(v);if(!m){rw.replaceChildren();return;}
+   if(asked&&!m.busy&&m.state){asked=false;if(m.done&&m.version){reloadSite();return;}}
+   const b=btn(m.busy?'button-ghost button-sm':'button-dark button-sm',m.label,async()=>{busy(b,true);err.textContent='';
+    try{await api(`/api/projects/${slug}/rewrite`,{method:'POST',body:{}});asked=true;poll();}catch(x){err.textContent=explainError(x);busy(b,false);}},m.busy?null:'rotate');
+   b.disabled=!m.canAsk;if(m.busy){b.classList.add('is-busy');asked=true;later(3000,poll);}
+   rw.replaceChildren(...[el('span',{className:'pc-devbuy-k',textContent:'The words on the site'}),el('div',{className:'pc-rewrite-row'},b,el('span',{className:'pc-note',textContent:m.note})),
+    m.line?el('p',{className:'pc-note pc-rewrite-line',textContent:m.line}):null,err].filter(Boolean));};
+  const poll=async()=>{try{const v=await api(`/api/projects/${slug}/rewrite`);if(alive(e)&&tab==='site')draw(v);}catch(x){if(alive(e))err.textContent=explainError(x);}};
+  poll();
+  return root;
+ }
 
  // ---------------- SUB-01's QA (owner): every new site version is rendered and checked before it goes live; a failed one
  // stays offline with the reasons and screenshots, and the owner can publish it anyway (backend docs/SITE-QA.md)
@@ -385,13 +412,27 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   const e=epoch;load(p.slug).then(view=>{if(!alive(e)||tab!=='x')return;drawX(root,view);});
   return [root];
  }
+ // The profile kit (owner): "Choose which pair to use" while the pick can change, then the downloads of that pair
+ // (backend art-choice.js: the options' own files, or the live pair; never the room's cached preview URLs) and the
+ // public site from the fresh view.
+ function kitSection(p,view,xm){
+  const e=epoch,slug=encodeURIComponent(p.slug),slot=el('div',{className:'pc-kit-slot'});
+  const draw=art=>{if(!alive(e)||tab!=='x')return;
+   const kit=profileKit(p,xm,{art:kitArt(art),siteUrl:view&&typeof view==='object'&&'siteUrl' in view?view.siteUrl:undefined});
+   const am=artModel(art,view);
+   const pick=am?renderArtPick(am,{title:'Choose which pair to use',onPick:async i=>{await api(`/api/projects/${slug}/art`,{method:'PUT',body:{choice:i}});
+    let a=null;try{a=await api(`/api/projects/${slug}/art`);}catch{}draw(a);}}):null;
+   slot.replaceChildren(...[pick,kit?kitBlock(kit,p):null].filter(Boolean));};
+  api(`/api/projects/${slug}/art`).then(draw).catch(()=>draw(null));
+  return slot;
+ }
  function drawX(root,view,waiting=null){
   const p=cur,m=xModel(view||{x:p.x.status?{status:p.x.status,planned_handle:p.x.handle,x_handle:p.x.handle}:null},model.mine),chip=xChip(m),out=[];
   if(m.state==='connected'&&p.x.status!=='connected'){p.x.status='connected';p.x.handle=m.handle;p.x.url=m.url;}   // the desk's chip follows
   out.push(el('div',{className:'pc-x'},el('div',{className:'pc-x-avatar'},icon('xlogo')),el('div',{className:'pc-x-main'},el('strong',{textContent:m.handle?'@'+m.handle:'No X account yet'}),
    chip?el('small',{className:'pc-chip pc-chip-x '+chip.cls,textContent:m.state==='connected'?'Connected':m.state==='planned'?'Planned by SUB-01':'Disconnected'}):null),m.url?ext(m.url,'Open on X ↗','button button-dark button-sm pc-x-open'):null));
   if(m.bio&&m.state!=='connected')out.push(el('blockquote',{className:'pc-quote'},el('span',{className:'eyebrow',textContent:'Bio'}),el('p',{textContent:m.bio})));
-  if(model.mine){const kit=profileKit(p,m);if(kit)out.push(kitBlock(kit,p));}   // 2026-10-10 the owner: logo + header to download for X
+  if(model.mine)out.push(kitSection(p,view,m));   // 2026-10-10 the owner: logo + header to download for X; 2026-10-12: of the chosen pair
   if(!model.mine){out.push(el('p',{className:'pc-note',textContent:m.note}));root.replaceChildren(...out);return;}
   if(m.howto.length){out.push(el('ol',{className:'pc-howto'},...m.howto.map(t=>el('li',{textContent:t}))));
    const err=el('p',{className:'pc-err'});

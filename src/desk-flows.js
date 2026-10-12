@@ -250,6 +250,7 @@ export function explainError(err){
  if(!err)return 'Something went wrong. Try again.';
  if(err.rejected||err.timeout||err.unsupported)return err.message;
  const status=Number(err.status),body=err.body&&typeof err.body==='object'?err.body:{},code=str(body.error),detail=str(body.message);
+ if(code==='rewrite_limit'&&detail)return detail[0].toUpperCase()+detail.slice(1)+'.';
  if(status===429){const s=num(body.retryAfterS);return `Slow down: try again in ${s||10} s.`;}
  if(code==='bad_state'&&/idea is (\w+)/.test(detail))return `Not now: the idea is ${RegExp.$1.replace(/_/g,' ')}.`;
  if(CODES[code])return CODES[code];
@@ -258,17 +259,48 @@ export function explainError(err){
  return detail||str(err.message)||'Something went wrong. Try again.';
 }
 
-/** profileKit(project, xm) -> what the owner sets by hand on X (no API for the profile picture, header or bio):
- *  files to download and texts to copy. null when the project has no logo yet. */
-export function profileKit(p,xm){
- const logo=p?.logoUrl,banner=p?.bannerUrl,slug=str(p?.slug)||'coin';
+/** profileKit(project, xm, {art, siteUrl}) -> what the owner sets by hand on X (no API for the profile picture, header
+ *  or bio): files to download and texts to copy. null when the project has no logo yet.
+ *  art: kitArt() -> the chosen pair's own URLs (2026-10-12: the room's logoUrl/bannerUrl can name an older preview
+ *  version); siteUrl: from the fresh project view (the public site only, never a preview link). */
+export function profileKit(p,xm,{art=null,siteUrl}={}){
+ const logo=art?.logo||p?.logoUrl,banner=art?.logo?art.banner:p?.bannerUrl,slug=str(p?.slug)||'coin';
  if(!logo)return null;
  const files=[{kind:'logo',label:'Profile picture',hint:'PNG 512×512',url:logo,name:`${slug}-logo.png`}];
  if(banner)files.push({kind:'header',label:'Header',hint:'PNG 1500×500',url:banner,name:`${slug}-header.png`,render:{w:1500,h:500}});
  const texts=[];
  if(xm?.bio)texts.push({label:'Bio',text:xm.bio});
- if(p?.siteUrl)texts.push({label:'Website',text:p.siteUrl});
- return {files,texts,note:'X has no API for the picture, header or bio: download these and set them in the X app.'};
+ const site=str(siteUrl===undefined?p?.siteUrl:siteUrl);
+ if(site&&/^https?:\/\//.test(site)&&!/\/preview\//.test(site))texts.push({label:'Website',text:site});
+ return {files,texts,pair:art?.label||null,note:'X has no API for the picture, header or bio: download these and set them in the X app.'};
+}
+/** kitArt(art, project) -> {logo, banner, label} | null: the pair the X kit downloads. When SUB-01 drew two options, the
+ *  chosen one's files (option 1 until the author picks); otherwise the live pair (the newest version). Only the
+ *  launchpad's own /api/projects/<slug>/art/… URLs. */
+export function kitArt(art){
+ const a=art&&typeof art==='object'?art:null;if(!a)return null;
+ const own=u=>(u=str(u))&&/^\/api\/projects\/[a-z0-9-]+\/art\/(logo|banner)-([01]|live)\.png$/.test(u)?u:null;
+ const pick=a.choice===1?1:0,c=Array.isArray(a.candidates)?a.candidates.find(x=>x&&x.index===pick&&own(x.logoUrl)):null;
+ if(c)return {logo:own(c.logoUrl),banner:own(c.bannerUrl),label:`Option ${pick+1}`};
+ if(a.live&&own(a.live.logoUrl))return {logo:own(a.live.logoUrl),banner:own(a.live.bannerUrl),label:null};
+ return null;
+}
+
+// ---------------------------------------------------------------- "Ask SUB-01 to rewrite" (backend rewrite.js)
+// GET /api/projects/:slug/rewrite (owner) -> {allowed, lockedWhy, perDay, left, last:{state,progress,version,live,generator,fallback,error,skipped}};
+// POST the same path -> {queued, jobId, left}. A job writes the copy again for the app the site has now; a new site
+// version goes through SUB-01's QA. 3 a day; locked once a launch transaction exists.
+/** rewriteModel(view) -> null | {allowed, busy, canAsk, label, note, line, state, version, done} */
+export function rewriteModel(v){
+ const x=v&&typeof v==='object'?v:null;if(!x)return null;
+ const last=x.last&&typeof x.last==='object'?x.last:null,state=str(last?.state),busy=state==='queued'||state==='running';
+ const per=num(x.perDay)??3,left=Math.max(0,num(x.left)??0),allowed=x.allowed===true;
+ const line=busy?(str(last.progress)||'SUB-01 is rewriting the copy…'):
+  state==='done'?(last.live?`Rewritten: site v${num(last.version)} is live${last.fallback?', written by the fixed template (the language model failed)':''}.`:`Rewritten as v${num(last.version)}, held back by SUB-01's QA (above).`):
+  state==='failed'?`The rewrite failed${str(last.error)?`: ${str(last.error)}`:''}. Try again later.`:state==='skipped'?`Not rewritten: ${str(last.skipped)}.`:'';
+ const note=!allowed?(str(x.lockedWhy)?`The words are locked: ${str(x.lockedWhy)}.`:'Nothing to rewrite yet.'):
+  left>0?`SUB-01 writes the words again for the app and tools the site has now; the name and the ticker stay. ${left} of ${per} left today.`:`${per} rewrites a day: none left today.`;
+ return {allowed,busy,canAsk:allowed&&!busy&&left>0,label:busy?'SUB-01 is rewriting…':'Ask SUB-01 to rewrite',note,line,state,version:num(last?.version),done:state==='done'};
 }
 
 

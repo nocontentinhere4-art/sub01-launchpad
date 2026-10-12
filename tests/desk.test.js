@@ -487,3 +487,35 @@ test('requestComputer with an idea still being built: the Ideas tab on that idea
  requestComputer({slug:'soba',ideaId:'idea_1',tab:'launch'});assert.deepEqual(takeComputerRequest(model),{project:{slug:'soba'},tab:'launch'},'the project wins once it exists');
  assert.equal(isBuilding({status:'generating'}),true);assert.equal(isBuilding({status:'selected'}),true);assert.equal(isBuilding({stage:'preview_ready'}),false);assert.equal(isBuilding(null),false);
 });
+
+// ---------------------------------------------------------------- the X kit follows the chosen pair; "Ask SUB-01 to rewrite"
+import {kitArt,rewriteModel} from '../src/desk.js';
+test('kitArt + profileKit: the downloads are the chosen pair (never the room\'s cached preview URLs); the website is the public site only',()=>{
+ const p={slug:'q-wave',logoUrl:'/preview/q-wave/1.123.abc/logo.png',bannerUrl:'/preview/q-wave/1.123.abc/banner.svg',siteUrl:null};
+ const a=kitArt({...ART,choice:1,chosen:true});
+ assert.deepEqual(a,{logo:'/api/projects/ramen/art/logo-1.png',banner:'/api/projects/ramen/art/banner-1.png',label:'Option 2'});
+ const kit=profileKit(p,{bio:'b'},{art:a,siteUrl:null});
+ assert.deepEqual(kit.files.map(f=>f.url),['/api/projects/ramen/art/logo-1.png','/api/projects/ramen/art/banner-1.png']);
+ assert.equal(kit.files[1].render.w,1500);assert.equal(kit.pair,'Option 2');
+ assert.deepEqual(kit.texts.map(t=>t.label),['Bio'],'a private coin: no website line');
+ assert.deepEqual(kitArt(ART).label,'Option 1','option 1 until the author picks');
+ // an older coin: the live pair; a foreign URL never
+ assert.deepEqual(kitArt({choice:null,candidates:[],live:{logoUrl:'/api/projects/old/art/logo-live.png',bannerUrl:'/api/projects/old/art/banner-live.png'}}),{logo:'/api/projects/old/art/logo-live.png',banner:'/api/projects/old/art/banner-live.png',label:null});
+ assert.equal(kitArt({candidates:[{index:0,logoUrl:'https://evil.test/a.png'}]}),null);assert.equal(kitArt(null),null);
+ assert.deepEqual(profileKit({...p,siteUrl:'https://q-wave.projects.subzerone.live/'},{},{siteUrl:'https://q-wave.projects.subzerone.live/'}).texts,[{label:'Website',text:'https://q-wave.projects.subzerone.live/'}]);
+ assert.deepEqual(profileKit(p,{},{siteUrl:'http://city.test/preview/q-wave/1.2.x/index.html'}).texts,[],'never a preview link');
+ assert.equal(profileKit(p,{}).files[0].url,p.logoUrl,'without the art view: the room\'s URLs as before');
+});
+test('rewriteModel: ask, running, done (live / held / template), failed, locked, none left',()=>{
+ const base={allowed:true,lockedWhy:null,perDay:3,left:3,last:null};
+ let m=rewriteModel(base);assert.deepEqual([m.canAsk,m.label,m.line],[true,'Ask SUB-01 to rewrite','']);assert.match(m.note,/3 of 3 left today/);assert.match(m.note,/name and the ticker stay/);
+ m=rewriteModel({...base,left:2,last:{state:'running',progress:'building the site and checking it'}});assert.deepEqual([m.busy,m.canAsk,m.label,m.line],[true,false,'SUB-01 is rewriting…','building the site and checking it']);
+ m=rewriteModel({...base,left:2,last:{state:'done',version:4,live:true,generator:'anthropic:claude-sonnet-5-5'}});assert.equal(m.line,'Rewritten: site v4 is live.');assert.equal(m.done,true);assert.equal(m.version,4);
+ assert.match(rewriteModel({...base,last:{state:'done',version:4,live:true,fallback:'generator HTTP 529'}}).line,/fixed template/);
+ assert.match(rewriteModel({...base,last:{state:'done',version:5,live:false}}).line,/held back by SUB-01's QA/);
+ assert.match(rewriteModel({...base,last:{state:'failed',error:'generated spec invalid: x'}}).line,/^The rewrite failed: generated spec invalid/);
+ m=rewriteModel({...base,allowed:false,lockedWhy:'the coin is launched: its logo is on chain'});assert.equal(m.canAsk,false);assert.match(m.note,/locked: the coin is launched/);
+ m=rewriteModel({...base,left:0});assert.equal(m.canAsk,false);assert.match(m.note,/none left today/);
+ assert.equal(rewriteModel(null),null);
+ assert.equal(explainError({status:429,body:{error:'rewrite_limit',message:'3 rewrites a day: the next one in about 20 h',retryAfterS:72000}}),'3 rewrites a day: the next one in about 20 h.');
+});
