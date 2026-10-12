@@ -305,13 +305,16 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
  // The desk loaded the stage once with the room; the stepper's fresh view keeps the head chip (and the screen card) current.
  function syncStage(m){if(!m.status||m.status===cur.stage)return;cur.stage=m.status;cur.stageLabel=STAGE_LABELS[m.status]||m.status.replace(/_/g,' ');cur.launched=m.status==='launched';if(m.live?.mint)cur.mint=m.live.mint;
   const old=body.querySelector('[data-head]');if(old&&tab==='launch')old.replaceWith(launchHead(cur));}
- let flight=null;   // the transaction being reviewed/signed on this tab: {tx, review} or a phase override
+ let flight=null;   // the transaction being reviewed/signed on this tab: {tx, review}; tx.step === 2 is the dev buy (tx2)
+ const isStep2=fl=>fl?.tx?.step===2;
+ const lpath=(fl,what)=>`/api/projects/${encodeURIComponent(cur.slug)}/launch/${isStep2(fl)?'devbuy/':''}${what}`;
  function drawLaunch(root,view,extra={}){
   const m=launchSteps(view,me),out=[],e=epoch;syncStage(m);
   if(m.loading){root.replaceChildren(el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),'The launch page is not reachable.'),el('p',{textContent:'The project could not be loaded. Close the computer and try again.'})));return;}
   const err=el('p',{className:'pc-err',textContent:extra.error||''});
   const list=el('ol',{className:'pc-steps'});list.style.setProperty('--step',String(stepIndex(m.current==='stopped'?'site':m.current,m.steps)));
   const refresh=async(error='')=>{const v=await load(cur.slug,true);if(alive(e)&&tab==='launch')drawLaunch(root,v,{error});};
+  let errPlaced=false;   // the step error line goes under the first open step (the dev buy while it waits, not "Live")
   for(const s of m.steps){
    const li=el('li',{className:'pc-step is-'+s.state},el('i',{className:'pc-step-dot'},s.state==='done'?icon('check'):s.state==='blocked'?icon('x'):el('b',{textContent:String(stepIndex(s.id,m.steps)+1)})));
    const main=el('div',{className:'pc-step-main'},el('b',{className:'pc-step-title',textContent:s.title}),el('span',{className:'pc-step-line',textContent:s.line}));
@@ -324,17 +327,24 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    // once a transaction exists; while the review card is open its row is on the card instead (showDevBuyOn).
    const dev=devBuyModel(view);
    if(showDevBuyOn(dev,s.id,!!flight?.tx))main.append(renderDevBuy(dev,{onSave:async sol=>{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/options`,{method:'PUT',body:{initialBuySol:sol}});await refresh();}}));
-   if(s.id==='launch'&&flight?.tx)main.append(reviewCard(root,view,m,flight,refresh));
+   // the review card sits on its own step: the launch (step 1) or the dev buy (step 2)
+   const reviewing=!!flight?.tx&&((s.id==='launch'&&!isStep2(flight))||(s.id==='devbuy'&&isStep2(flight)));
+   if(reviewing)main.append(reviewCard(root,view,m,flight,refresh));
    else if(s.id==='launch'&&(m.phase==='preparing'||m.phase==='confirming')){main.append(el('div',{className:'pc-wait'},el('i',{className:'pulse'}),el('span',{textContent:m.phase==='confirming'?`Signed · ${short(view.intent?.tx_signature||'',6)||'broadcast'} · waiting for the network…`:'The configuration is prepared by a job; this updates by itself.'})));
+    later(3000,()=>{if(tab==='launch')refresh();});}
+   else if(s.id==='devbuy'&&m.devBuy?.status==='submitted'){main.append(el('div',{className:'pc-wait'},el('i',{className:'pulse'}),el('span',{textContent:`Signed · ${short(m.devBuy.attempt?.signature||'',6)||'broadcast'} · waiting for the network…`})));
     later(3000,()=>{if(tab==='launch')refresh();});}
    if(s.id==='live'&&m.live)main.append(liveBox(m.live,view));
    if(s.note)main.append(el('p',{className:'pc-step-note',textContent:s.note}));
-   if(s.action&&!(s.id==='launch'&&flight?.tx)){
-    const b=btn(s.action.id==='preview'?'button-dark button-sm':'button-orange button-sm',s.action.label,()=>act(s.action.id,root,view,m,b,err,refresh),s.action.id==='preview'?'globe':s.action.id==='clear'?'check':s.action.id==='approve'?'check':'rocket');
+   if(s.action&&!reviewing){
+    // 'Buy with your wallet' names the wallet the author signed in with
+    const label=s.action.id==='devbuy'&&s.action.label==='Buy with your wallet'?`Buy with ${lastWallet()||'your wallet'}`:s.action.label;
+    const b=btn(s.action.id==='preview'?'button-dark button-sm':'button-orange button-sm',label,()=>act(s.action.id,root,view,m,b,err,refresh),s.action.id==='preview'?'globe':s.action.id==='clear'?'check':s.action.id==='approve'?'check':s.action.id==='devbuy'?'wallet':'rocket');
     b.disabled=!s.action.enabled;const acts=el('div',{className:'pc-step-acts'},b);
     if(s.id==='launch'&&m.phase==='resume')acts.append(el('button',{className:'pc-link pc-abandon',type:'button',textContent:'Cancel this transaction',onclick:()=>abandon(root,b,err,refresh,'cancelled')}));
+    if(s.secondary?.id==='devbuy-skip')acts.append(skipLink(b,err,refresh));
     main.append(acts);}
-   if(s.state==='current'||s.state==='blocked')main.append(err);
+   if(!errPlaced&&(s.state==='current'||s.state==='blocked')){main.append(err);errPlaced=true;}
   }
   out.push(list);
   if(!model.mine&&!m.owner)out.push(el('p',{className:'pc-note',textContent:'Only the author launches from this computer; you see where it stands.'}));
@@ -378,19 +388,33 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    if(id==='approve'){if(!m.publicIdea&&m.approve?.ideaId)await api(`/api/ideas/${encodeURIComponent(m.approve.ideaId)}/publish`,{method:'POST',body:{public:true}});
     await api(`/api/projects/${encodeURIComponent(cur.slug)}/approve`,{method:'POST',body:{allocationId:m.approve.allocationId,statement:m.approve.statement,siteVersion:m.approve.siteVersion}});}
    else if(id==='clear')await api(`/api/admin/projects/${encodeURIComponent(cur.slug)}/clear`,{method:'POST',body:{}});
-   else if(id==='prepare'||id==='resume'){const tx=await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/transaction`,{method:'POST',body:{}});
+   else if(id==='prepare'||id==='resume'||id==='devbuy'){const tx=await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/${id==='devbuy'?'devbuy/':''}transaction`,{method:'POST',body:{}});
     const v=await load(cur.slug,true);flight={tx,review:reviewModel(tx,v,me?.user?.wallet)};if(!closed&&tab==='launch')drawLaunch(root,v);return;}
    await refresh();
   }catch(x){err.textContent=explainError(x);busy(b,false);if(x?.status===409&&/changed/.test(x.body?.error||''))refresh(explainError(x));}
  }
- async function abandon(root,b,err,refresh,reason){
-  if(b)busy(b,true);err.textContent='';flight=null;
-  try{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/abandon`,{method:'POST',body:{reason}});}catch(x){err.textContent=explainError(x);}
+ async function abandon(root,b,err,refresh,reason,fl=flight){
+  if(b)busy(b,true);err.textContent='';
+  // which transaction: the one on the card (step 2 = the dev buy); the launch step's own Cancel is always step 1
+  const path=lpath(fl,'abandon');flight=null;
+  try{await api(path,{method:'POST',body:{reason}});}catch(x){err.textContent=explainError(x);}
   await refresh();
+ }
+ // "Skip the dev buy" is final: the first tap asks, the second skips (a waiting, unsigned buy is cancelled with it).
+ function skipLink(b,err,refresh){
+  let armed=false;
+  const link=el('button',{className:'pc-link pc-abandon',type:'button',textContent:'Skip the dev buy'});
+  link.onclick=async()=>{
+   if(!armed){armed=true;link.textContent='Skip it for good? Tap again';later(5000,()=>{armed=false;if(link.isConnected)link.textContent='Skip the dev buy';});return;}
+   busy(link,true);if(b)b.disabled=true;err.textContent='';flight=null;
+   try{await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/devbuy/skip`,{method:'POST',body:{}});}catch(x){err.textContent=explainError(x);}
+   await refresh();};
+  return link;
  }
  // The review card: exactly what the server read from the built transaction, before the wallet opens. Sign stays
  // disabled unless the fee payer is this wallet and only launch programs are called (reviewModel.canSign).
  function reviewCard(root,view,m,fl,refresh){
+  if(isStep2(fl))return devBuyCard(root,view,m,fl,refresh);
   const r=fl.review,card=el('div',{className:'pc-review'+(r.flagged||!r.you?' is-flagged':'')}),wallet=lastWallet()||'wallet';
   const kv=(k,...v)=>el('div',{className:'pc-kv'},el('span',{className:'pc-kv-k',textContent:k}),el('span',{className:'pc-kv-v'},...v));
   card.append(el('div',{className:'pc-review-head'},el('span',{className:'eyebrow'},r.mock?'MOCK TRANSACTION · NOTHING ON-CHAIN':'REVIEW BEFORE YOU SIGN'),r.resumed?el('small',{className:'pc-note',textContent:'The same transaction you built earlier.'}):null));
@@ -402,6 +426,8 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    kv('Can write',el('b',{textContent:String(r.writable)}),el('small',{textContent:` accounts · ${r.signers} signature${r.signers>1?'s (yours first; the new mint signs after you, on the server)':' (yours)'}`})),
    kv('Cost',el('b',{textContent:r.cost.total}),el('small',{textContent:r.cost.fee!=null?` · fee ${r.cost.fee} + rent ${r.cost.rent}${r.cost.buy?' + dev buy '+r.cost.buy:''}${r.cost.simulated?' (from a simulation)':''}`:r.mock?' · mock':' · the wallet shows the exact amount'}),r.cost.balance?el('small',{textContent:` · your balance ${r.cost.balance}`}):null));
   if(r.cost.buy)card.append(kv('Dev buy',el('b',{textContent:r.cost.buy}),el('small',{textContent:`${r.cost.buyMax?` · capped at ${r.cost.buyMax} in the transaction`:''} · tokens land in your wallet`})));
+  // a two-step launch: no buy here, and the author reads what step 2 means before signing step 1
+  if(r.devBuyNext)card.append(kv('Step 2 · Dev buy',el('b',{textContent:r.devBuyNext.sol}),el('small',{textContent:' · a second signature right after this one'})),el('p',{className:'pc-note',textContent:r.devBuyNext.note}));
   card.append(el('span',{className:'eyebrow',textContent:'Creator-fee split'+(r.split.locked?' · locked at launch':'')}),splitBox(r.split,null));
   card.append(el('span',{className:'eyebrow',textContent:'What this does NOT do'}),el('ul',{className:'pc-doesnot'},...r.doesNot.map(t=>el('li',{textContent:t}))));
   card.append(el('p',{className:'pc-note',textContent:r.mock?'The wallet asks you to sign a labelled text message; no transaction exists.':'Your wallet shows the transaction again before you sign. Check it shows the same network, fee payer and amount.'}));
@@ -412,23 +438,44 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   card.append(walletNote,el('div',{className:'pc-step-acts'},sign,cancel),err);
   return card;
  }
+ // Step 2's own small review: what the buy costs, its cap, the tokens, the programs, one signature (yours).
+ function devBuyCard(root,view,m,fl,refresh){
+  const r=fl.review,card=el('div',{className:'pc-review'+(r.flagged||!r.you?' is-flagged':'')}),wallet=lastWallet()||'wallet';
+  const kv=(k,...v)=>el('div',{className:'pc-kv'},el('span',{className:'pc-kv-k',textContent:k}),el('span',{className:'pc-kv-v'},...v));
+  card.append(el('div',{className:'pc-review-head'},el('span',{className:'eyebrow'},r.mock?'MOCK DEV BUY · NOTHING ON-CHAIN':'STEP 2 · REVIEW YOUR DEV BUY'),r.resumed?el('small',{className:'pc-note',textContent:'The same dev buy you built earlier.'}):null));
+  for(const w of r.warnings)card.append(el('p',{className:'pc-warn'},icon('x'),w));
+  card.append(kv('Network',el('b',{textContent:r.network})),
+   kv('Fee payer',el('code',{textContent:short(r.feePayer,6)}),el('small',{className:r.you?'is-ok':'is-bad',textContent:r.you?'you':'not your wallet'})),
+   kv('You buy',el('b',{textContent:r.tokens?`${r.tokens} tokens`:'your coin'}),el('small',{textContent:` · of ${short(r.mint,6)} · they land in your wallet`})),
+   kv('Cost',el('b',{textContent:r.cost.total}),el('small',{textContent:r.cost.fee!=null?` · dev buy ${r.cost.buy||'—'} + fee ${r.cost.fee} + your token account ${r.cost.rent}${r.cost.simulated?' (from a simulation)':''}`:r.mock?' · mock':' · the wallet shows the exact amount'}),r.cost.balance?el('small',{textContent:` · your balance ${r.cost.balance}`}):null),
+   kv('Cap',el('b',{textContent:r.cost.buyMax||r.cost.buy||'—'}),el('small',{textContent:' · if the price moved more than 5% since this quote, the buy fails and your SOL stays'})),
+   kv('Programs',el('span',{className:'pc-programs'},...r.programs.filter(p=>p.direct).map(p=>el('span',{className:'pc-program'+(p.flag?' is-bad':'')},p.flag?icon('x'):icon('check'),p.name)))),
+   kv('Signature',el('b',{textContent:String(r.signers)}),el('small',{textContent:r.signers===1?' (yours alone)':' (more than yours: do not sign)'})));
+  card.append(el('span',{className:'eyebrow',textContent:'What this does NOT do'}),el('ul',{className:'pc-doesnot'},...r.doesNot.map(t=>el('li',{textContent:t}))));
+  const err=el('p',{className:'pc-err'}),sign=btn('button-orange button-sm',`Buy with ${wallet}`,()=>signNow(root,fl,sign,err,refresh),'wallet');sign.disabled=!r.canSign;
+  const cancel=el('button',{className:'pc-link pc-abandon',type:'button',textContent:'Cancel',onclick:()=>abandon(root,sign,err,refresh,'cancelled',fl)});
+  card.append(el('p',{className:'pc-note',textContent:r.mock?'The wallet asks you to sign a labelled text message; nothing is bought.':'Your wallet shows the transaction again before you sign: the same amount, one signature.'}),
+   el('div',{className:'pc-step-acts'},sign,cancel,skipLink(sign,err,refresh)),err);
+  return card;
+ }
  async function signNow(root,fl,b,err,refresh){
   const name=lastWallet();err.textContent='';if(!name){err.textContent='Sign in with your wallet again, then sign.';return;}
   busy(b,true);
   try{
    let signed;
-   if(fl.tx.mock){const v=await load(cur.slug,true),text=v?.mockSigningText;if(!text)throw new Error('The mock signing text is missing; prepare again.');
+   if(fl.tx.mock){const text=fl.tx.mockSigningText||(isStep2(fl)?null:(await load(cur.slug,true))?.mockSigningText);if(!text)throw new Error('The mock signing text is missing; prepare again.');
     signed=b58encode((await signMessage(name,new TextEncoder().encode(text))).signature);}
    else{
-    // a fresh blockhash right before the wallet opens: the same mint and instructions, so the review stays true
+    // a fresh blockhash right before the wallet opens: the same mint and instructions (step 2: the same tokens and cap),
+    // so the review stays true
     let txb=fl.tx.txBase64;
-    try{const fresh=await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/refresh`,{method:'POST',body:{}});if(fresh?.txBase64&&fresh.mint===fl.tx.mint){txb=fresh.txBase64;fl.tx={...fl.tx,...fresh};}}
-    catch(x){if(x?.status&&x.status!==404)throw x;}   // an older server without the route: sign what was reviewed
+    try{const fresh=await api(lpath(fl,'refresh'),{method:'POST',body:{}});if(fresh?.txBase64&&fresh.mint===fl.tx.mint){txb=fresh.txBase64;fl.tx={...fl.tx,...fresh};}}
+    catch(x){if(isStep2(fl)||(x?.status&&x.status!==404))throw x;}   // an older server without the launch route: sign what was reviewed
     signed=(await signTransaction(name,txb,{chain:chainFor(fl.tx.network)})).signed;}
-   await api(`/api/projects/${encodeURIComponent(cur.slug)}/launch/signed`,{method:'POST',body:{signed}});
+   await api(lpath(fl,'signed'),{method:'POST',body:{signed}});
    flight=null;await refresh();
   }catch(x){
-   if(x?.rejected){await abandon(root,b,err,refresh,'rejected');err.textContent='Cancelled in the wallet. Nothing was signed or sent.';return;}
+   if(x?.rejected){await abandon(root,b,err,refresh,'rejected',fl);err.textContent='Cancelled in the wallet. Nothing was signed or sent.';return;}
    err.textContent=x?.status?explainError(x):describeError(x);busy(b,false);
    if(x?.status===400||x?.status===409){flight=null;later(1500,()=>refresh(explainError(x)));}
   }

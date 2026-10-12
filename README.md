@@ -32,7 +32,7 @@ Live: **https://city.subzerone.live** · Backend: [subzerone-launchpad](https://
 - **The room PC**: the computer in a room shows the owner's projects. Its tabs are the project site, the X account
   (with a profile kit: logo PNG, 1500×500 header cut from the banner, bio and site link to copy), the five-step
   launch stepper (site → approve → clear → launch → live, with the review-before-sign card and an optional dev buy
-  in SOL) and, for the owner, the ideas in flight.
+  in SOL; a dev buy adds a "Dev buy" step after the launch: its own small review, one more signature, or skip) and, for the owner, the ideas in flight.
 - **Live presence**: walkers see each other. Your outing posts its path and a position fix every 2 s; everyone
   else's arrives on the chat stream and is dead-reckoned between fixes. Only a public name, look and position travel.
 - **SUB-01's house and verdicts**: his two-storey corner house opens like a doll's house when you look inside. Drop

@@ -1,3 +1,4 @@
+import {devBuyTwoStep,devBuyNote,tokensText} from '../src/desk-flows.js';
 import {profileKit,stepIndex,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,TOOL_MAX} from '../src/desk-flows.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -266,4 +267,71 @@ test('toolsPayload: the enabled tools in order with the filled fields; empty one
   {id:'drop',config:{title:'Drop your confession',prompt:'Drop your confession.',revealJst:'23:00',autoPick:true}},{id:'event',config:{title:'Receipt printing',at:'2030-01-01T23:00'}},
   {id:'chart',config:{range:'7d'}}]});
  assert.deepEqual(toolsPayload(toggleTool(rows,'chart',false).map(r=>({...r,on:false}))),{tools:[]});
+});
+
+// ---------------------------------------------------------------- the dev buy as step 2 (its own transaction after the launch)
+const LIVE={launch:{mint:'M1NT',network:'devnet'},submitterApprovedAt:1,adminClearedAt:1};
+const attempt=(o={})=>({id:'devbuy_1',status:'done',signature:'4Q2d',error:null,costLamports:1e7,maxLamports:10500000,tokensBase:'10493886257633',...o});
+test('launchSteps two-step dev buy: step 1 says so before signing; step 2 appears after the launch with Buy / Skip; every state of it',()=>{
+ const ids=m=>m.steps.map(s=>s.id).join(' ');
+ const cfg={initialBuyLamports:1e7,devBuyMode:'second_tx',mock:false,network:'devnet'};
+ const lp=launchSteps(view('launch_prepared',{submitterApprovedAt:1,adminClearedAt:1,launchConfig:cfg}),ME_OWNER);
+ assert.equal(ids(lp),'site approve clear launch devbuy live');
+ assert.match(lp.steps[3].line,/^Step 1 of 2: builds the launch transaction/);
+ assert.equal(lp.steps[3].note,devBuyNote('0.01 SOL'));assert.match(lp.steps[3].note,/second signature right after the launch\. If the price moves more than 5% first, it does not go through and you keep your SOL/);
+ assert.deepEqual([lp.steps[4].title,lp.steps[4].state,lp.steps[4].action],['Dev buy · 0.01 SOL','todo',null]);assert.match(lp.steps[4].line,/^Step 2 of 2, right after the launch/);
+ // launched, waiting for the second signature: the launch is done and live, the dev buy is the open step
+ const pend=launchSteps(view('launched',{...LIVE,launchConfig:cfg,devBuy:{status:'pending',lamports:1e7,attempt:null}}),ME_OWNER);
+ assert.equal(pend.current,'devbuy');assert.equal(states(pend),'done done done done current current');
+ assert.deepEqual(pend.steps[4].action,{id:'devbuy',label:'Buy with your wallet',enabled:true});assert.deepEqual(pend.steps[4].secondary,{id:'devbuy-skip',label:'Skip the dev buy'});
+ assert.match(pend.steps[4].line,/The coin is live\. Step 2: buy 0\.01 SOL of it with one more signature/);assert.equal(pend.devBuy.status,'pending');
+ const again=launchSteps(view('launched',{...LIVE,devBuy:{status:'pending',lamports:1e7,attempt:attempt({status:'cancelled',error:'before signing: the price moved more than 5% since the quote'})}}),ME_OWNER);
+ assert.match(again.steps[4].note,/^Last attempt: the price moved more than 5%/);
+ const wait=launchSteps(view('launched',{...LIVE,devBuy:{status:'awaiting_signature',lamports:1e7,attempt:attempt({status:'awaiting_signature'})}}),ME_OWNER);assert.equal(wait.steps[4].action.label,'Review & buy');
+ const sub=launchSteps(view('launched',{...LIVE,devBuy:{status:'submitted',lamports:1e7,attempt:attempt({status:'submitted'})}}),ME_OWNER);assert.deepEqual([sub.steps[4].state,sub.steps[4].action,sub.steps[4].secondary],['current',null,null]);assert.match(sub.steps[4].line,/buying/);
+ const moved=launchSteps(view('launched',{...LIVE,devBuy:{status:'failed',lamports:1e7,attempt:attempt({status:'failed',error:'{"InstructionError":[1,{"Custom":6002}]}'})}}),ME_OWNER);
+ assert.match(moved.steps[4].line,/price moved more than 5% first\. Your SOL stayed in your wallet/);assert.equal(moved.steps[4].action.label,'Try again at the new price');assert.equal(moved.steps[4].secondary.id,'devbuy-skip');
+ const bad=launchSteps(view('launched',{...LIVE,devBuy:{status:'failed',lamports:1e7,attempt:attempt({status:'failed',error:'landed: on-chain verification failed'})}}),ME_OWNER);assert.deepEqual([bad.steps[4].state,bad.steps[4].action],['blocked',null]);assert.match(bad.steps[4].line,/admin has been alerted/);
+ const done=launchSteps(view('launched',{...LIVE,devBuy:{status:'done',lamports:1e7,attempt:attempt()}}),ME_OWNER);
+ assert.deepEqual([done.steps[4].state,done.steps[4].line],['done','Bought 10,493,886 tokens for 0.01 SOL · in your wallet.']);assert.equal(done.current,'live');
+ const skipped=launchSteps(view('launched',{...LIVE,devBuy:{status:'skipped',lamports:1e7,attempt:null}}),ME_OWNER);assert.deepEqual([skipped.steps[4].state,skipped.steps[4].line],['done','Skipped: nothing was bought.']);
+ // a visitor sees where it stands, never the buttons
+ const vis=launchSteps(view('launched',{...LIVE,owner:false,devBuy:{status:'pending',lamports:1e7}}),null);assert.equal(vis.steps[4].action.enabled,false);assert.equal(vis.steps[4].secondary,null);
+ // no step 2: no buy, the buy inside tx1, or a launch from before (no devBuy on the view)
+ assert.equal(ids(launchSteps(view('launch_prepared',{launchConfig:{initialBuyLamports:0}}),ME_OWNER)),'site approve clear launch live');
+ assert.equal(ids(launchSteps(view('launch_prepared',{launchConfig:{initialBuyLamports:1e7,devBuyMode:'same_tx'}}),ME_OWNER)),'site approve clear launch live');
+ assert.equal(ids(launchSteps(view('launched',{...LIVE,launchConfig:{initialBuyLamports:1e7}}),ME_OWNER)),'site approve clear launch live');
+ assert.equal(stepIndex('live',pend.steps),5);
+});
+test('devBuyTwoStep / tokensText / showDevBuyOn: the server decides; before a configuration a buy is predicted as two steps',()=>{
+ assert.equal(devBuyTwoStep(view('preview_ready',{launchOptions:{initialBuyLamports:1e7}})),true,'no configuration yet: two steps (what pump.fun needs today)');
+ assert.equal(devBuyTwoStep(view('preview_ready',{launchOptions:{initialBuyLamports:0}})),false);
+ assert.equal(devBuyTwoStep(view('awaiting_signature',{launchConfig:{initialBuyLamports:1e7,devBuyMode:'same_tx'},intent:{dev_buy_mode:'second_tx'}})),true,'the intent wins');
+ assert.equal(devBuyTwoStep(null),false);
+ assert.equal(tokensText('10493886257633'),'10,493,886');assert.equal(tokensText('5'),'0');assert.equal(tokensText(null),null);assert.equal(tokensText('x'),null);
+ assert.equal(showDevBuyOn({editable:true},'devbuy'),false,'the amount field never sits on step 2');
+});
+test('reviewModel step 1 of a two-step launch: no buy in it, the note about step 2; step 2: its own review (tokens, cap, one signature)',()=>{
+ const me=ME_OWNER.user.wallet,v=view('launch_prepared',{launchConfig:{feeSharing:{locked:true,recipients:alloc.recipients},initialBuyLamports:1e7,devBuyMode:'second_tx'}});
+ const progs=[{id:'6EF8',name:'pump.fun (bonding curve)',direct:true},{id:'pfee',name:'pump.fun fee sharing',direct:true}];
+ const tx1={network:'devnet',feePayer:me,mint:'M1NT',txBase64:'AQID',programs:progs,accountsWritable:9,signers:2,launchProgramsOnly:true,txBytes:979,
+  estimate:{phantomSafe:true,devBuyMode:'second_tx',initialBuyLamports:0,networkFeeLamports:10000,accountsLamports:11506200,simulation:{ok:true},signerBalanceLamports:8e8,
+   devBuy:{mode:'second_tx',requestedLamports:1e7,lamports:1e7,maxLamports:10500000,tokensBase:'10493886257633'}}};
+ const r1=reviewModel(tx1,v,me);assert.equal(r1.step,1);assert.equal(r1.canSign,true);assert.deepEqual([r1.cost.buy,r1.cost.total],[null,'0.011516 SOL'],'tx1 buys nothing');
+ assert.deepEqual([r1.devBuyNext.sol,r1.devBuyNext.maxSol,r1.devBuyNext.tokens],['0.01 SOL','0.0105 SOL','10,493,886']);assert.match(r1.devBuyNext.note,/second signature right after the launch.*keep your SOL/);
+ assert.match(r1.doesNot[2],/No buy in this transaction: your dev buy of 0\.01 SOL is step 2, a second signature right after\./);assert.match(r1.doesNot[3],/only SOL that leaves/);
+ // a resumed intent without the mode in its estimate: the configuration's word
+ assert.equal(reviewModel({...tx1,estimate:{networkFeeLamports:10000,accountsLamports:1}},v,me).devBuyNext.sol,'0.01 SOL');
+ assert.equal(reviewModel({...tx1,estimate:{...tx1.estimate,devBuyMode:'same_tx',initialBuyLamports:1e7}},v,me).devBuyNext,null,'the buy inside tx1: no step 2');
+ const tx2={step:2,network:'devnet',feePayer:me,mint:'M1NT',txBase64:'AgME',programs:[{id:'AToken',name:'Associated Token Account',direct:true},{id:'6EF8',name:'pump.fun (bonding curve)',direct:true},{id:'Tokenz',name:'Token-2022',direct:false},{id:'pfee',name:'pump.fun fee sharing',direct:false}],
+  accountsWritable:12,signers:1,launchProgramsOnly:true,txBytes:1033,tokensBase:'10493886257633',costLamports:1e7,maxLamports:10500000,
+  estimate:{phantomSafe:true,devBuyMode:'second_tx',initialBuyLamports:1e7,initialBuyMaxLamports:10500000,initialBuyTokensBase:'10493886257633',networkFeeLamports:5000,accountsLamports:2164080,simulation:{ok:true},signerBalanceLamports:8e8}};
+ const r2=reviewModel(tx2,view('launched',{...LIVE}),me);
+ assert.deepEqual([r2.step,r2.canSign,r2.signers,r2.tokens,r2.devBuyNext],[2,true,1,'10,493,886',null]);
+ assert.deepEqual(r2.cost,{fee:'0.000005 SOL',rent:'0.002164 SOL',buy:'0.01 SOL',buyMax:'0.0105 SOL',total:'0.012169 SOL',simulated:true,balance:'0.8 SOL'});
+ assert.match(r2.doesNot[2],/^Buys exactly 10,493,886 tokens for 0\.01 SOL \(capped at 0\.0105 SOL in the transaction\): if the price moved more than 5% since this quote, it fails and your SOL stays in your wallet\./);
+ assert.match(r2.doesNot[3],/rent of your new token account and the dev buy/);
+ const two=reviewModel({...tx2,signers:2},view('launched',{...LIVE}),me);assert.equal(two.canSign,false);assert.match(two.warnings[0],/signed by your wallet alone/);
+ const rogue=reviewModel({...tx2,launchProgramsOnly:false},view('launched',{...LIVE}),me);assert.match(rogue.warnings[0],/not part of a dev buy/);
+ const resumed=reviewModel({...tx2,estimate:null,resumed:true},view('launched',{...LIVE}),me);assert.deepEqual([resumed.cost.buy,resumed.cost.buyMax,resumed.tokens],['0.01 SOL','0.0105 SOL','10,493,886'],'a resumed attempt: the attempt\'s own numbers');
 });

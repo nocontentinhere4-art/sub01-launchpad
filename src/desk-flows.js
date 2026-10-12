@@ -2,8 +2,10 @@
 // card, the X account states and the plain-words error lines. desk.js draws them.
 // Contracts: GET /api/projects/:slug (owner view: status, submitterApprovedAt, adminClearedAt, requireAdminClearance,
 // allocation{id,status,recipients,statement}, liveSiteVersion, visibility, launchConfig, intent, launch, ledger, x,
-// xConfigured, mockSigningText), POST …/launch/transaction (txBase64, mock, messageHash, review fields: network,
-// feePayer, mint, programs, accountsWritable, signers, launchProgramsOnly, estimate, resumed), /api/me ({user:{wallet,role}}).
+// xConfigured, mockSigningText, devBuy{status,lamports,attempt}), POST …/launch/transaction (txBase64, mock, messageHash,
+// review fields: network, feePayer, mint, programs, accountsWritable, signers, launchProgramsOnly, estimate, resumed),
+// POST …/launch/devbuy/transaction (the same review fields + step:2, tokensBase, maxLamports, mockSigningText),
+// /api/me ({user:{wallet,role}}).
 const str=v=>typeof v==='string'?v.trim():'';
 const num=v=>{if(v==null||v==='')return null;v=Number(v);return Number.isFinite(v)?v:null;};
 export const STAFF=new Set(['admin','reviewer']);
@@ -15,13 +17,32 @@ export const chainFor=network=>{network=str(network).toLowerCase();return networ
 export const pumpfunUrl=(mint,network)=>mint&&/^mainnet/.test(str(network))?`https://pump.fun/coin/${encodeURIComponent(mint)}`:null;
 
 // ---------------------------------------------------------------- the launch stepper
-export const STEP_IDS=['site','approve','clear','launch','live'];
+// 'devbuy' only when the launch has a dev buy as its own second transaction (step 2 of the launch, after tx1 lands).
+export const STEP_IDS=['site','approve','clear','launch','devbuy','live'];
 // The server's stage words (states.js LABELS) for the head chip, which the desk loaded once and the stepper keeps current.
 export const STAGE_LABELS={submitted:'Dropped in his room',evaluating:'SUB-01 is thinking about it',selected:'He wants to build it',declined:'He passed',generating:'He is building it',preview_ready:'Preview ready for your review',
  approved:'Approved by you',launch_prepared:'Launch configuration ready',awaiting_signature:'Waiting for your wallet signature',confirming:'Confirming on-chain',launched:'Launched',failed:'Stopped: needs attention',cancelled:'Cancelled'};
 const RANK={submitted:0,evaluating:0,selected:0,generating:0,preview_ready:1,approved:3,launch_prepared:3,awaiting_signature:3,confirming:3,failed:3,launched:4};
 const BUILDING={submitted:'Dropped in his mailbox; SUB-01 reads it first.',evaluating:'SUB-01 is reading the idea.',selected:'He wants to build it: the site comes next.',generating:'SUB-01 is building the site.'};
 const DEAD=new Set(['cancelled','expired','failed']);
+// Tokens in base units (6 decimals) as a whole-token string: '10493886257633' → '10,493,886'.
+export const tokensText=base=>{const s=str(String(base??''));if(!/^\d+$/.test(s))return null;return (s.length>6?s.slice(0,-6):'0').replace(/\B(?=(\d{3})+(?!\d))/g,',');};
+// pump's TooMuchSolRequired (6002 = 0x1772): the price moved past the cap
+const PRICE_MOVED=/6002|0x1772|TooMuchSolRequired|price moved/i;
+export const DEV_BUY_SLIPPAGE_PCT=5;
+/** Is the dev buy its own second signature? After the launch the server says (devBuy); before it, the configuration
+ *  (devBuyMode) or the intent; a buy with no configuration yet is predicted as two steps (what pump.fun needs today). */
+export function devBuyTwoStep(view){
+ const v=view&&typeof view==='object'?view:{};
+ if(v.devBuy&&typeof v.devBuy==='object')return true;
+ if(v.launch&&typeof v.launch==='object')return false;
+ const buy=num(v.launchConfig?.initialBuyLamports)??num(v.launchOptions?.initialBuyLamports)??0;
+ if(!(buy>0))return false;
+ const mode=str(v.intent?.dev_buy_mode)||str(v.launchConfig?.devBuyMode);
+ return mode?mode==='second_tx':true;
+}
+/** The note before step 1 when the buy is a second signature. */
+export const devBuyNote=sol=>`Your dev buy${sol?` of ${sol}`:''} is a second signature right after the launch. If the price moves more than ${DEV_BUY_SLIPPAGE_PCT}% first, it does not go through and you keep your SOL.`;
 // The split rows the steps and the review card show: the approved/locked allocation, or the launch config's copy.
 export function splitRows(view){
  const fs=view?.launchConfig?.feeSharing,rows=Array.isArray(fs?.recipients)?fs.recipients:Array.isArray(view?.allocation?.recipients)?view.allocation.recipients:[];
@@ -56,17 +77,37 @@ export function launchSteps(view,me){
  if(needClear)steps.push({id:'clear',title:'Reviewer clearance',state:!needClear?'done':stopped?'todo':cleared||rank>=3?'done':status==='preview_ready'&&approvedByYou?'current':'todo',
   line:!needClear?'Not required on this server.':cleared||rank>=3?'Cleared by a SUBZERONE reviewer.':canClear?'A reviewer clears it for launch; the author cannot clear their own.':staff&&own&&status==='preview_ready'?'You are a reviewer, but not of your own project: another reviewer clears it.':approvedByYou?'Waiting for a SUBZERONE reviewer to clear it for launch.':'A reviewer clears it after your approval.',
   action:canClear?{id:'clear',label:'Clear for launch',enabled:true}:null,note:''});
- // 4 launch
+ // 4 launch (step 1 of 2 when the dev buy is its own transaction)
  const intent=v.intent&&typeof v.intent==='object'?v.intent:null,lastDead=intent&&DEAD.has(str(intent.status))?str(intent.error):'';
+ const twoStep=devBuyTwoStep(v),buyL=num(v.devBuy?.lamports)??num(v.launchConfig?.initialBuyLamports)??num(v.launchOptions?.initialBuyLamports)??0,buySol=solText(buyL);
  let phase=null,line='',action=null,lnote='';
  if(status==='approved'){phase='preparing';line='SUB-01 is preparing the launch configuration…';}
- else if(status==='launch_prepared'){phase='prepare';line=mock?'MOCK provider: a labelled stand-in, nothing goes on-chain. Prepare it to see the review.':'Builds the exact transaction. You review it here before the wallet opens; nothing is sent until you sign.';action={id:'prepare',label:'Prepare the transaction',enabled:owner};lnote=lastDead?`Last attempt: ${lastDead}. Nothing was created.`:note&&/expired|failed|rejected|cancel/i.test(note)?note:'';}
+ else if(status==='launch_prepared'){phase='prepare';line=mock?'MOCK provider: a labelled stand-in, nothing goes on-chain. Prepare it to see the review.':twoStep?'Step 1 of 2: builds the launch transaction (the coin and its locked split). You review it here before the wallet opens; nothing is sent until you sign.':'Builds the exact transaction. You review it here before the wallet opens; nothing is sent until you sign.';action={id:'prepare',label:'Prepare the transaction',enabled:owner};lnote=lastDead?`Last attempt: ${lastDead}. Nothing was created.`:note&&/expired|failed|rejected|cancel/i.test(note)?note:twoStep?devBuyNote(buySol):'';}
  else if(status==='awaiting_signature'){phase='resume';line='A transaction is waiting for your signature: the same one you reviewed.';action={id:'resume',label:'Review & sign',enabled:owner};}
  else if(status==='confirming'){phase='confirming';line='Confirming on-chain… the network decides, not the server.';}
  else if(status==='failed'){phase='failed';line=note||'Stopped: needs attention. A SUBZERONE admin has been alerted.';}
  else if(rank>=4){phase='done';line=mock?'Recorded by the MOCK provider.':`Verified on ${str(v.launch?.network)||'chain'}.`;}
  else line=needClear?'After the reviewer clears it.':'After your approval.';
  steps.push({id:'launch',title:'Launch on pump.fun',state:status==='failed'?'blocked':rank>=4?'done':rank===3?'current':'todo',line,action,note:lnote});
+ // 4b the dev buy as its own transaction: right after tx1 confirms, one more signature (or skip)
+ let devBuy=null;
+ if(twoStep){
+  const d=v.devBuy&&typeof v.devBuy==='object'?v.devBuy:null,dst=str(d?.status)||'planned',a=d?.attempt&&typeof d.attempt==='object'?d.attempt:null,err=str(a?.error);
+  const landedBad=/^landed:/.test(err),moved=PRICE_MOVED.test(err),tokens=tokensText(a?.tokensBase);
+  let dline='',dstate='todo',dact=null,dsec=null,dnote='',dphase=dst;
+  if(rank<4||!d){dline=`Step 2 of 2, right after the launch: one more signature buys ${buySol||'your dev buy'} of your coin at the price then (capped at the quote + ${DEV_BUY_SLIPPAGE_PCT}%).`;dphase='planned';}
+  else if(dst==='pending'){dstate='current';dline=`The coin is live. Step 2: buy ${buySol} of it with one more signature, at the price now (capped at the quote + ${DEV_BUY_SLIPPAGE_PCT}%).`;dact={id:'devbuy',label:'Buy with your wallet',enabled:owner};dsec=owner?{id:'devbuy-skip',label:'Skip the dev buy'}:null;
+   dnote=a&&(a.status==='expired'||a.status==='cancelled')&&err&&!/skipped/.test(err)?`Last attempt: ${err.replace(/^before signing: /,'')}. Nothing was bought.`:'';}
+  else if(dst==='awaiting_signature'){dstate='current';dline='Your dev buy is waiting for your signature: the same one you reviewed.';dact={id:'devbuy',label:'Review & buy',enabled:owner};dsec=owner?{id:'devbuy-skip',label:'Skip the dev buy'}:null;}
+  else if(dst==='submitted'){dstate='current';dline='Signed · buying… the network decides, not the server.';}
+  else if(dst==='failed'&&landedBad){dstate='blocked';dline='The dev buy landed but did not match what you reviewed. A SUBZERONE admin has been alerted.';}
+  else if(dst==='failed'){dstate='current';dline=moved?`Did not go through: the price moved more than ${DEV_BUY_SLIPPAGE_PCT}% first. Your SOL stayed in your wallet (only the network fee was paid).`:`Did not go through${err?` (${err.replace(/^preflight: /,'').slice(0,120)})`:''}. Nothing was bought.`;
+   dact={id:'devbuy',label:'Try again at the new price',enabled:owner};dsec=owner?{id:'devbuy-skip',label:'Skip the dev buy'}:null;}
+  else if(dst==='done'){dstate='done';dline=`Bought${tokens?` ${tokens} tokens`:''} for ${solText(num(a?.costLamports)??buyL)} · in your wallet.`;}
+  else if(dst==='skipped'){dstate='done';dline='Skipped: nothing was bought.';}
+  devBuy={status:dst,phase:dphase,lamports:buyL,sol:buySol,attempt:a};
+  steps.push({id:'devbuy',title:`Dev buy${buySol?` · ${buySol}`:''}`,state:dstate,line:dline,action:dact,secondary:dsec,note:dnote});
+ }
  // 5 live
  const launch=v.launch&&typeof v.launch==='object'?v.launch:null,mint=str(launch?.mint)||(rank>=4?str(intent?.mint):''),network=str(launch?.network||v.launchConfig?.network);
  const ledger=v.ledger&&typeof v.ledger==='object'?v.ledger:null,accrued=num(ledger?.verifiedAccruedLamports),paid=num(ledger?.confirmedPayoutsLamports);
@@ -74,7 +115,7 @@ export function launchSteps(view,me){
   ledger:ledger?accrued==null?'Creator fees: nothing observed on-chain yet.':`Creator fees: ${solText(accrued)} accrued · ${solText(paid||0)} paid out${ledger.locked?' · split locked':''}.`:null}:null;
  steps.push({id:'live',title:'Live',state:rank>=4?'current':'todo',line:rank>=4?(mock?'Launched on the MOCK provider: no token exists on-chain.':`Launched. ${live.ledger||''}`.trim()):'The token, its page and the fee ledger.',action:null,note:''});
  const current=stopped?'stopped':steps.find(s=>s.state==='current')?.id||(status==='failed'?'launch':null);
- return {...base,loading:false,status,owner,current,stopped,mock,steps,split,phase,publicIdea,
+ return {...base,loading:false,status,owner,current,stopped,mock,steps,split,phase,publicIdea,devBuy,
   approve:v.allocation?{allocationId:str(v.allocation.id),statement:str(v.allocation.statement),siteVersion,ideaId:str(v.ideaId)}:null,live};
 }
 // Step numbers follow the steps actually shown: without the reviewer step (REQUIRE_ADMIN_CLEARANCE=0) they run 1-4.
@@ -88,7 +129,7 @@ export const stepIndex=(id,steps=null)=>{const ids=Array.isArray(steps)?steps.ma
 export const DEV_BUY_MAX_SOL=5,DEV_BUY_MIN_SOL=0.001,DEV_BUY_STEP=0.01;
 /** Where the field goes: on the open step while the author can still change it (approve, clearance wait, launch), and
  *  on the launch step read-only once a transaction exists; never on the live step or while the review card is open. */
-export const showDevBuyOn=(dev,stepId,reviewing=false)=>!!dev&&stepId!=='live'&&stepId!=='site'&&(dev.editable||stepId==='launch')&&!(stepId==='launch'&&reviewing);
+export const showDevBuyOn=(dev,stepId,reviewing=false)=>!!dev&&stepId!=='live'&&stepId!=='site'&&stepId!=='devbuy'&&(dev.editable||stepId==='launch')&&!(stepId==='launch'&&reviewing);
 const DEV_BUY_STATES=new Set(['preview_ready','approved','launch_prepared','awaiting_signature','confirming']);   // from the approve step on (the owner never saw it inside step 4)
 /** devBuyModel(view) -> null (not the owner's, or not at the launch step) | {sol, text, max, step, locked, editable, note, lockNote, reprepares} */
 export function devBuyModel(view){
@@ -98,7 +139,7 @@ export function devBuyModel(view){
  const max=Math.min(DEV_BUY_MAX_SOL,maxL==null?DEV_BUY_MAX_SOL:Math.max(0,maxL/1e9));
  const inFlight=status==='awaiting_signature'||status==='confirming',locked=o.locked===true||inFlight,editable=o.editable!==false&&!locked;
  return {sol:lamports/1e9,text:solText(lamports),max,step:DEV_BUY_STEP,locked,editable,
-  note:`Optional: SOL you spend on your own coin in the same transaction that creates it. pump.fun's trading fee applies; the tokens land in your wallet. 0 = no buy, at most ${max} SOL.`,
+  note:`Optional: SOL you spend on your own coin right after it is created, with a second signature (step 2). pump.fun's trading fee applies; the tokens land in your wallet; if the price moves more than ${DEV_BUY_SLIPPAGE_PCT}% first, it does not go through. 0 = no buy, at most ${max} SOL.`,
   lockNote:locked?(status==='confirming'?'A transaction is in flight; it cannot change now.':'Cancel the transaction to change it.'):'',
   reprepares:status==='launch_prepared'};
 }
@@ -117,26 +158,38 @@ export function parseDevBuy(value,max=DEV_BUY_MAX_SOL){
 // 'Associated Token Account': the dev buy creates the author's own token account (the SPL/Token-2022 programs are only
 // ever passed inside, never called directly).
 export const LAUNCH_PROGRAMS=new Set(['pump.fun (bonding curve)','pump.fun fee sharing','Compute Budget','Associated Token Account','MockLaunch']);
-/** reviewModel(tx, view, wallet) -> the card: rows, flagged programs, cost, split, canSign and the warnings that disable Sign. */
+/** reviewModel(tx, view, wallet) -> the card: rows, flagged programs, cost, split, canSign and the warnings that disable Sign.
+ *  step: 1 (the launch) or 2 (the dev buy as its own transaction: tx.step === 2); devBuyNext: on step 1, the buy that
+ *  follows as a second signature ({sol, maxSol}) or null. */
 export function reviewModel(tx,view,wallet){
  if(!tx||typeof tx!=='object')return null;
- const only=tx.launchProgramsOnly===true,you=!!str(wallet)&&str(tx.feePayer)===str(wallet),mock=tx.mock===true;
+ const only=tx.launchProgramsOnly===true,you=!!str(wallet)&&str(tx.feePayer)===str(wallet),mock=tx.mock===true,step=num(tx.step)===2?2:1;
  const programs=(Array.isArray(tx.programs)?tx.programs:[]).map(p=>{const name=str(p?.name)||'unknown program',direct=p?.direct!==false;
   return {id:str(p?.id),name,direct,flag:/unknown/i.test(name)||(direct&&!LAUNCH_PROGRAMS.has(name))};});
  // the dev buy: the built transaction's estimate (quoted cost, fees included) or, on a resumed intent, the configuration
- const e=tx.estimate&&typeof tx.estimate==='object'?tx.estimate:{},fee=num(e.networkFeeLamports),rent=num(e.accountsLamports),eb=num(e.initialBuyLamports),buy=Math.max(0,(eb!=null?eb:num(view?.launchConfig?.initialBuyLamports))||0),buyMax=num(e.initialBuyMaxLamports);
- const total=fee!=null&&rent!=null?fee+rent+buy:mock?0:null;
+ // (step 1 of a two-step launch: the estimate says 0, the buy is step 2)
+ const e=tx.estimate&&typeof tx.estimate==='object'?tx.estimate:{},fee=num(e.networkFeeLamports),rent=num(e.accountsLamports),eb=num(e.initialBuyLamports);
+ // the server's word: the estimate's devBuyMode, else the intent's or the configuration's (an older estimate: same tx)
+ const second=step===1&&(e.devBuyMode!=null?str(e.devBuyMode)==='second_tx':[view?.intent?.dev_buy_mode,view?.launchConfig?.devBuyMode].some(m=>str(m)==='second_tx'));
+ const buy=second?0:Math.max(0,(eb!=null?eb:step===2?num(tx.costLamports):num(view?.launchConfig?.initialBuyLamports))||0),buyMax=num(e.initialBuyMaxLamports)??(step===2?num(tx.maxLamports):null);
+ const next=second?(()=>{const d=e.devBuy&&typeof e.devBuy==='object'?e.devBuy:{},l=num(d.requestedLamports)??num(view?.launchConfig?.initialBuyLamports)??0;return l>0?{sol:solText(l),maxSol:solText(num(d.maxLamports)),tokens:tokensText(d.tokensBase),note:devBuyNote(solText(l))}:null;})():null;
+ const total=fee!=null&&rent!=null?fee+rent+buy:mock?0:null,tokens=step===2?tokensText(e.initialBuyTokensBase??tx.tokensBase):null;
  const warnings=[];
  if(!you)warnings.push('The fee payer is not your signed-in wallet. Do not sign.');
- if(!only)warnings.push('This transaction calls a program that is not part of a launch. Do not sign it; tell a SUBZERONE admin.');
+ if(!only)warnings.push(`This transaction calls a program that is not part of a ${step===2?'dev buy':'launch'}. Do not sign it; tell a SUBZERONE admin.`);
+ if(step===2&&num(tx.signers)!=null&&num(tx.signers)!==1)warnings.push('The dev buy is signed by your wallet alone; this one asks for another signer. Do not sign it.');
  if(e.simulation&&e.simulation.ok===false&&!mock)warnings.push(`The simulation failed: ${str(e.simulation.err)||'unknown reason'}. The network would reject it.`);
  const split=splitRows(view);
- return {mock,resumed:tx.resumed===true,network:str(tx.network)||(mock?'mock':'unknown'),feePayer:str(tx.feePayer),you,mint:str(tx.mint),programs,flagged:programs.some(p=>p.flag)||!only,
-  writable:num(tx.accountsWritable)??0,signers:num(tx.signers)??1,bytes:num(tx.txBytes),validUntil:num(tx.lastValidBlockHeight),
+ const capped=buyMax!=null&&buyMax>buy?` (capped at ${solText(buyMax)} in the transaction)`:'';
+ const doesNot=step===2?['No token approvals or delegations.','No token transfers from your wallet.',
+   `Buys ${tokens?`exactly ${tokens} tokens`:'your coin'} for ${solText(buy)}${capped}: if the price moved more than ${DEV_BUY_SLIPPAGE_PCT}% since this quote, it fails and your SOL stays in your wallet.`,
+   mock?'Nothing leaves your wallet: you sign a labelled text message.':`The SOL that leaves your wallet: the network fee, the rent of your new token account and the dev buy${capped}.`]
+  :['No token approvals or delegations.','No token transfers from your wallet.',buy>0?`Your dev buy of ${solText(buy)} is included: you pay it and the tokens land in your wallet.`:next?`No buy in this transaction: your dev buy of ${next.sol} is step 2, a second signature right after.`:'No initial buy.',
+   mock?'Nothing leaves your wallet: you sign a labelled text message.':buy>0?`The SOL that leaves your wallet: the network fee, the rent for the new accounts and the dev buy${capped}.`:'The only SOL that leaves your wallet is the network fee and the rent for the new accounts.'];
+ return {mock,step,resumed:tx.resumed===true,network:str(tx.network)||(mock?'mock':'unknown'),feePayer:str(tx.feePayer),you,mint:str(tx.mint),programs,flagged:programs.some(p=>p.flag)||!only,
+  writable:num(tx.accountsWritable)??0,signers:num(tx.signers)??1,bytes:num(tx.txBytes),validUntil:num(tx.lastValidBlockHeight),tokens,devBuyNext:next,
   cost:{fee:solText(fee),rent:solText(rent),buy:buy>0?solText(buy):null,buyMax:buy>0&&buyMax!=null&&buyMax>buy?solText(buyMax):null,total:solText(total)??(mock?'0 SOL':'unknown'),simulated:e.simulation?.ok===true&&!e.simulation?.mock,balance:solText(e.signerBalanceLamports)},
-  split,canSign:you&&only&&warnings.length===0&&!!(mock?tx.messageHash:tx.txBase64),warnings,
-  doesNot:['No token approvals or delegations.','No token transfers from your wallet.',buy>0?`Your dev buy of ${solText(buy)} is included: you pay it and the tokens land in your wallet.`:'No initial buy.',
-   mock?'Nothing leaves your wallet: you sign a labelled text message.':buy>0?`The SOL that leaves your wallet: the network fee, the rent for the new accounts and the dev buy${buyMax!=null&&buyMax>buy?` (capped at ${solText(buyMax)} in the transaction)`:''}.`:'The only SOL that leaves your wallet is the network fee and the rent for the new accounts.']};
+  split,canSign:you&&only&&warnings.length===0&&!!(mock?tx.messageHash:tx.txBase64),warnings,doesNot};
 }
 
 // ---------------------------------------------------------------- the X account
@@ -166,6 +219,7 @@ const CODES={sub01_wallet_missing:"SUB-01's fee wallet is not configured on the 
  paused:'Launches are paused right now. Try later.',previous_open:'The previous transaction could still land. Wait a minute and try again.',previous_landed:'An earlier transaction landed after all; it is being verified instead.',
  intent_exists:'A launch attempt is already in progress.',config_changed:'The launch configuration changed; it is being prepared again.',already_launched:'This project is already launched.',
  landed_unverified:'An earlier transaction landed but failed verification; an admin must resolve it first.',no_intent:'No transaction is waiting for a signature.',not_signer:'This wallet is not the one the transaction was built for.',
+ no_dev_buy:'This launch has no separate dev buy.',not_launched:'The coin is not launched yet: the dev buy comes right after the launch.',no_curve:'The coin is not visible on the network yet. Try again in a few seconds.',
  not_owner:'Only the author can do this.',own_project:'A reviewer cannot clear their own project.',forbidden:'Only a SUBZERONE reviewer can do this.',sign_in:'Sign in with your wallet first.',
  rejected:'The network rejected the transaction before it ran. Nothing was created.',bad_signed_tx:'The wallet returned something other than the reviewed transaction. Nothing was sent.',
  x_not_configured:'X is not connected to this server yet.',x_not_connected:'Connect the X account first.',bad_text:'A post is 1–280 characters.',rate_limited:'Slow down a little.',not_found:'Not found, or not yours.'};
