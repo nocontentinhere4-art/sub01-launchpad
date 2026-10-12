@@ -1,6 +1,6 @@
 import {appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows} from '../src/desk-flows.js';
 import {devBuyTwoStep,devBuyNote,tokensText} from '../src/desk-flows.js';
-import {profileKit,stepIndex,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,TOOL_MAX} from '../src/desk-flows.js';
+import {profileKit,stepIndex,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,trustCount,TOOL_MAX,TRUST_GROUP} from '../src/desk-flows.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {deskModel,hasDesk,tabsFor,siteFor,screenCard,switcherItems,welcomeText,safeHref,SANDBOX,SCREEN_ITEMS} from '../src/desk.js';
@@ -257,6 +257,24 @@ test('toggleTool / setField / toolsProblem: one extra at a time, at most six, th
  const many=rows.map(r=>({...r,on:true}));
  assert.ok(toolsCount(many)>TOOL_MAX);assert.match(toolsProblem(many),/At most 6 tools/);
  assert.match(toolsProblem(rows.map(r=>({...r,on:r.id==='token'||r.kind==='extra'}))),/One idea-specific tool at a time/);
+});
+
+test('holder tools (kind trust): their own group after the extras, never counted toward the six, saved like any tool',()=>{
+ const TRUST=['trades','holders','devwatch','fees','alerts'];
+ const view={...TOOLS_VIEW,catalog:{...CATALOG,...Object.fromEntries(TRUST.map(id=>[id,{name:id,line:'chain',kind:'trust',fields:[]}]))},
+  tools:[...TOOLS_VIEW.tools,...TRUST.map(id=>({id,config:{}}))]};
+ let rows=toolsModel(view).rows;
+ assert.deepEqual(rows.map(r=>r.kind),[...Array(5).fill('generic'),...Array(3).fill('extra'),...Array(5).fill('trust')]);
+ assert.deepEqual(rows.filter(r=>r.kind==='trust').map(r=>[r.id,r.on]),TRUST.map(id=>[id,true]));
+ for(const id of ['wall','poll','event'])rows=toggleTool(rows,id,true);
+ rows=setField(rows,'poll','question','Best snack?');rows=setField(rows,'poll','options','Onigiri',0);rows=setField(rows,'poll','options','Oden',1);
+ assert.deepEqual([toolsCount(rows),trustCount(rows)],[6,5],'six site tools plus the five chain tools');
+ assert.equal(toolsProblem(rows),'','eleven switches on: still fine');
+ assert.match(toolsProblem(toggleTool(rows,'game',false).map(r=>r.id==='chart'?{...r,on:true}:r).map(r=>r.kind==='generic'||r.id==='chart'?{...r,on:true}:r)),/^At most 6 tools on one site/);
+ assert.equal(toolsProblem(toggleTool(rows,'fees',false)),'');assert.equal(trustCount(toggleTool(rows,'fees',false)),4);
+ assert.deepEqual(toolsPayload(rows).tools.map(t=>t.id).slice(-5),TRUST,'the chain tools are saved with the rest');
+ assert.equal(toolsModel({...view,catalog:{...view.catalog,trades:{name:'x',kind:'weird',fields:[]}}}).rows.find(r=>r.id==='trades').kind,'generic','unknown kinds stay generic');
+ assert.match(TRUST_GROUP,/^Check the chain/);
 });
 
 test('toolsPayload: the enabled tools in order with the filled fields; empty ones left to SUB-01; a one-off date drops the daily time',()=>{

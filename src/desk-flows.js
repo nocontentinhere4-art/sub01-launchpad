@@ -253,17 +253,21 @@ export function profileKit(p,xm){
 // Contract (backend docs/SITE-KIT.md, docs/CITY-API.md "Site tools"): GET /api/projects/:slug/tools → {editable, lockedNote,
 // tools:[{id,config}], catalog:{id:{name,line,kind,lib,fields:[{key,label,type,max,min,count,choices}]}}, libs, holderChecks,
 // inbox:{drop,wall,map,poll}}; PUT …/tools {tools:[{id,config}]} (the enabled ones, in order); POST …/tools/entries/:id {hidden}|{featured}.
-export const TOOL_MAX=6;
+export const TOOL_MAX=6;   // the site's own tools; the holder tools (catalog kind 'trust') come on top and never count
+export const TRUST_GROUP='Check the chain (always on for launched coins)';
 const HHMM=/^([01]\d|2[0-3]):[0-5]\d$/,LOCAL=/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
 const fieldValue=(f,v)=>f.type==='bool'?v===true:f.type==='options'?Array.from({length:Math.max(2,num(f.count)||4)},(_,i)=>str(Array.isArray(v)?v[i]:'')):v==null?'':String(v);
-/** toolsModel(view) -> {loading, editable, lockedNote, holderNote, rows:[{id,name,line,kind,lib,on,fields:[{key,label,type,value,…}]}], inbox:{drop,wall,map}, poll} */
+/** toolsModel(view) -> {loading, editable, lockedNote, holderNote, rows:[{id,name,line,kind,lib,on,fields:[{key,label,type,value,…}]}], inbox:{drop,wall,map}, poll}
+ * kind: 'generic' | 'extra' | 'trust' (the holder tools: trades, holders, dev watch, fees, alerts; real chain data, backend docs/SITE-KIT.md).
+ * Order: generic, then extras, then the trust group. */
+const KIND_ORDER={generic:0,extra:1,trust:2};
 export function toolsModel(view){
  const v=view&&typeof view==='object'?view:null;
  if(!v||!v.catalog||typeof v.catalog!=='object')return {loading:!v,editable:false,lockedNote:'',holderNote:'',rows:[],inbox:{drop:[],wall:[],map:[]},poll:null};
  const on=new Map((Array.isArray(v.tools)?v.tools:[]).filter(t=>t&&typeof t.id==='string').map(t=>[t.id,t.config&&typeof t.config==='object'?t.config:{}]));
- const rows=Object.entries(v.catalog).filter(([,c])=>c&&typeof c==='object').map(([id,c])=>({id,name:str(c.name)||id,line:str(c.line),kind:c.kind==='extra'?'extra':'generic',
+ const rows=Object.entries(v.catalog).filter(([,c])=>c&&typeof c==='object').map(([id,c])=>({id,name:str(c.name)||id,line:str(c.line),kind:c.kind==='extra'?'extra':c.kind==='trust'?'trust':'generic',
   lib:str(v.libs?.[c.lib]?.name)||null,on:on.has(id),fields:(Array.isArray(c.fields)?c.fields:[]).filter(f=>f&&str(f.key)).map(f=>({...f,value:fieldValue(f,on.get(id)?.[f.key])}))}))
-  .sort((a,b)=>(a.kind==='extra')-(b.kind==='extra'));
+  .sort((a,b)=>KIND_ORDER[a.kind]-KIND_ORDER[b.kind]);
  const entries=(xs,tool)=>(Array.isArray(xs)?xs:[]).filter(e=>e&&str(e.id)).slice(0,50).map(e=>({id:str(e.id),tool,text:str(e.text).slice(0,500),at:num(e.at),by:str(e.by)||null,hidden:e.hidden===true,featured:e.featured===true,
   featuredBy:str(e.featuredBy)||null}));
  const p=v.inbox?.poll;
@@ -278,10 +282,10 @@ export function toggleTool(rows,id,on){
  return rows.map(x=>x.id===id?{...x,on:!!on}:on&&r.kind==='extra'&&x.kind==='extra'?{...x,on:false}:x);
 }
 export const setField=(rows,id,key,value,index=null)=>rows.map(r=>r.id!==id?r:{...r,fields:r.fields.map(f=>f.key!==key?f:{...f,value:index==null?value:f.value.map((v,i)=>i===index?value:v)})});
-/** The plain-words problem with the current switches, or '' when they can be saved. */
+/** The plain-words problem with the current switches, or '' when they can be saved. The trust tools never count toward TOOL_MAX. */
 export function toolsProblem(rows){
  const on=rows.filter(r=>r.on),val=(r,k)=>r.fields.find(f=>f.key===k)?.value;
- if(on.length>TOOL_MAX)return `At most ${TOOL_MAX} tools on one site.`;
+ if(on.filter(r=>r.kind!=='trust').length>TOOL_MAX)return `At most ${TOOL_MAX} tools on one site (the chain tools do not count).`;
  if(on.filter(r=>r.kind==='extra').length>1)return 'One idea-specific tool at a time (map, sound toy, mini-game or chart).';
  for(const r of on){
   for(const f of r.fields){const v=f.value;
@@ -309,7 +313,9 @@ export function toolsPayload(rows){
   if(r.id==='event'&&config.at)delete config.daily;
   return {id:r.id,config};})};
 }
-export const toolsCount=rows=>rows.filter(r=>r.on).length;
+/** The site's own tools switched on (what TOOL_MAX limits); trustCount: the holder tools switched on. */
+export const toolsCount=rows=>rows.filter(r=>r.on&&r.kind!=='trust').length;
+export const trustCount=rows=>rows.filter(r=>r.on&&r.kind==='trust').length;
 
 // ---------------------------------------------------------------- the idea app (the Site tab's Tools panel, App section, owner only)
 // Contract (backend docs/APP-COMPOSER.md): GET /api/projects/:slug/app → {editable, app|null, summary, blocks, templates, metrics, inbox:[{id,number,text,

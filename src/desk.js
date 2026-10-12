@@ -3,7 +3,7 @@ import {icon,tile} from './icons.js';
 import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
 import {verdictModel,renderVerdict} from './verdict.js';
-import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,
+import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,trustCount,TRUST_GROUP,
  appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS} from './desk-flows.js';
 export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn} from './desk-flows.js';
 import {solText,splitRows} from './desk-flows.js';
@@ -266,8 +266,9 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
  }
  function drawTools(root,m,{note=''}={}){
   const p=cur,slug=encodeURIComponent(p.slug);let rows=m.rows;
-  const err=el('p',{className:'pc-err'}),ok=el('p',{className:'pc-note pc-ok',textContent:note}),list=el('ul',{className:'pc-tools-list'});
-  const check=()=>{err.textContent=toolsProblem(rows);save.disabled=!m.editable||!!err.textContent;count.textContent=`${toolsCount(rows)} on`;};
+  const err=el('p',{className:'pc-err'}),ok=el('p',{className:'pc-note pc-ok',textContent:note}),list=el('ul',{className:'pc-tools-list'}),trustList=el('ul',{className:'pc-tools-list'});
+  const trustCountEl=el('span',{className:'pc-chip'});
+  const check=()=>{err.textContent=toolsProblem(rows);save.disabled=!m.editable||!!err.textContent;count.textContent=`${toolsCount(rows)} on`;trustCountEl.textContent=`${trustCount(rows)} on`;};
   const fieldEl=(r,f)=>{
    const set=(v,i=null)=>{rows=setField(rows,r.id,f.key,v,i);check();};
    if(f.type==='bool'){const c=el('input',{type:'checkbox',checked:f.value===true,disabled:!m.editable});c.onchange=()=>set(c.checked);return el('label',{className:'pc-tool-f is-bool'},c,el('span',{textContent:f.label}));}
@@ -287,7 +288,10 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
      el('strong',{textContent:r.name}),r.kind==='extra'?el('span',{className:'pc-chip',textContent:r.lib?`idea-specific · ${r.lib}`:'idea-specific'}):null,el('span',{className:'pc-note',textContent:r.line})),sw),
     r.on&&r.fields.length?el('div',{className:'pc-tool-fields'},...r.fields.map(f=>fieldEl(r,f))):null);
   };
-  const draw=()=>{list.replaceChildren(...rows.map(rowEl));check();};
+  const draw=()=>{list.replaceChildren(...rows.filter(r=>r.kind!=='trust').map(rowEl));trustList.replaceChildren(...rows.filter(r=>r.kind==='trust').map(rowEl));check();};
+  // the holder tools: their own group, outside the six (real chain data: trades, holders, the dev, the fees, alerts)
+  const trust=rows.some(r=>r.kind==='trust')?el('section',{className:'pc-inbox pc-trust'},el('div',{className:'pc-tools-head'},el('h4',{textContent:TRUST_GROUP}),trustCountEl),
+   el('p',{className:'pc-note',textContent:'Read from the chain for every visitor: live trades, holders, the dev wallet, the fee split and alerts. They do not count toward the six tools; before the launch the site says they go live at launch. Switch one off and it leaves the site.'}),trustList):null;
   const count=el('span',{className:'pc-chip'});
   const save=btn('button-dark button-sm','Save tools',async()=>{busy(save,true);ok.textContent='';
    try{const r=await api(`/api/projects/${slug}/tools`,{method:'PUT',body:toolsPayload(rows)});
@@ -306,7 +310,7 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
    el('ul',{className:'pc-entries'},...m.poll.options.map((o,i)=>el('li',{className:'pc-entry'},el('span',{className:'pc-entry-t',textContent:o}),el('small',{textContent:String(m.poll.counts[i]||0)}))))):null;
   draw();
   root.replaceChildren(...[el('div',{className:'pc-tools-head'},el('h4',{textContent:'Tools on the site'}),count,save),
-   m.lockedNote&&!m.editable?el('p',{className:'pc-note',textContent:m.lockedNote}):null,m.holderNote?el('p',{className:'pc-note',textContent:m.holderNote}):null,err,ok,list,
+   m.lockedNote&&!m.editable?el('p',{className:'pc-note',textContent:m.lockedNote}):null,m.holderNote?el('p',{className:'pc-note',textContent:m.holderNote}):null,err,ok,list,trust,
    box('Drop box · private until you feature one','Only you see these. Feature one and it shows on the site as today\'s pick; if you do not, the daily rule picks one at the reveal time.',m.inbox.drop),
    box('Wall','',m.inbox.wall),box('Map pins','',m.inbox.map),poll].filter(Boolean));   // replaceChildren would print a null
  }
