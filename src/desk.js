@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {icon,tile} from './icons.js';
 import {api,short,b58encode} from './api.js';
 import {lastWallet,signMessage,signTransaction,describeError} from './wallet.js';
-import {verdictModel,renderVerdict,cleanBuild,buildModel,renderBuild,serverNow} from './verdict.js';
+import {verdictModel,renderVerdict,cleanBuild,buildModel,renderBuild,serverNow,fidelityModel,renderFidelity} from './verdict.js';
 import {launchSteps,stepIndex,reviewModel,xModel,xChip,explainError,chainFor,X_WAIT_MS,X_POLL_MS,STAGE_LABELS,profileKit,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn,toolsModel,toggleTool,setField,toolsProblem,toolsPayload,toolsCount,trustCount,TRUST_GROUP,
  appModel,appSetCopy,appSetField,appAddField,appRemoveField,appSetSchedule,appSetCard,appProblem,appPayload,appInboxRows,APP_TEMPLATES,APP_FIELD_KINDS,REVEAL_WORDS,qaModel,kitArt,rewriteModel} from './desk-flows.js';
 export {launchSteps,reviewModel,xModel,xChip,explainError,solText,splitRows,devBuyModel,parseDevBuy,showDevBuyOn,artModel,showArtOn,kitArt,rewriteModel} from './desk-flows.js';
@@ -224,7 +224,7 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
   if(!s.src)return [headRow(cur),el('div',{className:'pc-empty'},el('strong',{},icon('wrench'),s.empty),el('p',{textContent:model.mine?'The site appears here as soon as SUB-01 builds the first version.':'Come back later: the site goes up when it is built.'}))];
   const tools=model.mine&&siteView==='tools';
   const toggle=model.mine?el('button',{className:'pc-link pc-tools-toggle',type:'button',textContent:tools?'← Back to the site':'Tools',onclick:()=>{siteView=tools?'site':'tools';show('site');}}):null;
-  return [headRow(cur,bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),toggle,ext(s.open,'Open in a new tab ↗'))),model.mine?qaPane(cur):null,
+  return [headRow(cur,bar(el('span',{className:'pc-url',textContent:s.preview?'Preview · '+(cur.siteUrl||'not public yet'):s.src}),toggle,ext(s.open,'Open in a new tab ↗'))),model.mine?qaPane(cur):null,model.mine?fitPane(cur):null,
    model.mine&&!tools?sidePanel(cur):null,tools?toolsPane():frame(s.src,s.sandbox,`${cur.name}: website`)].filter(Boolean);}
 
  // ---------------- beside the preview (owner, until a launch transaction exists): the logo pick and "Ask SUB-01 to
@@ -248,6 +248,18 @@ export function openComputer({model,project=null,ownerName='',me=null,onIdea=nul
     m.line?el('p',{className:'pc-note pc-rewrite-line',textContent:m.line}):null,err].filter(Boolean));};
   const poll=async()=>{try{const v=await api(`/api/projects/${slug}/rewrite`);if(alive(e)&&tab==='site')draw(v);}catch(x){if(alive(e))err.textContent=explainError(x);}};
   poll();
+  return root;
+ }
+
+ // ---------------- "Missing from your idea" (owner): what SUB-01 could not build yet, from the project view's `fidelity`
+ // (backend fidelity.js). Empty when the build is all of the idea; folded open when something core is missing.
+ function fitPane(p){
+  const root=el('details',{className:'pc-fit'}),e=epoch;root.hidden=true;
+  load(p.slug).then(view=>{if(!alive(e))return;const fm=fidelityModel(view?.fidelity);if(!fm||fm.verdict==='match')return;
+   root.hidden=false;root.open=fm.verdict==='missing';root.classList.add('is-'+fm.verdict);
+   const n=fm.missing.length+fm.partial.length;
+   root.replaceChildren(el('summary',null,el('i',{className:'pc-qa-dot'}),el('span',{textContent:fm.verdict==='missing'?`Missing from your idea · ${fm.missing.length}`:`Only part of your idea · ${n}`})),
+    renderFidelity(el('div',{className:'fit pc-fit-body'}),fm,{title:'SUB-01, on your idea'}));}).catch(()=>{});
   return root;
  }
 

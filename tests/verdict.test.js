@@ -113,7 +113,7 @@ test('build: labels',()=>{
  assert.equal(queueLine({state:'queued',now:T,queue:{position:2,startsInSeconds:60}},T),'2nd in line, starts in ~1 min');
  assert.equal(queueLine({state:'queued',now:T,queue:{position:1,startsInSeconds:2}},T),'Next in line, starts in a moment');
  assert.equal(queueLine({state:'retrying',now:T,queue:{position:1,startsInSeconds:30}},T),'Trying again: starts in ~30 s');
- assert.deepEqual(BUILD_ICONS,{queued:'clock',brief:'think',app:'wrench',art:'brush',site:'globe',qa:'check',ready:'rocket'});
+ assert.deepEqual(BUILD_ICONS,{queued:'clock',brief:'think',app:'wrench',fit:'target',art:'brush',site:'globe',qa:'check',ready:'rocket'});
 });
 test('build model: countdown, step rows with icon, provider and time',()=>{
  const m=buildModel(cleanBuild(running,T),T);
@@ -145,4 +145,39 @@ test('verdict model: a build shows the timeline; the logo step only once the sit
  const r=verdictModel({...idea,status:'preview_ready',build:{...running,state:'ready'}},T);assert.equal(r.next,READY_LINE);assert.equal(r.build.ready,true);
  assert.match(READY_LINE,/Your site is ready — choose your logo on your PC/);
  const old=verdictModel({...idea,build:null},T);assert.equal(old.build,null);assert.match(old.next,/choose your logo/,'a build from before the timeline: the old line');
+});
+
+// ---- does it match the idea? (2026-10-12; backend fidelity.js): the PadPad case
+import {fidelityModel,GAP_LINE} from '../src/verdict.js';
+const PADPAD_FIT={v:1,source:'rules',verdict:'missing',built:'PadPad: launch a coin here (coin launcher), with the community wall, and the chain panels every coin gets',
+ message:"I can't build launchpads that launch launchpads yet. The launch block launches plain coins. What I built instead: PadPad: launch a coin here.",
+ core:[{feature:'Anyone launches a real coin from the site',capability:'launchpad-app',status:'built',builtBy:['launch'],reason:'The launch block.',terms:[]},
+  {feature:'Launchpads that launch launchpads',capability:'recursive-launchpads',status:'missing',builtBy:[],reason:'The launch block launches plain coins.',terms:['recursive']},
+  {feature:'Creator fees up the family tree',capability:'fee-tree',status:'partial',builtBy:['launch'],reason:'One level only.',terms:[]},
+  {feature:'A live family tree',capability:'family-tree-view',status:'missing',builtBy:[],reason:'No block draws a family tree.',terms:[]},{bogus:1}],tools:[]};
+test('fidelity: cleaned from the server; the missing and partial features listed; nothing for a build that matches',()=>{
+ const f=fidelityModel(PADPAD_FIT);
+ assert.equal(f.verdict,'missing');
+ assert.deepEqual(f.missing.map(x=>x.feature),['Launchpads that launch launchpads','A live family tree']);
+ assert.deepEqual(f.partial.map(x=>x.feature),['Creator fees up the family tree']);
+ assert.equal(f.built.length,1);assert.match(f.message,/^I can't build launchpads that launch launchpads yet/);
+ assert.equal(f.builtLine,PADPAD_FIT.built);
+ assert.equal(fidelityModel(null),null);assert.equal(fidelityModel({verdict:'nope',core:[]}),null);assert.equal(fidelityModel({verdict:'match'}),null);
+ assert.equal(fidelityModel({...PADPAD_FIT,verdict:'match',core:[PADPAD_FIT.core[0]]}).missing.length,0);
+});
+test('fidelity: the fit step is flagged, the ready line never says "ready" alone when something core is missing',()=>{
+ const steps=[{id:'queued',label:'In line',state:'done',startedAt:T-9000,endedAt:T-9000},{id:'app',label:'The app',state:'done',startedAt:T-9000,endedAt:T-8000},
+  {id:'fit',label:'Does it match the idea?',state:'done',startedAt:T-8000,endedAt:T-7000,provider:'rules (no AI)',note:'Not all of it. Missing: Launchpads that launch launchpads',flag:'missing'},
+  {id:'ready',label:'Ready for your review',state:'done',startedAt:T,endedAt:T}];
+ const b=cleanBuild({state:'ready',steps,now:T},T);
+ assert.equal(b.steps[2].flag,'missing');
+ assert.equal(cleanBuild({state:'ready',steps:[{id:'fit',state:'done',flag:'<script>'}]},T).steps[0].flag,null,'only missing | partial');
+ const m=buildModel(b,T);
+ assert.equal(m.gap,'missing');assert.equal(m.countdown,'Built, but not all of your idea');
+ assert.deepEqual([m.steps[2].icon,m.steps[2].flag,m.steps[2].note],['target','missing','Not all of it. Missing: Launchpads that launch launchpads']);
+ assert.equal(buildModel(cleanBuild({state:'ready',steps:steps.map(s=>({...s,flag:null})),now:T},T),T).gap,null);
+ assert.match(GAP_LINE,/not all of your idea/);
+ // the verdict card carries it
+ const v=verdictModel({id:'i',status:'preview_ready',version:1,evaluation:{verdict:'build',version:1,feedback:{summary:'Built.'}},build:{state:'ready',steps,now:T},fidelity:PADPAD_FIT,receivedAt:T},T);
+ assert.equal(v.state,'build');assert.equal(v.fidelity.verdict,'missing');assert.equal(v.build.gap,'missing');
 });

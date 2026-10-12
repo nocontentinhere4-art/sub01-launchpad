@@ -1368,3 +1368,22 @@ span.pc-qa-line{cursor:default;color:var(--ink-3)}
 .pc-rewrite-line{margin:0;color:var(--ink)}
 .pc-kit-slot{display:grid;gap:12px}
 @media (max-width:520px){.pc-side-body{max-height:48vh}.pc-side .pc-art-opt{grid-template-columns:40px minmax(0,110px) minmax(0,1fr)}}
+
+/* "Does it match the idea?" (backend fidelity.js): the flagged build step, the verdict card's list, the room PC panel */
+.build.has-gap .build-count{color:#FFD27A}.build.has-gap .build-bar i{background:#FFD27A}
+.build-step.is-flag .build-dot{background:#FFD27A;color:#1A1405;box-shadow:none}
+.build-step.is-flag .build-note{color:#FFD27A}
+.fit{display:grid;gap:8px;padding:12px 14px;border-radius:var(--r-sm);background:rgba(255,210,122,.08);box-shadow:inset 0 0 0 1px rgba(255,210,122,.35)}
+.fit-eyebrow{color:#FFD27A}
+.fit-sub{font:500 11px/1.2 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.fit-list{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+.fit-list li{display:grid;gap:2px;font:450 13px/1.45 var(--f-ui);color:var(--ink-2)}
+.fit-list b{font:600 13.5px/1.35 var(--f-ui);color:var(--ink)}
+.fit-built{margin:0;font:450 12.5px/1.45 var(--f-ui);color:var(--ink-2)}.fit-built b{color:var(--ink)}
+.fit-fine{margin:0}
+.fit-lead{margin:0;font:600 14px/1.45 var(--f-ui);color:var(--ink)}
+.pc-fit{border-bottom:1px solid var(--stroke);padding:6px 12px;font:500 12px/1.4 var(--f-ui)}
+.pc-fit>summary{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer;font:600 12.5px/1.2 var(--f-ui);color:#FFD27A;list-style:none}
+.pc-fit>summary::-webkit-details-marker{display:none}
+.pc-fit .pc-qa-dot{background:#FFD27A}
+.pc-fit-body{margin:4px 0 8px}
