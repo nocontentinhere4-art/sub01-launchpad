@@ -90,7 +90,7 @@ export function initRewardsPool() {
         if(!e.claimed&&valid){button.disabled=false;button.onclick=()=>prepare(e);}else if(!e.claimed&&!valid)button.textContent='Proof unavailable';
         if(request!==generation)return;row.append(date,amount,button);$('rewards-my-periods').append(row);
       }
-      if(!entries.length)$('rewards-my-periods').textContent='No published allocation for this wallet yet. Current-period holding time is settled when its allocation is published.';
+      if(!entries.length)$('rewards-my-periods').textContent='No published allocation for this wallet yet. Daily snapshot rewards become claimable after their allocation is published and funded.';
     }catch(e){if(request!==generation)return;policy=null;personal=null;text('rewards-pool-status','Live pool data unavailable. '+describeError(e));text('rewards-pool-balance','—');$('rewards-public-periods').textContent='Live verification unavailable.';resetPlan();}
   }
   $('rewards-pool-refresh').onclick=()=>{if(!busy)refresh();};

@@ -37,11 +37,11 @@ export function initRewards() {
   $('rewards-mint').textContent = REWARDS_POLICY.mint;
   function update() {
     const result = projection({ volume: $('rewards-volume').value, creatorPercent: $('rewards-rate').value,
-      averageBalance: $('rewards-average').value, eligibleAverageBalance: $('rewards-eligible').value });
+      snapshotBalance: $('rewards-average').value, eligibleSnapshotBalance: $('rewards-eligible').value });
     for (const [id, key] of [['total','total'],['holders','holders'],['burn','buyback'],['project','project'],['personal','personal']]) {
       $('rewards-' + id).textContent = solText(result?.[key]);
     }
-    $('rewards-error').textContent = result ? (result.personal === null ? 'Enter both average balances to estimate your share. Your balance cannot exceed the eligible total.' : '')
+    $('rewards-error').textContent = result ? (result.personal === null ? 'Enter both snapshot balances to estimate your share. Your balance cannot exceed the eligible total.' : '')
       : 'Enter a trading volume and a creator fee between 0% and 100%. Use decimals, without commas.';
   }
   $('rewards-form').addEventListener('submit', e => e.preventDefault());
