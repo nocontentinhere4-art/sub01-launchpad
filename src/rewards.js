@@ -1,9 +1,9 @@
 // SUB-01 policy requested by the owner. No transfers or accounting live in this client.
 export const REWARDS_POLICY = Object.freeze({
   mint: '6WCtKQfkWurd77tCCAYWuL5TwyAvuovTzworfnfupump',
-  startsAt: '2026-10-13T22:12:32Z',
+  startsAt: '2026-10-13T22:00:00Z',
   holderBps: 2000, burnBps: 3000, projectBps: 5000,
-  weighting: 'time-weighted-balance', status: 'proposed',
+  weighting: 'time-weighted-balance', status: 'adopted-pending-accounting',
 });
 
 export function decimalUnits(value, decimals = 9) {

@@ -2,7 +2,7 @@
 
 Scope: existing mint `6WCtKQfkWurd77tCCAYWuL5TwyAvuovTzworfnfupump` only. This does not alter the creator-fee split of tokens launched through the city.
 
-Owner-requested cutoff: **2026-10-14 00:12:32 Europe/Rome**, equivalent to `2026-10-13T22:12:32Z`. No earlier fees or holding time qualify. Existing holders qualify starting at the cutoff; a new purchase is not required. This timestamp records the requested rule, not an activated payout contract.
+Owner-requested cutoff: **2026-10-14 Europe/Rome (start of day)**, equivalent to `2026-10-13T22:00:00Z`. No earlier fees or holding time qualify. Existing holders qualify starting at the cutoff; a new purchase is not required. This date records the adopted rule. The dashboard displays the date without a time; automatic payouts are not yet connected.
 
 ## Allocation
 

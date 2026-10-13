@@ -28,8 +28,8 @@ export function initRewards() {
       else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
     }
   }, true);
-  const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Rome', dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(REWARDS_POLICY.startsAt));
-  $('rewards-cutoff').textContent = `${date} · Europe/Rome`;
+  const date = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Rome', dateStyle: 'medium' }).format(new Date(REWARDS_POLICY.startsAt));
+  $('rewards-cutoff').textContent = date;
   $('rewards-cutoff').dateTime = REWARDS_POLICY.startsAt;
   $('rewards-mint').textContent = REWARDS_POLICY.mint;
   function update() {
