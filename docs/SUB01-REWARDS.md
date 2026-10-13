@@ -40,3 +40,7 @@ The dashboard now connects to the documented `/api/rewards` API in the backend's
 The owner subsequently chose a one-SOL initial budget: 0.2 SOL for an initial holder distribution, 0.3 SOL for buyback-and-burn and 0.5 SOL for the project. A separate bootstrap allocation can be published before the first 24-hour period closes. This budget is not evidence that funds moved. The initial distribution uses a complete current snapshot. The contract, snapshot source and fee accounting must be connected before actual amounts are claimable. The proof checks the allocation and escrow; snapshot correctness remains independently auditable.
 
 All live fields remain unknown while deployment/verification is incomplete. The scenario calculator is expandable and kept separate from actual claims. The public manifest intentionally contains allocation wallet addresses; those do not enter the city world snapshot.
+
+## Voluntary buyback contribution
+
+The holder can keep SOL (default) or contribute their entire individual daily reward to buyback/burn. The UI reviews the destination and fee/deposit/net costs. In contribution mode it validates an exact claim plus a transfer to the fixed funding wallet, never an arbitrary transfer. Changing the choice clears the prior quote. Contributions are operator-managed SOL in the project wallet; no automatic burn is claimed. The public list links finalized contributions separately from actual token burn evidence.

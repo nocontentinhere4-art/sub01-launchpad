@@ -27,13 +27,15 @@ export function initRewardsPool() {
   async function prepare(epoch){
     if(busy||!personal?.wallet||!policy?.program)return;busy=true;resetPlan();text('rewards-claim-status','Checking your proof and simulating the claim…');
     try{
-      const p=await api('/api/rewards/claims/prepare',{method:'POST',body:{epochId:epoch.epochId}});
-      if(p.wallet!==personal.wallet||p.program!==policy.program||p.network!==policy.network||p.epochId!==epoch.epochId||p.amountLamports!==epoch.amountLamports||p.escrow!==epoch.escrow
+      const destination=$('rewards-destination').value;
+      const p=await api('/api/rewards/claims/prepare',{method:'POST',body:{epochId:epoch.epochId,destination}});
+      if(p.destination!==destination||p.wallet!==personal.wallet||p.program!==policy.program||p.network!==policy.network||p.epochId!==epoch.epochId||p.amountLamports!==epoch.amountLamports||p.escrow!==epoch.escrow
         ||!reviewClaimTransaction(p.transaction,{...p,proof:epoch.proof})||!await verifyClaimProof({...epoch,program:policy.program,wallet:personal.wallet}))throw Error('The claim transaction could not be verified. Nothing was signed.');
-      plan=p;text('rewards-claim-amount',money(p.amountLamports));text('rewards-claim-fee',money(p.networkFeeLamports));text('rewards-claim-deposit',money(p.claimRecordDepositLamports));text('rewards-claim-net',signedMoney(p.netLamports));
-      $('rewards-claim-review').hidden=false;$('rewards-claim-sign').disabled=false;text('rewards-claim-status','Review these amounts, then sign the claim in your wallet. No SUB-01 tokens move.');
+      plan=p;text('rewards-claim-destination',destination==='buyback'?'Contribute all of this reward to SUB-01 buyback & burn':'Keep SOL in your wallet');text('rewards-claim-amount',money(p.amountLamports));text('rewards-claim-fee',money(p.networkFeeLamports));text('rewards-claim-deposit',money(p.claimRecordDepositLamports));text('rewards-claim-net',signedMoney(p.netLamports));
+      $('rewards-claim-review').hidden=false;$('rewards-claim-sign').disabled=false;text('rewards-claim-status',destination==='buyback'?'This transaction sends your full reward to the project wallet for buyback & burn. You pay the fee and deposit. The token purchase and burn happen separately.':'Review these amounts, then sign the claim in your wallet. No SUB-01 tokens move.');
     }catch(e){text('rewards-claim-status',describeError(e));}finally{busy=false;}
   }
+  $('rewards-destination').onchange=()=>{resetPlan();text('rewards-claim-status','Choice changed. Verify your daily reward again before signing.');};
   $('rewards-claim-cancel').onclick=()=>{resetPlan();text('rewards-claim-status','Claim cancelled. Nothing was sent.');};
   $('rewards-claim-sign').onclick=async()=>{
     if(busy||!plan)return;busy=true;$('rewards-claim-sign').disabled=true;
@@ -65,6 +67,9 @@ export function initRewardsPool() {
       $('rewards-pool-wallet').replaceChildren(link(policy.fundingWallet,policy.fundingWalletUrl));
       $('rewards-pool-program').replaceChildren(policy.program?link(short(policy.program,8),policy.programUrl):document.createTextNode('Contract deployment pending'));
       text('rewards-pool-balance',money(pool.poolBalanceLamports));
+      const contributions=$('rewards-buyback-contributions');contributions.replaceChildren();
+      for(const c of pool.buybackContributions||[]){const row=document.createElement('div');row.className='rewards-period';row.append(document.createTextNode(money(c.amountLamports)+' contributed · token burn pending '),link('View SOL contribution',c.url));contributions.append(row);}
+      if(!contributions.childNodes.length)contributions.textContent='No finalized holder contributions reported yet.';
       const periods=$('rewards-public-periods');periods.replaceChildren();
       for(const e of (Array.isArray(pool.epochs)?pool.epochs:[]).slice(0,30)){
         const row=document.createElement('div');row.className='rewards-period';

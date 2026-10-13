@@ -32,3 +32,11 @@ test('reward sign-in remains independent of the city guest gate; server authenti
   assert.equal(gateReason('/api/rewards/claims/submit','POST'),null);
   assert.equal(gateReason('/api/rooms/me','PUT'),'save');
 });
+
+test('voluntary buyback only permits the chosen exact contribution',()=>{
+  assert(reviewClaimTransaction(fixture.buyback,fixture.buybackExpected));
+  assert(!reviewClaimTransaction(fixture.buyback,fixture.expected));
+  assert(!reviewClaimTransaction(fixture.transaction,fixture.buybackExpected));
+  assert(!reviewClaimTransaction(fixture.buybackWrongAmount,fixture.buybackExpected));
+  assert(!reviewClaimTransaction(fixture.buyback,{...fixture.buybackExpected,buybackWallet:fixture.expected.escrow}));
+});

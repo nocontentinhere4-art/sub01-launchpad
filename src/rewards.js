@@ -2,6 +2,7 @@
 export const REWARDS_POLICY = Object.freeze({
   mint: '6WCtKQfkWurd77tCCAYWuL5TwyAvuovTzworfnfupump',
   startsAt: '2026-10-13T22:00:00Z',
+  fundingWallet: 'HMPUiULXumamWDhuoKap6ty2hQ7V7GQwi8PZ7pGx6STQ',
   holderBps: 2000, burnBps: 3000, projectBps: 5000,
   weighting: 'snapshot-balance', status: 'adopted-pending-accounting',
 });

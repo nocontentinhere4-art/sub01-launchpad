@@ -25,7 +25,7 @@ export async function verifyClaimProof({program,epochId,wallet,amountLamports,pr
 }
 
 // Review the actual legacy transaction bytes, not merely the server's description.
-// Permit exactly one known claim instruction and no extra transfers/approvals.
+// Permit one known claim and, only when chosen, one exact buyback contribution.
 export function reviewClaimTransaction(base64,expected) {
   try {
     if(typeof base64!=='string'||base64.length>6000)throw Error();
@@ -34,15 +34,27 @@ export function reviewClaimTransaction(base64,expected) {
     const short=()=>{let value=0,shift=0;for(let i=0;i<3;i++){const byte=read(1)[0];value|=(byte&127)<<shift;if(!(byte&128))return value;shift+=7;}throw Error();};
     if(short()!==1||read(64).some(b=>b!==0))throw Error();
     const header=read(3);if(header[0]!==1||header[1]!==0||header[2]!==2)throw Error();
-    if(short()!==5)throw Error();const keys=Array.from({length:5},()=>b58encode(read(32)));
-    if(new Set(keys).size!==5||keys[0]!==expected.wallet)throw Error();read(32);
-    if(short()!==1)throw Error();const programIndex=read(1)[0];if(keys[programIndex]!==expected.program||programIndex<3)throw Error();
+    const donating=expected.destination==='buyback';
+    if(expected.destination!==undefined&&!['wallet','buyback'].includes(expected.destination))throw Error();
+    const keyCount=donating?6:5;
+    if(short()!==keyCount)throw Error();const keys=Array.from({length:keyCount},()=>b58encode(read(32)));
+    if(new Set(keys).size!==keyCount||keys[0]!==expected.wallet)throw Error();read(32);
+    if(short()!==(donating?2:1))throw Error();const programIndex=read(1)[0];if(keys[programIndex]!==expected.program||programIndex<keyCount-2)throw Error();
     if(short()!==4)throw Error();const accounts=[...read(4)].map(i=>keys[i]);
     if(accounts.join('|')!==[expected.wallet,expected.escrow,expected.claimRecord,'11111111111111111111111111111111'].join('|'))throw Error();
-    if(keys.indexOf(expected.escrow)<1||keys.indexOf(expected.escrow)>2||keys.indexOf(expected.claimRecord)<1||keys.indexOf(expected.claimRecord)>2)throw Error();
-    const data=read(short());if(offset!==bytes.length||!Array.isArray(expected.proof)||expected.proof.length>32)throw Error();
+    if(keys.indexOf(expected.escrow)<1||keys.indexOf(expected.escrow)>keyCount-3||keys.indexOf(expected.claimRecord)<1||keys.indexOf(expected.claimRecord)>keyCount-3)throw Error();
+    const data=read(short());if(!Array.isArray(expected.proof)||expected.proof.length>32)throw Error();
     const desired=concat(Uint8Array.of(1),u64(expected.epochId),u64(expected.amountLamports),Uint8Array.of(expected.proof.length),...expected.proof.map(unhex));
     if(data.length!==desired.length||compare(data,desired)!==0)throw Error();
+    if(donating){
+      if(expected.buybackWallet!==REWARDS_POLICY.fundingWallet||keys.indexOf(expected.buybackWallet)<1||keys.indexOf(expected.buybackWallet)>3)throw Error();
+      if(keys[read(1)[0]]!=='11111111111111111111111111111111'||short()!==2)throw Error();
+      const transferAccounts=[...read(2)].map(i=>keys[i]);
+      if(transferAccounts.join('|')!==[expected.wallet,REWARDS_POLICY.fundingWallet].join('|'))throw Error();
+      const transfer=read(short()),desiredTransfer=concat(Uint8Array.of(2,0,0,0),u64(expected.amountLamports));
+      if(transfer.length!==12||compare(transfer,desiredTransfer)!==0)throw Error();
+    }
+    if(offset!==bytes.length)throw Error();
     return true;
   }catch{return false;}
 }
