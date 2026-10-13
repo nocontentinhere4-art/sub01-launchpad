@@ -512,6 +512,7 @@ function openCreator(next){
   try{await api('/api/residents',{method:'POST',body:{name:$('resident-name').value,look,traits,plotId:$('resident-plot').value}});await refreshMe();await pollWorld();closeDialog();notify(`Welcome to Tokyo, ${resident()?.name}.`);next?.();}catch(err){$('resident-error').textContent=err.message;}};
  openDialog('resident-backdrop');
 }
+window.addEventListener('city:wallet-session',()=>refreshMe());
 // guest: play first, wallet later (src/guest.js). main.js lends it these internals and wraps three entry points.
 const guest=createGuest({get me(){return me;},get options(){return lookOptions;},get buildings(){return cityBuildings;},get goal(){return goal;},get serverUp(){return serverUp;},get explorer(){return explorer;},set explorer(v){explorer=v;},get cityEvents(){return cityEvents;},template,mobile,refreshMe,pollWorld,openDialog,closeDialog,notify,roamStart,roamEnd,greet,bubble,exploreUI,stopExplore,track(root){followObj=root;follow=true;}}); // guest:
 openSignIn=guest.wrapSignIn(openSignIn);openCreator=guest.wrapCreator(openCreator);toggleExplore=guest.wrapExplore(toggleExplore); // guest:

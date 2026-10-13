@@ -360,13 +360,27 @@
         <span class="eyebrow">SUB-01 · CREATOR REWARDS</span>
         <h2 id="rewards-title">One coin.<em>Three destinations.</em></h2>
         <p class="rewards-intro">20% for holders. 30% for buyback &amp; burn. 50% to fund SUB-01.</p>
-        <div class="rewards-policy"><b>POLICY ADOPTED · PAYOUTS NOT CONNECTED</b><p>Effective from <time id="rewards-cutoff"></time>. Only creator rewards generated and holding time accrued from this date count. Existing holders can participate from the cutoff.</p></div>
+        <div class="rewards-policy"><b id="rewards-policy-label">POLICY ADOPTED · CONTRACT DEPLOYMENT PENDING</b><p>Effective from <time id="rewards-cutoff"></time>. Only creator rewards generated and holding time accrued from this date count. Existing holders can participate from the cutoff.</p></div>
         <div class="rewards-split" aria-label="Creator rewards allocation"><span>20% holders</span><span>30% buyback</span><span>50% project</span></div>
         <section class="rewards-live" aria-labelledby="rewards-live-title">
-          <h3 id="rewards-live-title">Verified activity</h3>
-          <dl><div><dt>Creator rewards received since cutoff</dt><dd>Not connected</dd></div><div><dt>Holder rewards paid</dt><dd>Not connected</dd></div><div><dt>SUB-01 burned</dt><dd>Not connected</dd></div></dl>
-          <p>Verified fee receipts, balance history and transaction records are required before any claim or distribution is available.</p>
+          <div class="rewards-section-heading"><h3 id="rewards-live-title">Public reward pool</h3><button class="chip" id="rewards-pool-refresh" type="button">Refresh</button></div>
+          <span class="eyebrow" id="rewards-pool-network">DEPLOYMENT PENDING</span>
+          <p id="rewards-pool-status" role="status">The contract must be deployed and funded before any rewards can be claimed.</p>
+          <dl><div><dt>Funding wallet</dt><dd id="rewards-pool-wallet">HMPUiULXumamWDhuoKap6ty2hQ7V7GQwi8PZ7pGx6STQ</dd></div><div><dt>Claim contract</dt><dd id="rewards-pool-program">Contract deployment pending</dd></div><div><dt>Funding wallet SOL balance</dt><dd id="rewards-pool-balance">—</dd></div></dl>
+          <div class="rewards-start-budget"><b>Initial budget: 1 SOL</b><p>0.2 SOL for the initial holder distribution · 0.3 SOL for buyback &amp; burn · 0.5 SOL for the project. This is the approved budget, not confirmation of a deposit or burn.</p></div>
+          <div id="rewards-public-periods" class="rewards-periods">No funded distributions published yet.</div>
+          <details class="rewards-rules"><summary>What can be verified?</summary><p>Each funded distribution has a public escrow, an immutable allocation root and a downloadable manifest. Your proof binds your wallet, period and amount. The contract prevents repeat claims.</p><p>Balance history and fee attribution are indexed by the publisher. The public manifest lets you reproduce its allocation; the contract does not independently verify that history. The funding wallet is separate from the funded escrows.</p></details>
         </section>
+        <section id="rewards-personal-live" aria-labelledby="rewards-my-title">
+          <div class="rewards-section-heading"><h3 id="rewards-my-title">Your claimable rewards</h3><span id="rewards-live-wallet">Connect your wallet</span></div>
+          <div class="rewards-login"><label for="rewards-wallet-select">Your wallet</label><select id="rewards-wallet-select" aria-label="Select your wallet"></select><button class="chip" id="rewards-connect" type="button">Connect &amp; sign in</button></div>
+          <p class="rewards-help" id="rewards-wallet-help">Sign a login message to see your rewards. It moves no funds.</p>
+          <div class="rewards-account-totals"><div><small>Published allocation</small><strong id="rewards-live-earned">—</strong></div><div><small>Already claimed</small><strong id="rewards-live-paid">—</strong></div><div><small>Available to claim</small><strong id="rewards-live-claimable">—</strong></div></div>
+          <div id="rewards-my-periods" class="rewards-periods"></div>
+          <div id="rewards-claim-review" class="rewards-policy" hidden><b>REVIEW YOUR SOL CLAIM</b><dl><div><dt>SOL received</dt><dd id="rewards-claim-amount">—</dd></div><div><dt>Network fee</dt><dd id="rewards-claim-fee">—</dd></div><div><dt>Claim-record deposit</dt><dd id="rewards-claim-deposit">—</dd></div><div><dt>Net change in your wallet</dt><dd id="rewards-claim-net">—</dd></div></dl><p>The claim-record deposit is charged once per wallet per 256-day page and cannot be recovered in this version. No SUB-01 tokens move.</p><button class="chip" id="rewards-claim-cancel" type="button">Cancel</button> <button class="chip" id="rewards-claim-sign" type="button" disabled>Sign SOL claim</button></div>
+          <p id="rewards-claim-status" class="rewards-help" role="status"></p>
+        </section>
+        <details class="rewards-rules rewards-scenario"><summary>Estimate future creator rewards</summary>
         <section aria-labelledby="rewards-estimate-title">
           <div class="rewards-section-heading"><h3 id="rewards-estimate-title">Estimate the next period</h3><button class="chip" id="rewards-example" type="button">Try an example</button></div>
           <p class="rewards-help">Choose the same future period for volume and average balances. This is a scenario, not an earned balance or a forecast.</p>
@@ -384,6 +398,7 @@
             <div class="rewards-personal"><span>Your estimated share of the 20% pool</span><strong id="rewards-personal">—</strong></div>
           </div>
         </section>
+        </details>
         <details class="rewards-rules"><summary>How your share is calculated</summary><p>Your reward = holder pool × your token holding time ÷ all eligible holders' token holding time. Buying late earns less weight than holding throughout the period. Selling stops future accrual for the tokens sold; it does not erase prior holding time.</p><p>The 20/30/50 split applies to creator rewards available to this project, never the trade principal or protocol fees. The projection assumes a constant creator fee; actual fees may vary. Pool, treasury and other ineligible accounts must be defined before payouts start. If no eligible holder weight exists, the holder pool remains unallocated.</p></details>
         <p class="rewards-mint" id="rewards-mint"></p>
       </section>

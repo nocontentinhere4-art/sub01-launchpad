@@ -1,10 +1,12 @@
 import { REWARDS_POLICY, projection, solText } from './rewards.js';
+import { initRewardsPool } from './rewards-pool-ui.js';
 
 // Separate from WebGL boot: financial information remains reachable without 3D.
 export function initRewards() {
   const $ = id => document.getElementById(id);
   const backdrop = $('rewards-backdrop');
   if (!backdrop) return;
+  const refreshPool = initRewardsPool();
   let previousFocus;
   const close = () => { backdrop.hidden = true; previousFocus?.focus(); };
   const open = () => {
@@ -12,6 +14,7 @@ export function initRewards() {
     document.querySelectorAll('.dialog-backdrop').forEach(el => { el.hidden = true; });
     backdrop.hidden = false;
     $('rewards-close').focus();
+    refreshPool();
   };
   for (const id of ['rewards-button', 'rewards-more-button']) $(id)?.addEventListener('click', open);
   $('rewards-close').addEventListener('click', close);
@@ -22,7 +25,7 @@ export function initRewards() {
     if (e.key === 'Escape') { e.stopImmediatePropagation(); close(); }
     if (e.key === 'Tab') {
       e.stopImmediatePropagation();
-      const nodes = [...backdrop.querySelectorAll('button,input,a[href]')].filter(el => !el.disabled && !el.hidden);
+      const nodes = [...backdrop.querySelectorAll('button,input,select,summary,a[href]')].filter(el => !el.disabled && !el.hidden && el.getClientRects().length);
       const first = nodes[0], last = nodes.at(-1);
       if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
       else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }

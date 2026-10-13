@@ -32,3 +32,11 @@ No new API fields or endpoints are assumed by this client. Existing city and lau
 ## Validation
 
 `tests/rewards.test.js` checks exact splits, creator-fee attribution in scenarios, missing/invalid inputs, personal-share bounds, cutoff clipping and overlapping-history rejection. Run the full existing suite and build before review.
+
+## Funded personal claim extension
+
+The dashboard now connects to the documented `/api/rewards` API in the backend's `docs/SUB01-REWARDS-POOL.md`. It reuses wallet message sign-in and shows private published/paid/available amounts, a public funding wallet, verified daily escrows and allocation manifests. Each eligible claim first verifies its Merkle proof locally, checks the actual transaction bytes contain only the expected claim, and reviews fee/deposit/net SOL before signing. Submission is tracked until finalization; no SUB-01 approval or transfer is requested.
+
+The owner subsequently chose a one-SOL initial budget: 0.2 SOL for an initial holder distribution, 0.3 SOL for buyback-and-burn and 0.5 SOL for the project. A separate bootstrap allocation can be published before the first 24-hour period closes. This budget is not evidence that funds moved. Historical holding time still starts at the original cutoff. The contract and fee/history indexer must be connected before actual amounts are claimable. An indexer's published weight is a declaration; the proof checks its allocation and the escrow, not the correctness of historical indexing.
+
+All live fields remain unknown while deployment/verification is incomplete. The scenario calculator is expandable and kept separate from actual claims. The public manifest intentionally contains allocation wallet addresses; those do not enter the city world snapshot.
