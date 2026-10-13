@@ -101,6 +101,7 @@
       <div class="preview-badge" id="server-badge"><i></i><span id="server-status">CONNECTING</span></div>
       <!-- Help / support (support-ui.js): always there, small; a report reaches the team with the launch's state attached -->
       <button class="help-button" id="help-button" type="button" aria-haspopup="dialog" aria-controls="support-backdrop" title="Help: report a problem"><svg class="i" aria-hidden="true"><use href="#i-help"/></svg><span class="lbl">Help</span></button>
+      <button class="button rewards-entry" id="rewards-button" type="button" aria-haspopup="dialog" aria-controls="rewards-backdrop">SUB-01 rewards</button>
       <button class="account-chip" id="account-button" type="button"><svg class="i" aria-hidden="true"><use href="#i-wallet"/></svg><span class="nm">Sign in</span></button>
       <!-- SIMPLIFY 2026-10-10: the three primary actions are #idea-button, #explore-button (Walk) and #tour-button (Visit SUB-01).
            On phones main.js moves all three into #walk-dock, which becomes the dock's Idea · Walk · SUB-01 bar (.lbl-s = short labels). -->
@@ -272,6 +273,7 @@
             <button class="icon-button" id="city-tour" type="button" aria-label="Tour the city" title="Tour the city"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button></div>
           <div class="more-row" id="more-reset"><span class="more-k"><b>Reset the view</b><small class="more-v">Back to the whole city</small></span>
             <button class="icon-button" id="reset-view" type="button" aria-label="Reset the view" title="Reset the view"><svg class="i" aria-hidden="true"><use href="#i-rotate"/></svg></button></div>
+          <div class="more-row"><span class="more-k"><b>SUB-01 rewards</b><small class="more-v">Creator fees · 20 / 30 / 50</small></span><button class="icon-button" id="rewards-more-button" type="button">Open</button></div>
           <div class="more-row" id="more-about"><span class="more-k"><b>About SUB-01</b><small class="more-v">What he is, how he decides, privacy</small></span>
             <button class="icon-button" id="about-button" type="button" aria-label="About SUB-01" title="About SUB-01"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg></button></div>
         </div>
@@ -352,8 +354,43 @@
         <div class="sheet-body" id="support-body"></div>
       </section>
     </div>
+    <div class="dialog-backdrop" id="rewards-backdrop" hidden>
+      <section class="idea-card rewards-card" role="dialog" aria-modal="true" aria-labelledby="rewards-title">
+        <button class="close-button" id="rewards-close" type="button" aria-label="Close rewards">×</button>
+        <span class="eyebrow">SUB-01 · CREATOR REWARDS</span>
+        <h2 id="rewards-title">One coin.<em>Three destinations.</em></h2>
+        <p class="rewards-intro">20% for holders. 30% for buyback &amp; burn. 50% to fund SUB-01.</p>
+        <div class="rewards-policy"><b>NEW POLICY · PAYOUTS NOT ACTIVE</b><p>Starts <time id="rewards-cutoff"></time>. Only creator rewards generated and holding time accrued after this cutoff count. Existing holders can participate from the cutoff.</p></div>
+        <div class="rewards-split" aria-label="Creator rewards allocation"><span>20% holders</span><span>30% buyback</span><span>50% project</span></div>
+        <section class="rewards-live" aria-labelledby="rewards-live-title">
+          <h3 id="rewards-live-title">Verified activity</h3>
+          <dl><div><dt>Creator rewards received since cutoff</dt><dd>Not connected</dd></div><div><dt>Holder rewards paid</dt><dd>Not connected</dd></div><div><dt>SUB-01 burned</dt><dd>Not connected</dd></div></dl>
+          <p>Verified fee receipts, balance history and transaction records are required before any claim or distribution is available.</p>
+        </section>
+        <section aria-labelledby="rewards-estimate-title">
+          <div class="rewards-section-heading"><h3 id="rewards-estimate-title">Estimate the next period</h3><button class="chip" id="rewards-example" type="button">Try an example</button></div>
+          <p class="rewards-help">Choose the same future period for volume and average balances. This is a scenario, not an earned balance or a forecast.</p>
+          <form id="rewards-form" class="rewards-inputs">
+            <div><label for="rewards-volume">Expected trading volume · SOL</label><input id="rewards-volume" type="text" inputmode="decimal" placeholder="e.g. 1000" autocomplete="off"></div>
+            <div><label for="rewards-rate">Creator fee only · %</label><input id="rewards-rate" type="text" inputmode="decimal" placeholder="Enter the creator fee" autocomplete="off"></div>
+            <div><label for="rewards-average">Your average eligible SUB-01</label><input id="rewards-average" type="text" inputmode="decimal" placeholder="Average over the period" autocomplete="off"></div>
+            <div><label for="rewards-eligible">All holders' average eligible SUB-01</label><input id="rewards-eligible" type="text" inputmode="decimal" placeholder="Same period, same exclusions" autocomplete="off"></div>
+          </form>
+          <p id="rewards-example-note" class="rewards-example-note" hidden>Illustrative inputs only. The 0.3% creator fee is not a verified current rate.</p>
+          <p id="rewards-error" class="rewards-help" role="status"></p>
+          <div class="rewards-result" aria-live="polite" aria-atomic="true">
+            <div class="rewards-total"><span>Estimated creator rewards</span><strong id="rewards-total">—</strong></div>
+            <div class="rewards-allocations"><div><b>20% · Holders</b><strong id="rewards-holders">—</strong><small>Shared by time-weighted eligible balance.</small></div><div><b>30% · Buyback &amp; burn</b><strong id="rewards-burn">—</strong><small>SOL budget to buy SUB-01 and then burn it.</small></div><div><b>50% · Project</b><strong id="rewards-project">—</strong><small>Development and operating budget.</small></div></div>
+            <div class="rewards-personal"><span>Your estimated share of the 20% pool</span><strong id="rewards-personal">—</strong></div>
+          </div>
+        </section>
+        <details class="rewards-rules"><summary>How your share is calculated</summary><p>Your reward = holder pool × your token holding time ÷ all eligible holders' token holding time. Buying late earns less weight than holding throughout the period. Selling stops future accrual for the tokens sold; it does not erase prior holding time.</p><p>The 20/30/50 split applies to creator rewards available to this project, never the trade principal or protocol fees. The projection assumes a constant creator fee; actual fees may vary. Pool, treasury and other ineligible accounts must be defined before payouts start. If no eligible holder weight exists, the holder pool remains unallocated.</p></details>
+        <p class="rewards-mint" id="rewards-mint"></p>
+      </section>
+    </div>
     <div class="toast" id="toast" role="status" hidden></div>
   </div>
+  <script type="module" src="/src/rewards-entry.js"></script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
