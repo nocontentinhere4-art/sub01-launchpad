@@ -174,7 +174,7 @@ export async function signTransaction(name,txBase64,{chain=LEGACY_CHAIN,reviewed
   if(addr(provider.publicKey)!==account.address)throw Error(MISMATCH);
   const original=fromBase64(txBase64);
   if(original.length<100||original[0]!==1||original[65]!==1)throw Error('Unexpected reward signing layout. Nothing was sent.');
-  const result=await ask(()=>withTimeout(Promise.resolve().then(()=>provider.request({method:'signTransaction',params:{message:b58encode(original.subarray(65))}})),SIGN_MS));
+  const result=await ask(()=>withTimeout(Promise.resolve().then(()=>provider.request({method:'signTransaction',params:{message:b58encode(original)}})),SIGN_MS));
   if(typeof result?.serialize!=='function')throw Error('Phantom did not return a signed transaction. Nothing was sent.');
   const signed=toU8(result.serialize({requireAllSignatures:false,verifySignatures:false}));
   if(!signed||signed[0]!==1||!sameBytes(signed.subarray(65),original.subarray(65)))throw Error('Phantom changed the reviewed transaction message. Nothing was sent.');

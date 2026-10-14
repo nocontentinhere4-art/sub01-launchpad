@@ -193,7 +193,7 @@ test('reviewed Phantom rewards use documented sign-only request and reject chang
  const previous=globalThis.window;globalThis.window={phantom:{solana:provider}};
  try{
   const result=await signTransaction('Phantom',toBase64(original),{reviewedReward:true});
-  assert.deepEqual(seen,{method:'signTransaction',params:{message:b58encode(message)}});
+  assert.deepEqual(seen,{method:'signTransaction',params:{message:b58encode(original)}});
   assert.equal(result.address,address);assert.equal(await webcrypto.subtle.verify('Ed25519',kp.publicKey,fromBase64(result.signed).subarray(1,65),message),true);
   mode='changed';await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),/changed the reviewed transaction/);
   mode='unsigned';await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),/valid signature/);
