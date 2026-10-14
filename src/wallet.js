@@ -164,8 +164,24 @@ export async function signMessage(name,message){
  return {signature,address:account.address};
 }
 /** Sign a serialized transaction (base64 in, base64 out) through Wallet Standard `solana:signTransaction` on `chain`. */
-export async function signTransaction(name,txBase64,{chain=LEGACY_CHAIN}={}){
+export async function signTransaction(name,txBase64,{chain=LEGACY_CHAIN,reviewedReward=false}={}){
  const {w,account}=await connected(name);
+ // Phantom's current documented sign-only API is provider.request, not Wallet Standard.
+ // Reward transactions have exactly one signer. Keep the reviewed wire message unchanged.
+ if(reviewedReward&&name==='Phantom'&&chain==='solana:mainnet'){
+  const provider=globalThis.window?.phantom?.solana||globalThis.window?.solana;
+  if(!provider?.isPhantom||typeof provider.request!=='function')throw Error('Phantom sign-only support is unavailable. Reload Phantom before signing this deposit.');
+  if(addr(provider.publicKey)!==account.address)throw Error(MISMATCH);
+  const original=fromBase64(txBase64);
+  if(original.length<100||original[0]!==1||original[65]!==1)throw Error('Unexpected reward signing layout. Nothing was sent.');
+  const result=await ask(()=>withTimeout(Promise.resolve().then(()=>provider.request({method:'signTransaction',params:{message:b58encode(original.subarray(65))}})),SIGN_MS));
+  if(typeof result?.serialize!=='function')throw Error('Phantom did not return a signed transaction. Nothing was sent.');
+  const signed=toU8(result.serialize({requireAllSignatures:false,verifySignatures:false}));
+  if(!signed||signed[0]!==1||!sameBytes(signed.subarray(65),original.subarray(65)))throw Error('Phantom changed the reviewed transaction message. Nothing was sent.');
+  const signature=signed.subarray(1,65);
+  if(signature.length!==64||!signature.some(b=>b!==0)||!await signedByKey(toU8(account.publicKey),original.subarray(65),signature))throw Error('Phantom did not provide a valid signature for this wallet. Nothing was sent.');
+  return {signed:toBase64(signed),address:account.address};
+ }
  if(w.legacy)throw Object.assign(new Error(NO_RAW_SIGN),{unsupported:true});
  const f=w.features?.['solana:signTransaction'];
  if(typeof f?.signTransaction!=='function')throw Object.assign(new Error(NO_SIGN_FEATURE),{unsupported:true});

@@ -50,7 +50,7 @@ export function initRewardsFunding({ walletState, refreshPool }) {
     try {
       const state = walletState(); if (state.wallet !== quote.wallet || Date.now() > quote.expiresAt) throw Error('Sign in again or refresh the expired funding quote.');
       if (!state.walletName) throw Error('Select the funding wallet you used to sign in.');
-      const signed = await signTransaction(state.walletName, quote.transaction, { chain: quote.chain });
+      const signed = await signTransaction(state.walletName, quote.transaction, { chain: quote.chain, reviewedReward: true });
       if (signed.address !== quote.wallet) throw Error('The wallet account changed. Nothing was sent by this dashboard.');
       const sent = await api('/api/rewards/funding/submit', { method: 'POST', body: { intentId: quote.intentId, signed: signed.signed } });
       const intentId = quote.intentId; reset();

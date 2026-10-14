@@ -44,7 +44,7 @@ export function initRewardsPool() {
     try{
       const name=walletName||$('rewards-wallet-select').value;if(!name)throw Error('Select the wallet you used to sign in.');
       if(Date.now()>plan.expiresAt)throw Error('The claim quote expired. Prepare it again.');
-      const signature=await signTransaction(name,plan.transaction,{chain:plan.chain});
+      const signature=await signTransaction(name,plan.transaction,{chain:plan.chain,reviewedReward:true});
       if(signature.address!==personal.wallet)throw Error('Your wallet account changed. Sign in again before claiming.');
       const sent=await api('/api/rewards/claims/submit',{method:'POST',body:{intentId:plan.intentId,signed:signature.signed}});
       $('rewards-claim-status').replaceChildren(document.createTextNode('Submitted. Waiting for final confirmation: '),link('View transaction',sent.url));

@@ -171,3 +171,33 @@ test('signTransaction: Wallet Standard signs the bytes on the asked chain; legac
  assert.equal(fromBase64((await signTransaction('Loud',toBase64(tx))).signed).length,tx.length);assert.equal(n,2);
  assert.equal(SIGN_MS,120000);assert.deepEqual([...fromBase64(toBase64(new Uint8Array([0,1,255,128])))],[0,1,255,128]);
 });
+
+test('reviewed Phantom rewards use documented sign-only request and reject changed or unsigned bytes',async()=>{
+ const kp=await webcrypto.subtle.generateKey({name:'Ed25519'},true,['sign','verify']);
+ const publicKey=new Uint8Array(await webcrypto.subtle.exportKey('raw',kp.publicKey)),address=b58encode(publicKey);
+ const account={address,publicKey,chains:['solana:mainnet']};
+ registerStandard({name:'Phantom',chains:['solana:mainnet'],features:{
+  'standard:connect':{connect:async()=>({accounts:[account]})},'solana:signMessage':{signMessage:async()=>[]},
+  'solana:signTransaction':{signTransaction:async()=>{throw Error('Unsupported Wallet Standard sign-only path');}}
+ }});
+ const message=new Uint8Array(100);message[0]=1;message.set(publicKey,4);
+ const original=new Uint8Array(65+message.length);original[0]=1;original.set(message,65);
+ let mode='valid',seen;
+ const provider={isPhantom:true,publicKey:{toBase58:()=>address},request:async input=>{
+  seen=input;const signed=new Uint8Array(original);
+  if(mode!=='unsigned')signed.set(new Uint8Array(await webcrypto.subtle.sign('Ed25519',kp.privateKey,message)),1);
+  if(mode==='changed')signed[signed.length-1]^=1;
+  if(mode==='invalid')signed[1]^=1;
+  return {serialize:()=>signed};
+ }};
+ const previous=globalThis.window;globalThis.window={phantom:{solana:provider}};
+ try{
+  const result=await signTransaction('Phantom',toBase64(original),{reviewedReward:true});
+  assert.deepEqual(seen,{method:'signTransaction',params:{message:b58encode(message)}});
+  assert.equal(result.address,address);assert.equal(await webcrypto.subtle.verify('Ed25519',kp.publicKey,fromBase64(result.signed).subarray(1,65),message),true);
+  mode='changed';await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),/changed the reviewed transaction/);
+  mode='unsigned';await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),/valid signature/);
+  mode='invalid';await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),/valid signature/);
+  provider.publicKey={toBase58:()=> 'different-wallet'};await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),new RegExp(MISMATCH.slice(0,20)));
+ }finally{if(previous===undefined)delete globalThis.window;else globalThis.window=previous;}
+});
