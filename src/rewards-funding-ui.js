@@ -23,8 +23,8 @@ export function initRewardsFunding({ walletState, refreshPool }) {
       bootstrap = result;
       text('rewards-funding-status', result.note || result.status);
       text('rewards-funding-summary', m ? `Prepared holder pool ${money(m.holderPoolLamports)} · ${m.entries.length} recipients · snapshot slot ${m.snapshotSlot}` : 'Initial holder budget: 0.2 SOL. Contract verification is required before signing.');
-      $('rewards-funding-prepare').disabled = busy || !['ready_to_fund', 'already_funded'].includes(result.status);
-      $('rewards-funding-prepare').textContent = result.status === 'already_funded' ? 'Register funded allocation' : 'Review initial pool funding';
+      $('rewards-funding-prepare').disabled = busy || result.registered || !['ready_to_fund', 'already_funded'].includes(result.status);
+      $('rewards-funding-prepare').textContent = result.registered ? 'Initial pool funded' : result.status === 'already_funded' ? 'Register funded allocation' : 'Review initial pool funding';
     } catch (e) { text('rewards-funding-status', describeError(e)); }
   }
   $('rewards-funding-prepare').onclick = async () => {
@@ -43,7 +43,7 @@ export function initRewardsFunding({ walletState, refreshPool }) {
       text('rewards-funding-root', p.root);
       $('rewards-funding-review').hidden = false; $('rewards-funding-sign').disabled = false;
       text('rewards-funding-status', 'Review the fixed allocation and cost. This funds only the 0.2 SOL holder pool; the buyback budget is separate.');
-    } catch (e) { text('rewards-funding-status', describeError(e)); } finally { busy = false; if (bootstrap) $('rewards-funding-prepare').disabled = !['ready_to_fund', 'already_funded'].includes(bootstrap.status); }
+    } catch (e) { text('rewards-funding-status', describeError(e)); } finally { busy = false; if (bootstrap) $('rewards-funding-prepare').disabled = bootstrap.registered || !['ready_to_fund', 'already_funded'].includes(bootstrap.status); }
   };
   $('rewards-funding-cancel').onclick = () => { reset(); text('rewards-funding-status', 'Funding cancelled. Nothing was sent.'); };
   $('rewards-funding-sign').onclick = async () => {
@@ -55,6 +55,7 @@ export function initRewardsFunding({ walletState, refreshPool }) {
       const signed = await signTransaction(state.walletName, quote.transaction, { chain: quote.chain, reviewedReward: true,baseNetworkFeeLamports:quote.networkFeeLamports,maxNetworkFeeLamports:quote.maxNetworkFeeLamports });
       if (signed.address !== quote.wallet) throw Error('The wallet account changed. Nothing was sent by this dashboard.');
       const sent = await api('/api/rewards/funding/submit', { method: 'POST', body: { intentId: quote.intentId, signed: signed.signed } });
+      if(sent.status==='finalized'&&sent.alreadyFunded){reset();text('rewards-funding-status','Initial pool funded and allocation registered. No second deposit was sent.');await refreshPool();return;}
       const intentId = quote.intentId; reset();
       text('rewards-funding-status', 'Funding submitted. Waiting for finalization and allocation registration…');
       const url = explorerLink(sent.url); if (url) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = ' View funding transaction'; $('rewards-funding-status').append(a); }
