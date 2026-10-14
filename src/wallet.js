@@ -9,7 +9,7 @@
 // purpose (CSP, supply chain); a later option for people with no wallet at all is Phantom Connect or Privy embedded
 // wallets, behind signIn() below with the same nonce → signMessage → verify flow. Until then, guests play (guest.js).
 import {api,b58encode} from './api.js';
-import {reviewWalletAdjustedReward} from './rewards-wallet-review.js';
+import {reviewWalletAdjustedReward,describeWalletAdjustedReward} from './rewards-wallet-review.js';
 const wallets=new Map(),legacy=new Map(),listeners=new Set();
 const emit=()=>{for(const fn of listeners)try{fn();}catch{}};
 const usable=w=>(w?.chains||[]).some(c=>String(c).startsWith('solana:'))&&typeof w.features?.['standard:connect']?.connect==='function'&&typeof w.features?.['solana:signMessage']?.signMessage==='function';
@@ -178,7 +178,10 @@ export async function signTransaction(name,txBase64,{chain=LEGACY_CHAIN,reviewed
   const result=await ask(()=>withTimeout(Promise.resolve().then(()=>provider.request({method:'signTransaction',params:{message:b58encode(original)}})),SIGN_MS));
   if(typeof result?.serialize!=='function')throw Error('Phantom did not return a signed transaction. Nothing was sent.');
   const signed=toU8(result.serialize({requireAllSignatures:false,verifySignatures:false}));
-  if(!signed||signed[0]!==1||(!sameBytes(signed.subarray(65),original.subarray(65))&&!reviewWalletAdjustedReward(txBase64,toBase64(signed),{baseNetworkFeeLamports,maxNetworkFeeLamports})))throw Error('Phantom changed the reviewed actions or exceeded the approved network fee. Nothing was sent.');
+  if(!signed||signed[0]!==1||(!sameBytes(signed.subarray(65),original.subarray(65))&&!reviewWalletAdjustedReward(txBase64,toBase64(signed),{baseNetworkFeeLamports,maxNetworkFeeLamports}))){
+   console.warn('SUB01_REWARD_WALLET_DIFF',JSON.stringify(signed?describeWalletAdjustedReward(txBase64,toBase64(signed)):{missingSignedTransaction:true}));
+   throw Error('Phantom changed the reviewed actions or exceeded the approved network fee. Nothing was sent.');
+  }
   const signature=signed.subarray(1,65);
   if(signature.length!==64||!signature.some(b=>b!==0)||!await signedByKey(toU8(account.publicKey),signed.subarray(65),signature))throw Error('Phantom did not provide a valid signature for this wallet. Nothing was sent.');
   return {signed:toBase64(signed),address:account.address};

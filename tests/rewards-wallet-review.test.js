@@ -8,3 +8,9 @@ test('reviewed funding allows only bounded wallet priority fees while preserving
  assert.equal(reviewWalletAdjustedReward(fixtures.original,fixtures.allowed,{...options,maxNetworkFeeLamports:'75000'}),false);
  assert.equal(reviewWalletAdjustedReward(fixtures.original,fixtures.allowed,{...options,maxNetworkFeeLamports:'100001'}),false);
 });
+
+test('the captured Phantom safety-check transaction passes while Lighthouse writes remain blocked',()=>{
+ const f=JSON.parse(readFileSync(new URL('./fixtures/rewards-phantom-observed.json',import.meta.url)));
+ assert.equal(reviewWalletAdjustedReward(f.original,f.observed,options),true);
+ assert.equal(reviewWalletAdjustedReward(f.original,f.memoryWrite,options),false);
+});
