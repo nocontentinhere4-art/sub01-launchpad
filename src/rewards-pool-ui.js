@@ -1,3 +1,4 @@
+import { initRewardsFunding } from './rewards-funding-ui.js';
 import { api, short } from './api.js';
 import { listWallets, onWallets, scanWallets, signIn, signTransaction, describeError } from './wallet.js';
 import { solText, REWARDS_POLICY } from './rewards.js';
@@ -7,6 +8,7 @@ export function initRewardsPool() {
   const $=id=>document.getElementById(id);
   if(!$('rewards-personal-live'))return ()=>{};
   let policy=null,personal=null,busy=false,walletName=null,plan=null,generation=0;
+  const refreshFunding=initRewardsFunding({walletState:()=>({wallet:personal?.wallet,walletName:walletName||$('rewards-wallet-select').value,policy}),refreshPool:()=>refresh()});
   const text=(id,value)=>{$(id).textContent=value;};
   const link=(label,url)=>{const a=document.createElement('a'),safe=explorerLink(url);if(!safe)return document.createTextNode(label);a.textContent=label;a.href=safe;a.target='_blank';a.rel='noopener noreferrer';return a;};
   const money=value=>solText(unsignedAmount(value));
@@ -58,7 +60,7 @@ export function initRewardsPool() {
     }catch(e){text('rewards-claim-status',describeError(e));}finally{busy=false;walletChoices();}
   };
   async function refresh() {
-    const request=++generation;resetPlan();personal=null;
+    const request=++generation;resetPlan();personal=null;refreshFunding();
     for(const id of ['rewards-live-claimable','rewards-live-earned','rewards-live-paid'])text(id,'—');$('rewards-my-periods').replaceChildren();
     try{
       const pool=await api('/api/rewards/pool');if(request!==generation)return;
@@ -84,7 +86,7 @@ export function initRewardsPool() {
       text('rewards-live-wallet',short(me.user.wallet,8));
       const mine=await api('/api/rewards/me');if(request!==generation)return;
       if(mine.wallet!==me.user.wallet)throw Error('Unexpected wallet in reward data.');
-      personal=mine;
+      personal=mine;await refreshFunding();if(request!==generation)return;
       for(const [id,key] of [['rewards-live-claimable','claimableLamports'],['rewards-live-earned','earnedLamports'],['rewards-live-paid','paidLamports']])text(id,money(mine[key]));
       const entries=Array.isArray(mine.epochs)?mine.epochs:[];
       for(const e of entries){

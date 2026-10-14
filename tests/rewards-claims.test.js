@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { verifyClaimProof, reviewClaimTransaction, explorerLink, unsignedAmount } from '../src/rewards-claims.js';
+import { verifyClaimProof, reviewClaimTransaction, reviewFundingTransaction, explorerLink, unsignedAmount } from '../src/rewards-claims.js';
 import { gateReason } from '../src/guest.js';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/reward-claim.json',import.meta.url),'utf8'));
 
@@ -39,4 +39,13 @@ test('voluntary buyback only permits the chosen exact contribution',()=>{
   assert(!reviewClaimTransaction(fixture.transaction,fixture.buybackExpected));
   assert(!reviewClaimTransaction(fixture.buybackWrongAmount,fixture.buybackExpected));
   assert(!reviewClaimTransaction(fixture.buyback,{...fixture.buybackExpected,buybackWallet:fixture.expected.escrow}));
+});
+
+test('initial treasury review rejects extra transfers and altered allocation roots',()=>{
+  assert(reviewFundingTransaction(fixture.funding,fixture.fundingExpected));
+  assert(!reviewFundingTransaction(fixture.fundingExtraTransfer,fixture.fundingExpected));
+  assert(!reviewFundingTransaction(fixture.funding,{...fixture.fundingExpected,root:'0'.repeat(64)}));
+  assert(!reviewFundingTransaction(fixture.funding,{...fixture.fundingExpected,creatorRewardsLamports:'2000000000'}));
+  assert(!reviewFundingTransaction(fixture.funding,{...fixture.fundingExpected,snapshotEnd:fixture.fundingExpected.snapshotEnd+1000}));
+  assert(!reviewFundingTransaction(fixture.funding,{...fixture.fundingExpected,wallet:fixture.expected.wallet}));
 });

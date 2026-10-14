@@ -44,3 +44,7 @@ All live fields remain unknown while deployment/verification is incomplete. The 
 ## Voluntary buyback contribution
 
 The holder can keep SOL (default) or contribute their entire individual daily reward to buyback/burn. The UI reviews the destination and fee/deposit/net costs. In contribution mode it validates an exact claim plus a transfer to the fixed funding wallet, never an arbitrary transfer. Changing the choice clears the prior quote. Contributions are operator-managed SOL in the project wallet; no automatic burn is claimed. The public list links finalized contributions separately from actual token burn evidence.
+
+## Initial holder escrow funding
+
+The project funding wallet sees an owner-only initial funding section. It reviews the fixed allocation/root, 0.2-SOL deposit, rent and fee, independently checks the actual publish transaction bytes, and signs via the selected wallet. The backend registers the same allocation only after finalization and verification. Recovering an already-funded allocation never creates a second deposit. Other holder wallets cannot prepare or submit treasury funding.

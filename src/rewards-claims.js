@@ -64,3 +64,24 @@ export function explorerLink(value) {
   try{const u=new URL(value);if(u.origin==='https://explorer.solana.com'&&/^\/(address|tx)\/[1-9A-HJ-NP-Za-km-z]{32,88}$/.test(u.pathname)&&['','?cluster=devnet'].includes(u.search))return u.href;}catch{}
   return null;
 }
+
+// Initial treasury funding: exactly one publish instruction, fixed one-SOL basis.
+export function reviewFundingTransaction(base64, expected) {
+  try {
+    if (expected.wallet !== REWARDS_POLICY.fundingWallet || expected.epochId !== 100000 || expected.creatorRewardsLamports !== '1000000000'
+      || !Number.isSafeInteger(expected.snapshotEnd) || expected.snapshotEnd % 1000 !== 0) return false;
+    if (typeof base64 !== 'string' || base64.length > 6000) return false;
+    const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0)); let offset = 0;
+    const read = n => { if (offset + n > bytes.length) throw Error(); const b = bytes.slice(offset, offset + n); offset += n; return b; };
+    const short = () => { let n = 0, shift = 0; for (let i = 0; i < 3; i++) { const b = read(1)[0]; n |= (b & 127) << shift; if (!(b & 128)) return n; shift += 7; } throw Error(); };
+    if (short() !== 1 || read(64).some(b => b !== 0)) return false;
+    if (compare(read(3), Uint8Array.of(1, 0, 2)) !== 0 || short() !== 4) return false;
+    const keys = Array.from({ length: 4 }, () => b58encode(read(32)));
+    if (new Set(keys).size !== 4 || keys[0] !== expected.wallet || keys[1] !== expected.escrow) return false;
+    read(32);
+    if (short() !== 1 || keys[read(1)[0]] !== expected.program || short() !== 3) return false;
+    if ([...read(3)].map(i => keys[i]).join('|') !== [expected.wallet, expected.escrow, '11111111111111111111111111111111'].join('|')) return false;
+    const data = read(short()), desired = concat(Uint8Array.of(0), u64(100000), u64('1000000000'), unhex(expected.root), u64(expected.snapshotEnd / 1000));
+    return offset === bytes.length && data.length === desired.length && compare(data, desired) === 0;
+  } catch { return false; }
+}
