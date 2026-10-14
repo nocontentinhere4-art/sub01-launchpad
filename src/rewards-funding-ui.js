@@ -36,8 +36,10 @@ export function initRewardsFunding({ walletState, refreshPool }) {
       const m = bootstrap.manifest;
       if (state.wallet !== REWARDS_POLICY.fundingWallet || p.wallet !== state.wallet || p.program !== state.policy?.program || p.network !== state.policy?.network
         || p.root !== m.root || p.snapshotEnd !== m.to || p.escrow !== bootstrap.escrow || p.holderDepositLamports !== '200000000' || !reviewFundingTransaction(p.transaction, p)) throw Error('The initial funding transaction could not be verified. Nothing was signed.');
+      const baseFee=BigInt(p.networkFeeLamports),cap=BigInt(p.maxNetworkFeeLamports);
+      if(cap<baseFee||cap>100000n||BigInt(p.maximumTotalCostLamports)!==BigInt(p.holderDepositLamports)+BigInt(p.escrowRentLamports)+cap)throw Error('Unexpected network fee allowance. Nothing was signed.');
       quote = p;
-      text('rewards-funding-deposit', money(p.holderDepositLamports)); text('rewards-funding-rent', money(p.escrowRentLamports)); text('rewards-funding-fee', money(p.networkFeeLamports)); text('rewards-funding-total', money(p.totalCostLamports));
+      text('rewards-funding-deposit', money(p.holderDepositLamports)); text('rewards-funding-rent', money(p.escrowRentLamports)); text('rewards-funding-fee', 'Up to '+money(p.maxNetworkFeeLamports)); text('rewards-funding-total', money(p.maximumTotalCostLamports));
       text('rewards-funding-root', p.root);
       $('rewards-funding-review').hidden = false; $('rewards-funding-sign').disabled = false;
       text('rewards-funding-status', 'Review the fixed allocation and cost. This funds only the 0.2 SOL holder pool; the buyback budget is separate.');
@@ -50,7 +52,7 @@ export function initRewardsFunding({ walletState, refreshPool }) {
     try {
       const state = walletState(); if (state.wallet !== quote.wallet || Date.now() > quote.expiresAt) throw Error('Sign in again or refresh the expired funding quote.');
       if (!state.walletName) throw Error('Select the funding wallet you used to sign in.');
-      const signed = await signTransaction(state.walletName, quote.transaction, { chain: quote.chain, reviewedReward: true });
+      const signed = await signTransaction(state.walletName, quote.transaction, { chain: quote.chain, reviewedReward: true,baseNetworkFeeLamports:quote.networkFeeLamports,maxNetworkFeeLamports:quote.maxNetworkFeeLamports });
       if (signed.address !== quote.wallet) throw Error('The wallet account changed. Nothing was sent by this dashboard.');
       const sent = await api('/api/rewards/funding/submit', { method: 'POST', body: { intentId: quote.intentId, signed: signed.signed } });
       const intentId = quote.intentId; reset();

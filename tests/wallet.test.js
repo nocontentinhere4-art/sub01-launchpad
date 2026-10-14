@@ -195,7 +195,7 @@ test('reviewed Phantom rewards use documented sign-only request and reject chang
   const result=await signTransaction('Phantom',toBase64(original),{reviewedReward:true});
   assert.deepEqual(seen,{method:'signTransaction',params:{message:b58encode(original)}});
   assert.equal(result.address,address);assert.equal(await webcrypto.subtle.verify('Ed25519',kp.publicKey,fromBase64(result.signed).subarray(1,65),message),true);
-  mode='changed';await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),/changed the reviewed transaction/);
+  mode='changed';await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),/changed the reviewed actions/);
   mode='unsigned';await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),/valid signature/);
   mode='invalid';await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),/valid signature/);
   provider.publicKey={toBase58:()=> 'different-wallet'};await assert.rejects(signTransaction('Phantom',toBase64(original),{reviewedReward:true}),new RegExp(MISMATCH.slice(0,20)));

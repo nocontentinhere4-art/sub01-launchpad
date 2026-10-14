@@ -33,7 +33,8 @@ export function initRewardsPool() {
       const p=await api('/api/rewards/claims/prepare',{method:'POST',body:{epochId:epoch.epochId,destination}});
       if(p.destination!==destination||p.wallet!==personal.wallet||p.program!==policy.program||p.network!==policy.network||p.epochId!==epoch.epochId||p.amountLamports!==epoch.amountLamports||p.escrow!==epoch.escrow
         ||!reviewClaimTransaction(p.transaction,{...p,proof:epoch.proof})||!await verifyClaimProof({...epoch,program:policy.program,wallet:personal.wallet}))throw Error('The claim transaction could not be verified. Nothing was signed.');
-      plan=p;text('rewards-claim-destination',destination==='buyback'?'Contribute all of this reward to SUB-01 buyback & burn':'Keep SOL in your wallet');text('rewards-claim-amount',money(p.amountLamports));text('rewards-claim-fee',money(p.networkFeeLamports));text('rewards-claim-deposit',money(p.claimRecordDepositLamports));text('rewards-claim-net',signedMoney(p.netLamports));
+      if(BigInt(p.maxNetworkFeeLamports)>100000n||BigInt(p.maxNetworkFeeLamports)<BigInt(p.networkFeeLamports))throw Error('Unexpected network fee allowance. Nothing was signed.');
+      plan=p;text('rewards-claim-destination',destination==='buyback'?'Contribute all of this reward to SUB-01 buyback & burn':'Keep SOL in your wallet');text('rewards-claim-amount',money(p.amountLamports));text('rewards-claim-fee','Up to '+money(p.maxNetworkFeeLamports));text('rewards-claim-deposit',money(p.claimRecordDepositLamports));text('rewards-claim-net',signedMoney(p.netLamports));
       $('rewards-claim-review').hidden=false;$('rewards-claim-sign').disabled=false;text('rewards-claim-status',destination==='buyback'?'This transaction sends your full reward to the project wallet for buyback & burn. You pay the fee and deposit. The token purchase and burn happen separately.':'Review these amounts, then sign the claim in your wallet. No SUB-01 tokens move.');
     }catch(e){text('rewards-claim-status',describeError(e));}finally{busy=false;}
   }
@@ -44,7 +45,7 @@ export function initRewardsPool() {
     try{
       const name=walletName||$('rewards-wallet-select').value;if(!name)throw Error('Select the wallet you used to sign in.');
       if(Date.now()>plan.expiresAt)throw Error('The claim quote expired. Prepare it again.');
-      const signature=await signTransaction(name,plan.transaction,{chain:plan.chain,reviewedReward:true});
+      const signature=await signTransaction(name,plan.transaction,{chain:plan.chain,reviewedReward:true,baseNetworkFeeLamports:plan.networkFeeLamports,maxNetworkFeeLamports:plan.maxNetworkFeeLamports});
       if(signature.address!==personal.wallet)throw Error('Your wallet account changed. Sign in again before claiming.');
       const sent=await api('/api/rewards/claims/submit',{method:'POST',body:{intentId:plan.intentId,signed:signature.signed}});
       $('rewards-claim-status').replaceChildren(document.createTextNode('Submitted. Waiting for final confirmation: '),link('View transaction',sent.url));
