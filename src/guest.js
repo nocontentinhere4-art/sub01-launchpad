@@ -62,6 +62,7 @@ export const reasonFor=key=>REASONS[key]||REASONS.claim;
 export function gateReason(path,method='GET'){
  const m=String(method).toUpperCase(),p=String(path).split('?')[0];
  if(m==='GET'||m==='HEAD'||p.startsWith('/api/auth/'))return null;
+ if(p.startsWith('/api/rewards/'))return null; // independent wallet screen; authenticated claim routes enforce the session server-side
  if(m==='POST'&&p==='/api/support')return null;   // Help works signed out too (support-ui.js): a stuck guest must reach us
  if(m==='POST'&&p==='/api/residents')return 'claim';
  if(m==='POST'&&p==='/api/ideas')return 'idea';

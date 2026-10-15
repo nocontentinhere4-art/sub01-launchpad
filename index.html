@@ -101,6 +101,7 @@
       <div class="preview-badge" id="server-badge"><i></i><span id="server-status">CONNECTING</span></div>
       <!-- Help / support (support-ui.js): always there, small; a report reaches the team with the launch's state attached -->
       <button class="help-button" id="help-button" type="button" aria-haspopup="dialog" aria-controls="support-backdrop" title="Help: report a problem"><svg class="i" aria-hidden="true"><use href="#i-help"/></svg><span class="lbl">Help</span></button>
+      <button class="button rewards-entry" id="rewards-button" type="button" aria-haspopup="dialog" aria-controls="rewards-backdrop">SUB-01 rewards</button>
       <button class="account-chip" id="account-button" type="button"><svg class="i" aria-hidden="true"><use href="#i-wallet"/></svg><span class="nm">Sign in</span></button>
       <!-- SIMPLIFY 2026-10-10: the three primary actions are #idea-button, #explore-button (Walk) and #tour-button (Visit SUB-01).
            On phones main.js moves all three into #walk-dock, which becomes the dock's Idea · Walk · SUB-01 bar (.lbl-s = short labels). -->
@@ -272,6 +273,7 @@
             <button class="icon-button" id="city-tour" type="button" aria-label="Tour the city" title="Tour the city"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button></div>
           <div class="more-row" id="more-reset"><span class="more-k"><b>Reset the view</b><small class="more-v">Back to the whole city</small></span>
             <button class="icon-button" id="reset-view" type="button" aria-label="Reset the view" title="Reset the view"><svg class="i" aria-hidden="true"><use href="#i-rotate"/></svg></button></div>
+          <div class="more-row"><span class="more-k"><b>SUB-01 rewards</b><small class="more-v">Creator fees · 20 / 30 / 50</small></span><button class="icon-button" id="rewards-more-button" type="button">Open</button></div>
           <div class="more-row" id="more-about"><span class="more-k"><b>About SUB-01</b><small class="more-v">What he is, how he decides, privacy</small></span>
             <button class="icon-button" id="about-button" type="button" aria-label="About SUB-01" title="About SUB-01"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg></button></div>
         </div>
@@ -352,8 +354,67 @@
         <div class="sheet-body" id="support-body"></div>
       </section>
     </div>
+    <div class="dialog-backdrop" id="rewards-backdrop" hidden>
+      <section class="idea-card rewards-card" role="dialog" aria-modal="true" aria-labelledby="rewards-title">
+        <button class="close-button" id="rewards-close" type="button" aria-label="Close rewards">×</button>
+        <span class="eyebrow">SUB-01 · CREATOR REWARDS</span>
+        <h2 id="rewards-title">One coin.<em>Three destinations.</em></h2>
+        <p class="rewards-intro">20% for holders. 30% for buyback &amp; burn. 50% to fund SUB-01.</p>
+        <div class="rewards-policy"><b id="rewards-policy-label">POLICY ADOPTED · CONTRACT DEPLOYMENT PENDING</b><p>Effective from <time id="rewards-cutoff"></time>. Daily creator rewards are shared using one fixed balance snapshot per distribution. Existing holders can participate.</p></div>
+        <div class="rewards-split" aria-label="Creator rewards allocation"><span>20% holders</span><span>30% buyback</span><span>50% project</span></div>
+        <section class="rewards-live" aria-labelledby="rewards-live-title">
+          <div class="rewards-section-heading"><h3 id="rewards-live-title">Public reward pool</h3><button class="chip" id="rewards-pool-refresh" type="button">Refresh</button></div>
+          <span class="eyebrow" id="rewards-pool-network">DEPLOYMENT PENDING</span>
+          <p id="rewards-pool-status" role="status">The contract must be deployed and funded before any rewards can be claimed.</p>
+          <dl><div><dt>Funding wallet</dt><dd id="rewards-pool-wallet">HMPUiULXumamWDhuoKap6ty2hQ7V7GQwi8PZ7pGx6STQ</dd></div><div><dt>Claim contract</dt><dd id="rewards-pool-program">Contract deployment pending</dd></div><div><dt>Funding wallet SOL balance</dt><dd id="rewards-pool-balance">—</dd></div></dl>
+          <div class="rewards-start-budget"><b>Initial budget: 1 SOL</b><p>0.2 SOL for the initial holder distribution · 0.3 SOL for buyback &amp; burn · 0.5 SOL for the project. This is the approved budget, not confirmation of a deposit or burn.</p></div>
+          <h4>Voluntary holder contributions</h4><p class="rewards-help">Contributions go to the project funding wallet for buyback and burn. A SOL contribution is not a completed token burn.</p><div id="rewards-buyback-contributions" class="rewards-periods">No finalized holder contributions reported yet.</div>
+          <div id="rewards-public-periods" class="rewards-periods">No funded distributions published yet.</div>
+          <details class="rewards-rules"><summary>What can be verified?</summary><p>Each funded distribution has a public escrow, an immutable allocation root and a downloadable manifest. Your proof binds your wallet, period and amount. The contract prevents repeat claims.</p><p>Snapshot balances and fee attribution are verified by the publisher. The public manifest lets you reproduce its allocation; the contract does not independently verify those balances. The funding wallet is separate from the funded escrows.</p></details>
+        </section>
+        <section id="rewards-personal-live" aria-labelledby="rewards-my-title">
+          <div class="rewards-section-heading"><h3 id="rewards-my-title">Your claimable rewards</h3><span id="rewards-live-wallet">Connect your wallet</span></div>
+          <div class="rewards-login"><label for="rewards-wallet-select">Your wallet</label><select id="rewards-wallet-select" aria-label="Select your wallet"></select><button class="chip" id="rewards-connect" type="button">Connect &amp; sign in</button></div>
+          <p class="rewards-help" id="rewards-wallet-help">Sign a login message to see your rewards. It moves no funds.</p>
+          <div class="rewards-account-totals"><div><small>Published allocation</small><strong id="rewards-live-earned">—</strong></div><div><small>Claimed or contributed</small><strong id="rewards-live-paid">—</strong></div><div><small>Available to claim</small><strong id="rewards-live-claimable">—</strong></div></div>
+          <label for="rewards-destination">What do you want to do with your reward?</label><select id="rewards-destination"><option value="wallet">Keep my SOL reward</option><option value="buyback">Contribute my reward to buyback &amp; burn</option></select><p class="rewards-help">This choice applies to your own share of the 20% holder pool. Buyback &amp; burn sends your entire daily reward to the project funding wallet; the token purchase and burn are performed separately and require transaction evidence.</p>
+          <section id="rewards-bootstrap-owner" class="rewards-policy" hidden aria-labelledby="rewards-funding-title">
+            <h4 id="rewards-funding-title">Project wallet · initial pool funding</h4><p id="rewards-funding-summary">Initial holder budget: 0.2 SOL.</p>
+            <a href="/api/rewards/bootstrap" target="_blank" rel="noopener">Review the allocation and evidence</a>
+            <button id="rewards-funding-prepare" class="chip" type="button" disabled>Review initial pool funding</button>
+            <div id="rewards-funding-review" hidden><dl><div><dt>Holder escrow deposit</dt><dd id="rewards-funding-deposit">—</dd></div><div><dt>Escrow rent</dt><dd id="rewards-funding-rent">—</dd></div><div><dt>Network fee</dt><dd id="rewards-funding-fee">—</dd></div><div><dt>Maximum total wallet cost</dt><dd id="rewards-funding-total">—</dd></div></dl><p>Allocation root: <span id="rewards-funding-root" style="overflow-wrap:anywhere"></span></p><p>This locks the reviewed holder allocation. Buyback &amp; burn is funded separately.</p><button id="rewards-funding-cancel" class="chip" type="button">Cancel funding</button> <button id="rewards-funding-sign" class="chip" type="button" disabled>Sign initial pool funding</button></div>
+            <p id="rewards-funding-status" role="status"></p>
+          </section>
+          <div id="rewards-my-periods" class="rewards-periods"></div>
+          <div id="rewards-claim-review" class="rewards-policy" hidden><b>REVIEW YOUR SOL CLAIM</b><p id="rewards-claim-destination"></p><dl><div><dt>Your reward allocation</dt><dd id="rewards-claim-amount">—</dd></div><div><dt>Network fee</dt><dd id="rewards-claim-fee">—</dd></div><div><dt>Claim-record deposit</dt><dd id="rewards-claim-deposit">—</dd></div><div><dt>Net change at maximum fee</dt><dd id="rewards-claim-net">—</dd></div></dl><p>The claim-record deposit is charged once per wallet per 256-day page and cannot be recovered in this version. No SUB-01 tokens move.</p><button class="chip" id="rewards-claim-cancel" type="button">Cancel</button> <button class="chip" id="rewards-claim-sign" type="button" disabled>Sign SOL claim</button></div>
+          <p id="rewards-claim-status" class="rewards-help" role="status"></p>
+        </section>
+        <details class="rewards-rules rewards-scenario"><summary>Estimate future creator rewards</summary>
+        <section aria-labelledby="rewards-estimate-title">
+          <div class="rewards-section-heading"><h3 id="rewards-estimate-title">Estimate the next period</h3><button class="chip" id="rewards-example" type="button">Try an example</button></div>
+          <p class="rewards-help">Choose the same future period for volume and snapshot balances. This is a scenario, not an earned balance or a forecast.</p>
+          <form id="rewards-form" class="rewards-inputs">
+            <div><label for="rewards-volume">Expected trading volume · SOL</label><input id="rewards-volume" type="text" inputmode="decimal" placeholder="e.g. 1000" autocomplete="off"></div>
+            <div><label for="rewards-rate">Creator fee only · %</label><input id="rewards-rate" type="text" inputmode="decimal" placeholder="Enter the creator fee" autocomplete="off"></div>
+            <div><label for="rewards-average">Your eligible SUB-01 at the snapshot</label><input id="rewards-average" type="text" inputmode="decimal" placeholder="Balance at the snapshot" autocomplete="off"></div>
+            <div><label for="rewards-eligible">All holders' eligible SUB-01 at the snapshot</label><input id="rewards-eligible" type="text" inputmode="decimal" placeholder="Same snapshot, same exclusions" autocomplete="off"></div>
+          </form>
+          <p id="rewards-example-note" class="rewards-example-note" hidden>Illustrative inputs only. The 0.3% creator fee is not a verified current rate.</p>
+          <p id="rewards-error" class="rewards-help" role="status"></p>
+          <div class="rewards-result" aria-live="polite" aria-atomic="true">
+            <div class="rewards-total"><span>Estimated creator rewards</span><strong id="rewards-total">—</strong></div>
+            <div class="rewards-allocations"><div><b>20% · Holders</b><strong id="rewards-holders">—</strong><small>Shared by eligible balance at the fixed snapshot.</small></div><div><b>30% · Buyback &amp; burn</b><strong id="rewards-burn">—</strong><small>SOL budget to buy SUB-01 and then burn it.</small></div><div><b>50% · Project</b><strong id="rewards-project">—</strong><small>Development and operating budget.</small></div></div>
+            <div class="rewards-personal"><span>Your estimated share of the 20% pool</span><strong id="rewards-personal">—</strong></div>
+          </div>
+        </section>
+        </details>
+        <details class="rewards-rules"><summary>How your share is calculated</summary><p>Your reward = holder pool × your SUB-01 balance at the snapshot ÷ all eligible SUB-01 at that same snapshot. Each daily allocation is fixed once published. Moving or selling tokens afterward does not change that allocation. You can claim each funded daily allocation once, including on a later day. Daily publication requires verified fees and pool funding; it is not yet automated.</p><p>The 20/30/50 split applies to creator rewards available to this project, never the trade principal or protocol fees. The projection assumes a constant creator fee; actual fees may vary. Pool, treasury and other ineligible accounts must be defined before payouts start. If no eligible holder weight exists, the holder pool remains unallocated.</p></details>
+        <p class="rewards-mint" id="rewards-mint"></p>
+      </section>
+    </div>
     <div class="toast" id="toast" role="status" hidden></div>
   </div>
+  <script type="module" src="/src/rewards-entry.js"></script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

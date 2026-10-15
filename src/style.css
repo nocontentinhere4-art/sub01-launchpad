@@ -1445,3 +1445,37 @@ span.pc-qa-line{cursor:default;color:var(--ink-3)}
  .support-ctx dl{grid-template-columns:92px 1fr}
 }
 .is-photo .help-button{display:none!important}
+/* SUB-01 rewards: accessible independently of the 3D renderer. */
+.rewards-entry{padding:0 14px;white-space:nowrap;background:var(--glass-strong);border:1px solid var(--accent-line);color:var(--ink);font-size:12px}
+.rewards-card{width:820px;background:#171513}
+.rewards-card h2{font-size:42px}.rewards-intro{color:var(--ink-2);line-height:1.5;margin:16px 0}
+.rewards-policy{padding:14px 16px;border:1px solid var(--accent-line);border-radius:12px;background:var(--accent-soft)}
+.rewards-policy b{font:600 11px var(--f-mono);color:var(--accent-hi)}
+.rewards-policy p,.rewards-help,.rewards-live p,.rewards-rules p{font-size:12px;line-height:1.6;color:var(--ink-2);margin:8px 0}
+.rewards-split{display:flex;border-radius:8px;overflow:hidden;margin:18px 0;font:600 10px var(--f-mono);text-align:center}
+.rewards-split span{padding:12px 3px;flex:2;background:#254d41}.rewards-split span:nth-child(2){flex:3;background:#6a3d27}.rewards-split span:nth-child(3){flex:5;background:#383e50}
+.rewards-card h3{font-size:17px;margin:22px 0 10px}.rewards-live{border-bottom:1px solid var(--stroke);padding-bottom:10px}
+.rewards-live dl{margin:0}.rewards-live dl>div{display:flex;gap:16px;justify-content:space-between;padding:8px 0;font-size:12px}.rewards-live dt{color:var(--ink-2)}.rewards-live dd{margin:0;white-space:nowrap;color:var(--ink-3)}
+.rewards-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.rewards-section-heading h3{margin:20px 0 12px}
+.rewards-card .chip{padding:8px 12px;border:1px solid var(--stroke-2);border-radius:var(--r-pill);background:var(--fill-2);color:var(--ink);font:600 11px var(--f-ui);cursor:pointer;white-space:nowrap}
+.rewards-card .chip:hover{background:var(--accent-soft);border-color:var(--accent-line)}
+.rewards-inputs{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}.rewards-inputs input{width:100%;min-width:0}.rewards-inputs>div{min-width:0}
+.rewards-card .rewards-inputs label{font-size:9px;letter-spacing:.03em;line-height:1.5}
+.rewards-result{margin-top:16px;border:1px solid var(--stroke-2);border-radius:14px;overflow:hidden;background:var(--fill-1)}
+.rewards-total,.rewards-personal{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px;font-size:12px;flex-wrap:wrap}.rewards-total strong{font-size:24px}.rewards-personal{background:rgba(74,222,154,.08)}.rewards-personal strong{font-size:22px;color:var(--ok)}
+.rewards-allocations{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--stroke);border-bottom:1px solid var(--stroke)}
+.rewards-allocations>div{padding:16px;border-right:1px solid var(--stroke);min-width:0}.rewards-allocations>div:last-child{border:0}.rewards-allocations b{font-size:11px;color:var(--ink-2)}.rewards-allocations strong{display:block;font-size:21px;margin:10px 0;overflow-wrap:anywhere}.rewards-allocations small{font-size:11px;line-height:1.5;color:var(--ink-3);display:block}
+.rewards-rules{margin-top:18px;font-size:12px}.rewards-rules summary{cursor:pointer;color:var(--ink-2);padding:6px 0}.rewards-mint{font:9px var(--f-mono);color:var(--ink-3);overflow-wrap:anywhere;margin:16px 0 0}.rewards-example-note{font-size:11px;color:var(--accent-hi);line-height:1.5}
+@media(max-width:600px){.rewards-entry{height:36px!important;padding:0 9px;font-size:10px}.rewards-card{padding:20px;max-height:calc(100dvh - 32px)}.rewards-card h2{font-size:32px}.rewards-inputs{grid-template-columns:1fr}.rewards-allocations{grid-template-columns:1fr}.rewards-allocations>div{border-right:0;border-bottom:1px solid var(--stroke);padding:12px 16px}.rewards-allocations strong{margin:6px 0}.rewards-live dl>div{font-size:11px}}
+
+.rewards-live dd{max-width:60%;white-space:normal;overflow-wrap:anywhere}.rewards-card a{color:var(--accent-hi)}
+.rewards-start-budget{padding:12px 14px;border:1px solid var(--stroke);border-radius:10px;margin:14px 0;font-size:12px}
+.rewards-account-totals{display:grid;grid-template-columns:repeat(3,1fr);margin:14px 0;border:1px solid var(--stroke);border-radius:12px;background:var(--fill-1);overflow:hidden}
+.rewards-account-totals>div{padding:14px;border-right:1px solid var(--stroke);min-width:0}.rewards-account-totals>div:last-child{border:0;background:rgba(74,222,154,.08)}
+.rewards-account-totals small{display:block;color:var(--ink-2);font-size:11px}.rewards-account-totals strong{display:block;margin-top:8px;font-size:22px;overflow-wrap:anywhere}.rewards-account-totals>div:last-child strong{color:var(--ok)}
+.rewards-login{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.rewards-login select{min-width:150px;flex:1}.rewards-card .rewards-login label{margin:0}
+.rewards-periods{display:grid;gap:10px;margin:14px 0;font-size:12px;color:var(--ink-2)}.rewards-period{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px;border:1px solid var(--stroke);border-radius:10px}.rewards-period span{flex:1}.rewards-period a{font-size:11px}
+#rewards-live-wallet{font:10px var(--f-mono);color:var(--ink-3)}
+#rewards-claim-review dl>div{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:6px 0}#rewards-claim-review dd{margin:0}
+.rewards-card button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:600px){.rewards-account-totals{grid-template-columns:1fr}.rewards-account-totals>div{border-right:0;border-bottom:1px solid var(--stroke)}.rewards-live dd{max-width:54%}.rewards-period span{flex-basis:100%}.rewards-login label{width:100%}}
