@@ -519,3 +519,65 @@ test('rewriteModel: ask, running, done (live / held / template), failed, locked,
  assert.equal(rewriteModel(null),null);
  assert.equal(explainError({status:429,body:{error:'rewrite_limit',message:'3 rewrites a day: the next one in about 20 h',retryAfterS:72000}}),'3 rewrites a day: the next one in about 20 h.');
 });
+
+// ---------------------------------------------------------------- the two-step launch (2026-10-15): tx1 creates the coin, tx2 locks the split
+test('launchSteps two-step launch: step 1 creates the coin; "Lock the fee split" is the open step until tx2 is verified; never "Launched" before; every state', async()=>{
+ const {splitTwoStep,SPLIT_PENDING_LABEL}=await import('../src/desk-flows.js');
+ const ids=m=>m.steps.map(s=>s.id).join(' ');
+ const cfg={splitTx:true,mock:false,network:'devnet',feeSharing:{locked:true,recipients:alloc.recipients}};
+ const lp=launchSteps(view('launch_prepared',{submitterApprovedAt:1,adminClearedAt:1,launchConfig:cfg}),ME_OWNER);
+ assert.equal(ids(lp),'site approve clear launch split live');
+ assert.match(lp.steps[3].line,/^Step 1 of 2: builds the transaction that creates the coin/);
+ assert.deepEqual([lp.steps[4].title,lp.steps[4].state,lp.steps[4].action],['Lock the fee split','todo',null]);
+ assert.match(lp.steps[4].line,/Step 2 of 2, right after the coin is created: one more signature locks the fee split \(80% you \/ 20% SUB-01\)/);
+ assert.equal(lp.split.locked,true);assert.equal(lp.split.twoStep,true);
+ const LIVE={launch:{mint:'M1NT',network:'devnet'},launchConfig:cfg,ledger:{verifiedAccruedLamports:null,locked:false}};
+ const sv=(state,attempt=null)=>({state,text:'80% you / 20% SUB-01',line:'',attempt});
+ const pend=launchSteps(view('launched',{...LIVE,split:sv('pending')}),ME_OWNER);
+ assert.equal(pend.current,'split');assert.equal(states(pend),'done done done done current todo');
+ assert.equal(pend.steps[4].line,'Coin created. Step 2: lock the fee split (80% you / 20% SUB-01).');
+ assert.deepEqual(pend.steps[4].action,{id:'split',label:'Lock the fee split',enabled:true});
+ assert.match(pend.steps[4].note,/the fee split is NOT locked/);
+ assert.equal(pend.stageLabel,SPLIT_PENDING_LABEL,'the head chip never says "Launched" before the lock');
+ assert.match(pend.steps[3].line,/^Coin created and verified on devnet/);assert.equal(pend.steps[3].title,'Create the coin on pump.fun');
+ assert.match(pend.steps[5].line,/launched once step 2 locks the fee split/);assert.equal(pend.steps[5].state,'todo');
+ const back=launchSteps(view('launched',{...LIVE,split:sv('pending',{status:'cancelled',error:'the wallet rejected the signature request',withBuy:false})}),ME_OWNER);
+ assert.match(back.steps[4].note,/Last attempt: the wallet rejected the signature request\. Nothing was locked\./,'abandoned: resume any time');
+ const wait=launchSteps(view('launched',{...LIVE,split:sv('awaiting_signature',{status:'awaiting_signature',withBuy:true})}),ME_OWNER);
+ assert.deepEqual([wait.steps[4].action.label,wait.steps[4].secondary.id],['Review & lock','split-nobuy']);
+ const sub=launchSteps(view('launched',{...LIVE,split:sv('submitted',{status:'submitted',signature:'5xx'})}),ME_OWNER);assert.deepEqual([sub.steps[4].state,sub.steps[4].action],['current',null]);assert.match(sub.steps[4].line,/locking the fee split/);
+ const fail=launchSteps(view('launched',{...LIVE,split:sv('failed',{status:'failed',error:'{"InstructionError":[4,{"Custom":6002}]}',withBuy:true})}),ME_OWNER);
+ assert.deepEqual([fail.steps[4].action.label,fail.steps[4].secondary.label],['Try again','Lock without the dev buy']);assert.match(fail.steps[4].line,/Nothing was locked or bought/);
+ const done=launchSteps(view('launched',{...LIVE,ledger:{locked:true},split:sv('locked')}),ME_OWNER);
+ assert.equal(done.current,'live');assert.equal(states(done),'done done done done done current');assert.equal(done.stageLabel,null);
+ assert.match(done.steps[4].line,/^Locked on chain: 80% you \/ 20% SUB-01/);
+ const bad=launchSteps(view('launched',{...LIVE,split:sv('mismatch')}),ME_OWNER);assert.deepEqual([bad.steps[4].state,bad.steps[4].action],['blocked',null]);assert.match(bad.steps[4].line,/admin has been alerted/);assert.match(bad.stageLabel,/NOT the approved one/);
+ const vis=launchSteps(view('launched',{...LIVE,owner:false,split:sv('pending')}),null);assert.equal(vis.steps[4].action.enabled,false);
+ // with a dev buy: it rides with step 2, the buy alone is not offered before the lock; after a lock without it, step 3
+ const buyCfg={...cfg,initialBuyLamports:1e7,devBuyMode:'second_tx'};
+ const b1=launchSteps(view('launched',{...LIVE,launchConfig:buyCfg,split:sv('pending'),devBuy:{status:'pending',lamports:1e7,attempt:null}}),ME_OWNER);
+ assert.equal(ids(b1),'site approve clear launch split devbuy live');assert.equal(b1.current,'split');assert.equal(b1.steps[5].state,'todo');assert.match(b1.steps[5].line,/Comes with step 2/);
+ const b2=launchSteps(view('launched',{...LIVE,launchConfig:buyCfg,split:sv('locked'),devBuy:{status:'pending',lamports:1e7,attempt:null}}),ME_OWNER);
+ assert.equal(b2.current,'devbuy');assert.match(b2.steps[5].line,/^The fee split is locked\. Step 3: buy 0\.01 SOL/);
+ // the single-transaction launch is unchanged
+ assert.equal(splitTwoStep(view('launched',{launch:{mint:'M'}})),false);assert.equal(splitTwoStep(view('launch_prepared',{intent:{split_tx:1}})),true);
+ assert.equal(ids(launchSteps(view('launched',{launch:{mint:'M',network:'devnet'}}),ME_OWNER)),'site approve clear launch live');
+});
+test('reviewModel two-step: step 1 says the split is step 2 and wants exactly 2 signers; the split card names the exact rows, the buy inside, one signer', ()=>{
+ const base={network:'devnet',feePayer:ME_OWNER.user.wallet,mint:'M1NT',launchProgramsOnly:true,accountsWritable:5,txBase64:'AA=='};
+ const v=view('launch_prepared',{launchConfig:{splitTx:true,feeSharing:{locked:true,recipients:alloc.recipients}}});
+ const r1=reviewModel({...base,step:1,kind:'launch',splitTx:true,signers:2,programs:[{name:'pump.fun (bonding curve)',direct:true}],estimate:{splitTx:true,networkFeeLamports:10000,accountsLamports:5608320,initialBuyLamports:0,simulation:{ok:true}}},v,ME_OWNER.user.wallet);
+ assert.deepEqual([r1.kind,r1.splitTx,r1.splitText,r1.canSign],['launch',true,'80% you / 20% SUB-01',true]);
+ assert.ok(r1.doesNot.some(t=>/No fee split in this transaction: step 2, a second signature right after, writes and locks it \(80% you \/ 20% SUB-01\)/.test(t)));
+ assert.equal(reviewModel({...base,step:1,kind:'launch',splitTx:true,signers:3,programs:[],estimate:{splitTx:true}},v,ME_OWNER.user.wallet).canSign,false,'more than wallet + mint: refused');
+ const lv=view('launched',{launch:{mint:'M1NT'},launchConfig:{splitTx:true,feeSharing:{locked:true,recipients:alloc.recipients}},split:{state:'pending',text:'80% you / 20% SUB-01'}});
+ const t2={...base,step:2,kind:'split',signers:1,withBuy:true,splitText:'80% you / 20% SUB-01',programs:[{name:'pump.fun (bonding curve)',direct:true},{name:'pump.fun fee sharing',direct:true},{name:'Associated Token Account',direct:true}],
+  estimate:{kind:'split',withBuy:true,networkFeeLamports:5000,accountsLamports:8016240,initialBuyLamports:1e7,initialBuyMaxLamports:10500000,initialBuyTokensBase:'34199199131375',simulation:{ok:true}}};
+ const r2=reviewModel(t2,lv,ME_OWNER.user.wallet);
+ assert.deepEqual([r2.kind,r2.withBuy,r2.cost.buy,r2.cost.buyMax,r2.tokens,r2.canSign],['split',true,'0.01 SOL','0.0105 SOL','34,199,199',true]);
+ assert.ok(r2.doesNot.some(t=>/Writes the creator-fee split \(80% you \/ 20% SUB-01\) on chain and locks it/.test(t)));
+ assert.ok(r2.doesNot.some(t=>/the whole step fails, nothing is locked or bought/.test(t)));
+ const two=reviewModel({...t2,signers:2},lv,ME_OWNER.user.wallet);assert.equal(two.canSign,false);assert.match(two.warnings.join(' '),/fee split is signed by your wallet alone/);
+ const noBuy=reviewModel({...t2,withBuy:false,estimate:{...t2.estimate,withBuy:false,initialBuyLamports:0}},lv,ME_OWNER.user.wallet);assert.deepEqual([noBuy.withBuy,noBuy.cost.buy],[false,null]);assert.ok(noBuy.doesNot.includes('No buy in this transaction.'));
+ assert.match(explainError({status:409,body:{error:'split_pending'}}),/Lock the fee split first/);
+});

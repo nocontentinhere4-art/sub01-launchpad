@@ -5,6 +5,8 @@
 // xConfigured, mockSigningText, devBuy{status,lamports,attempt}), POST …/launch/transaction (txBase64, mock, messageHash,
 // review fields: network, feePayer, mint, programs, accountsWritable, signers, launchProgramsOnly, estimate, resumed),
 // POST …/launch/devbuy/transaction (the same review fields + step:2, tokensBase, maxLamports, mockSigningText),
+// POST …/launch/split/transaction (two-step launch, step 2: kind 'split', shareholders, splitText, withBuy; view.split
+// {state: pending|awaiting_signature|submitted|failed|locked|mismatch, text, line, attempt}),
 // /api/me ({user:{wallet,role}}).
 const str=v=>typeof v==='string'?v.trim():'';
 const num=v=>{if(v==null||v==='')return null;v=Number(v);return Number.isFinite(v)?v:null;};
@@ -17,8 +19,18 @@ export const chainFor=network=>{network=str(network).toLowerCase();return networ
 export const pumpfunUrl=(mint,network)=>mint&&/^mainnet/.test(str(network))?`https://pump.fun/coin/${encodeURIComponent(mint)}`:null;
 
 // ---------------------------------------------------------------- the launch stepper
-// 'devbuy' only when the launch has a dev buy as its own second transaction (step 2 of the launch, after tx1 lands).
-export const STEP_IDS=['site','approve','clear','launch','devbuy','live'];
+// 'split' only on a two-step launch (LAUNCH_SPLIT_TX): tx1 creates the coin, tx2 locks the fee split (2026-10-15).
+// 'devbuy' only when the launch has a dev buy as its own transaction (after tx1, or after the split when it did not fit).
+export const STEP_IDS=['site','approve','clear','launch','split','devbuy','live'];
+export const SPLIT_PENDING_LABEL='Coin created · fee split not locked yet';
+/** Is this a two-step launch (the fee split is its own second signature)? The server's view.split after tx1; before it
+ *  the configuration (splitTx) or the intent (split_tx). */
+export function splitTwoStep(view){
+ const v=view&&typeof view==='object'?view:{};
+ if(v.split&&typeof v.split==='object')return true;
+ if(v.launch&&typeof v.launch==='object')return false;
+ return v.launchConfig?.splitTx===true||Number(v.intent?.split_tx)===1;
+}
 // The server's stage words (states.js LABELS) for the head chip, which the desk loaded once and the stepper keeps current.
 export const STAGE_LABELS={submitted:'Dropped in his room',evaluating:'SUB-01 is thinking about it',selected:'He wants to build it',declined:'He passed',generating:'He is building it',preview_ready:'Preview ready for your review',
  approved:'Approved by you',launch_prepared:'Launch configuration ready',awaiting_signature:'Waiting for your wallet signature',confirming:'Confirming on-chain',launched:'Launched',failed:'Stopped: needs attention',cancelled:'Cancelled'};
@@ -47,7 +59,9 @@ export const devBuyNote=sol=>`Your dev buy${sol?` of ${sol}`:''} is a second sig
 export function splitRows(view){
  const fs=view?.launchConfig?.feeSharing,rows=Array.isArray(fs?.recipients)?fs.recipients:Array.isArray(view?.allocation?.recipients)?view.allocation.recipients:[];
  return {rows:rows.filter(r=>r&&typeof r==='object').map(r=>({label:str(r.label)||str(r.role)||'Recipient',role:str(r.role),wallet:str(r.wallet),bps:num(r.bps)||0,pct:pct(r.bps)})),
-  locked:fs?fs.locked!==false:(view?.allocation?.mode||'sharing_config')==='sharing_config',status:str(view?.allocation?.status)};
+  locked:fs?fs.locked!==false:(view?.allocation?.mode||'sharing_config')==='sharing_config',status:str(view?.allocation?.status),
+  // a two-step launch: where it stands on chain ('' before the coin exists): never "locked" before tx2 is verified
+  chain:str(view?.split?.state),twoStep:splitTwoStep(view),text:str(view?.split?.text)};
 }
 /**
  * launchSteps(view, me) -> {loading, status, owner, staff, current, stopped, mock, steps:[{id,title,line,state,action,note}],
@@ -79,24 +93,47 @@ export function launchSteps(view,me){
   action:canClear?{id:'clear',label:'Clear for launch',enabled:true}:null,note:''});
  // 4 launch (step 1 of 2 when the dev buy is its own transaction)
  const intent=v.intent&&typeof v.intent==='object'?v.intent:null,lastDead=intent&&DEAD.has(str(intent.status))?str(intent.error):'';
+ const split2=splitTwoStep(v),sv=v.split&&typeof v.split==='object'?v.split:null,sst=str(sv?.state),splitLocked=!split2||sst==='locked';
  const twoStep=devBuyTwoStep(v),buyL=num(v.devBuy?.lamports)??num(v.launchConfig?.initialBuyLamports)??num(v.launchOptions?.initialBuyLamports)??0,buySol=solText(buyL);
  let phase=null,line='',action=null,lnote='';
  if(status==='approved'){phase='preparing';line='SUB-01 is preparing the launch configuration…';}
- else if(status==='launch_prepared'){phase='prepare';line=mock?'MOCK provider: a labelled stand-in, nothing goes on-chain. Prepare it to see the review.':twoStep?'Step 1 of 2: builds the launch transaction (the coin and its locked split). You review it here before the wallet opens; nothing is sent until you sign.':'Builds the exact transaction. You review it here before the wallet opens; nothing is sent until you sign.';action={id:'prepare',label:'Prepare the transaction',enabled:owner};lnote=lastDead?`Last attempt: ${lastDead}. Nothing was created.`:note&&/expired|failed|rejected|cancel/i.test(note)?note:twoStep?devBuyNote(buySol):'';}
+ else if(status==='launch_prepared'){phase='prepare';line=mock?'MOCK provider: a labelled stand-in, nothing goes on-chain. Prepare it to see the review.':split2?'Step 1 of 2: builds the transaction that creates the coin. Step 2, right after, locks the fee split with one more signature. You review each one here before the wallet opens.':twoStep?'Step 1 of 2: builds the launch transaction (the coin and its locked split). You review it here before the wallet opens; nothing is sent until you sign.':'Builds the exact transaction. You review it here before the wallet opens; nothing is sent until you sign.';action={id:'prepare',label:'Prepare the transaction',enabled:owner};lnote=lastDead?`Last attempt: ${lastDead}. Nothing was created.`:note&&/expired|failed|rejected|cancel/i.test(note)?note:twoStep?devBuyNote(buySol):'';}
  else if(status==='awaiting_signature'){phase='resume';line='A transaction is waiting for your signature: the same one you reviewed.';action={id:'resume',label:'Review & sign',enabled:owner};}
  else if(status==='confirming'){phase='confirming';line='Confirming on-chain… the network decides, not the server.';}
  else if(status==='failed'){phase='failed';line=note||'Stopped: needs attention. A SUBZERONE admin has been alerted.';}
- else if(rank>=4){phase='done';line=mock?'Recorded by the MOCK provider.':`Verified on ${str(v.launch?.network)||'chain'}.`;}
+ else if(rank>=4){phase='done';line=split2?(mock?'MOCK coin recorded (no blockchain).':`Coin created and verified on ${str(v.launch?.network)||'chain'}.`):mock?'Recorded by the MOCK provider.':`Verified on ${str(v.launch?.network)||'chain'}.`;}
  else line=needClear?'After the reviewer clears it.':'After your approval.';
- steps.push({id:'launch',title:'Launch on pump.fun',state:status==='failed'?'blocked':rank>=4?'done':rank===3?'current':'todo',line,action,note:lnote});
+ steps.push({id:'launch',title:split2?'Create the coin on pump.fun':'Launch on pump.fun',state:status==='failed'?'blocked':rank>=4?'done':rank===3?'current':'todo',line,action,note:lnote});
+ // 4a the fee split as its own transaction (two-step launch): right after tx1 confirms, one more signature locks it
+ let splitStep=null;
+ if(split2){
+  const txt=str(sv?.text)||split.rows.map(r=>`${r.pct} ${r.role==='submitter'?'you':r.role==='sub01'?'SUB-01':r.label}`).join(' / '),a=sv?.attempt&&typeof sv.attempt==='object'?sv.attempt:null,err=str(a?.error).replace(/^before signing: /,'').replace(/^preflight: /,'');
+  const moved=PRICE_MOVED.test(err)||/price moved/.test(note),withBuy=a?.withBuy===true;
+  let sline='',sstate='todo',sact=null,ssec=null,snote='';
+  if(rank<4||!sv)sline=`Step 2 of 2, right after the coin is created: one more signature locks the fee split (${txt}) on chain.`;
+  else if(sst==='pending'){sstate='current';sline=`Coin created. Step 2: lock the fee split (${txt}).`;sact={id:'split',label:'Lock the fee split',enabled:owner};
+   snote=`Until you sign it, the fee split is NOT locked: creator fees go to your own wallet's creator vault and SUB-01 gets nothing.${a&&(a.status==='expired'||a.status==='cancelled')&&err?` Last attempt: ${err}. Nothing was locked.`:''}`;}
+  else if(sst==='awaiting_signature'){sstate='current';sline=`Step 2: the fee-split transaction (${txt}) is waiting for your signature: the same one you reviewed.`;sact={id:'split',label:'Review & lock',enabled:owner};
+   if(withBuy)ssec=owner?{id:'split-nobuy',label:'Lock without the dev buy'}:null;}
+  else if(sst==='submitted'){sstate='current';sline='Signed · locking the fee split… the network decides, not the server.';}
+  else if(sst==='failed'){sstate='current';sline=`Did not go through${err?` (${err.slice(0,120)})`:''}. Nothing was locked${withBuy?' or bought':''}. Lock the fee split again.`;sact={id:'split',label:'Try again',enabled:owner};
+   if(withBuy||moved)ssec=owner?{id:'split-nobuy',label:'Lock without the dev buy'}:null;}
+  else if(sst==='locked'){sstate='done';sline=`Locked on chain: ${txt}. Nobody can change it now.`;}
+  else if(sst==='mismatch'){sstate='blocked';sline='The fee split on chain is not the approved one. A SUBZERONE admin has been alerted.';}
+  splitStep={status:sst||'planned',text:txt,attempt:a};
+  steps.push({id:'split',title:'Lock the fee split',state:sstate,line:sline,action:sact,secondary:ssec,note:snote});
+ }
  // 4b the dev buy as its own transaction: right after tx1 confirms, one more signature (or skip)
  let devBuy=null;
  if(twoStep){
   const d=v.devBuy&&typeof v.devBuy==='object'?v.devBuy:null,dst=str(d?.status)||'planned',a=d?.attempt&&typeof d.attempt==='object'?d.attempt:null,err=str(a?.error);
   const landedBad=/^landed:/.test(err),moved=PRICE_MOVED.test(err),tokens=tokensText(a?.tokensBase);
   let dline='',dstate='todo',dact=null,dsec=null,dnote='',dphase=dst;
-  if(rank<4||!d){dline=`Step 2 of 2, right after the launch: one more signature buys ${buySol||'your dev buy'} of your coin at the price then (capped at the quote + ${DEV_BUY_SLIPPAGE_PCT}%).`;dphase='planned';}
-  else if(dst==='pending'){dstate='current';dline=`The coin is live. Step 2: buy ${buySol} of it with one more signature, at the price now (capped at the quote + ${DEV_BUY_SLIPPAGE_PCT}%).`;dact={id:'devbuy',label:'Buy with your wallet',enabled:owner};dsec=owner?{id:'devbuy-skip',label:'Skip the dev buy'}:null;
+  if(rank<4||!d){dline=split2?`Rides in step 2 with the fee split when it fits (else one more signature right after): ${buySol||'your dev buy'} of your coin at the price then (capped at the quote + ${DEV_BUY_SLIPPAGE_PCT}%).`
+   :`Step 2 of 2, right after the launch: one more signature buys ${buySol||'your dev buy'} of your coin at the price then (capped at the quote + ${DEV_BUY_SLIPPAGE_PCT}%).`;dphase='planned';}
+  else if(!splitLocked&&(dst==='pending'||dst==='submitted')){dline=dst==='submitted'?'Signed with the fee split · buying… the network decides.':`Comes with step 2 (the fee split) when it fits, else right after it: ${buySol} of your coin.`;dphase='with_split';
+   dsec=owner&&dst==='pending'?{id:'devbuy-skip',label:'Skip the dev buy'}:null;}
+  else if(dst==='pending'){dstate='current';dline=`${split2?'The fee split is locked. Step 3':'The coin is live. Step 2'}: buy ${buySol} of it with one more signature, at the price now (capped at the quote + ${DEV_BUY_SLIPPAGE_PCT}%).`;dact={id:'devbuy',label:'Buy with your wallet',enabled:owner};dsec=owner?{id:'devbuy-skip',label:'Skip the dev buy'}:null;
    dnote=a&&(a.status==='expired'||a.status==='cancelled')&&err&&!/skipped/.test(err)?`Last attempt: ${err.replace(/^before signing: /,'')}. Nothing was bought.`:'';}
   else if(dst==='awaiting_signature'){dstate='current';dline='Your dev buy is waiting for your signature: the same one you reviewed.';dact={id:'devbuy',label:'Review & buy',enabled:owner};dsec=owner?{id:'devbuy-skip',label:'Skip the dev buy'}:null;}
   else if(dst==='submitted'){dstate='current';dline='Signed · buying… the network decides, not the server.';}
@@ -113,9 +150,13 @@ export function launchSteps(view,me){
  const ledger=v.ledger&&typeof v.ledger==='object'?v.ledger:null,accrued=num(ledger?.verifiedAccruedLamports),paid=num(ledger?.confirmedPayoutsLamports);
  const live=rank>=4?{mint,network,explorerTx:str(launch?.explorerTx)||null,explorerToken:str(launch?.explorerToken)||null,pumpfun:pumpfunUrl(mint,network),site:str(v.siteUrl)||null,
   ledger:ledger?accrued==null?'Creator fees: nothing observed on-chain yet.':`Creator fees: ${solText(accrued)} accrued · ${solText(paid||0)} paid out${ledger.locked?' · split locked':''}.`:null}:null;
- steps.push({id:'live',title:'Live',state:rank>=4?'current':'todo',line:rank>=4?(mock?'Launched on the MOCK provider: no token exists on-chain.':`Launched. ${live.ledger||''}`.trim()):'The token, its page and the fee ledger.',action:null,note:''});
+ const liveNow=rank>=4&&splitLocked;
+ steps.push({id:'live',title:'Live',state:liveNow?'current':'todo',line:rank>=4&&!splitLocked?(sst==='mismatch'?'The coin exists, but its fee split is not the approved one.':'The coin exists; it is launched once step 2 locks the fee split.')
+  :rank>=4?(mock?'Launched on the MOCK provider: no token exists on-chain.':`Launched. ${live.ledger||''}`.trim()):'The token, its page and the fee ledger.',action:null,note:''});
  const current=stopped?'stopped':steps.find(s=>s.state==='current')?.id||(status==='failed'?'launch':null);
- return {...base,loading:false,status,owner,current,stopped,mock,steps,split,phase,publicIdea,devBuy,
+ // the head chip: a coin whose split is not locked yet is never shown as plainly "Launched"
+ const stageLabel=rank>=4&&!splitLocked?(sst==='mismatch'?'Coin created · fee split NOT the approved one':SPLIT_PENDING_LABEL):null;
+ return {...base,loading:false,status,owner,current,stopped,mock,steps,split,phase,publicIdea,devBuy,splitStep,stageLabel,
   approve:v.allocation?{allocationId:str(v.allocation.id),statement:str(v.allocation.statement),siteVersion,ideaId:str(v.ideaId)}:null,live};
 }
 // Step numbers follow the steps actually shown: without the reviewer step (REQUIRE_ADMIN_CLEARANCE=0) they run 1-4.
@@ -129,7 +170,7 @@ export const stepIndex=(id,steps=null)=>{const ids=Array.isArray(steps)?steps.ma
 export const DEV_BUY_MAX_SOL=5,DEV_BUY_MIN_SOL=0.001,DEV_BUY_STEP=0.01;
 /** Where the field goes: on the open step while the author can still change it (approve, clearance wait, launch), and
  *  on the launch step read-only once a transaction exists; never on the live step or while the review card is open. */
-export const showDevBuyOn=(dev,stepId,reviewing=false)=>!!dev&&stepId!=='live'&&stepId!=='site'&&stepId!=='devbuy'&&(dev.editable||stepId==='launch')&&!(stepId==='launch'&&reviewing);
+export const showDevBuyOn=(dev,stepId,reviewing=false)=>!!dev&&stepId!=='live'&&stepId!=='site'&&stepId!=='devbuy'&&stepId!=='split'&&(dev.editable||stepId==='launch')&&!(stepId==='launch'&&reviewing);
 const DEV_BUY_STATES=new Set(['preview_ready','approved','launch_prepared','awaiting_signature','confirming']);   // from the approve step on (the owner never saw it inside step 4)
 /** devBuyModel(view) -> null (not the owner's, or not at the launch step) | {sol, text, max, step, locked, editable, note, lockNote, reprepares} */
 export function devBuyModel(view){
@@ -187,6 +228,8 @@ export const LAUNCH_PROGRAMS=new Set(['pump.fun (bonding curve)','pump.fun fee s
 export function reviewModel(tx,view,wallet){
  if(!tx||typeof tx!=='object')return null;
  const only=tx.launchProgramsOnly===true,you=!!str(wallet)&&str(tx.feePayer)===str(wallet),mock=tx.mock===true,step=num(tx.step)===2?2:1;
+ // kind: 'launch' (step 1), 'split' (step 2 of a two-step launch: the fee split, maybe with the buy), 'devbuy' (the buy alone)
+ const kind=str(tx.kind)==='split'?'split':step===2?'devbuy':'launch';
  const programs=(Array.isArray(tx.programs)?tx.programs:[]).map(p=>{const name=str(p?.name)||'unknown program',direct=p?.direct!==false;
   return {id:str(p?.id),name,direct,flag:/unknown/i.test(name)||(direct&&!LAUNCH_PROGRAMS.has(name))};});
  // the dev buy: the built transaction's estimate (quoted cost, fees included) or, on a resumed intent, the configuration
@@ -194,22 +237,30 @@ export function reviewModel(tx,view,wallet){
  const e=tx.estimate&&typeof tx.estimate==='object'?tx.estimate:{},fee=num(e.networkFeeLamports),rent=num(e.accountsLamports),eb=num(e.initialBuyLamports);
  // the server's word: the estimate's devBuyMode, else the intent's or the configuration's (an older estimate: same tx)
  const second=step===1&&(e.devBuyMode!=null?str(e.devBuyMode)==='second_tx':[view?.intent?.dev_buy_mode,view?.launchConfig?.devBuyMode].some(m=>str(m)==='second_tx'));
- const buy=second?0:Math.max(0,(eb!=null?eb:step===2?num(tx.costLamports):num(view?.launchConfig?.initialBuyLamports))||0),buyMax=num(e.initialBuyMaxLamports)??(step===2?num(tx.maxLamports):null);
+ const buy=second||(kind==='split'&&tx.withBuy!==true)?0:Math.max(0,(eb!=null?eb:step===2?num(tx.costLamports):num(view?.launchConfig?.initialBuyLamports))||0),buyMax=num(e.initialBuyMaxLamports)??(step===2?num(tx.maxLamports):null);
  const next=second?(()=>{const d=e.devBuy&&typeof e.devBuy==='object'?e.devBuy:{},l=num(d.requestedLamports)??num(view?.launchConfig?.initialBuyLamports)??0;return l>0?{sol:solText(l),maxSol:solText(num(d.maxLamports)),tokens:tokensText(d.tokensBase),note:devBuyNote(solText(l))}:null;})():null;
- const total=fee!=null&&rent!=null?fee+rent+buy:mock?0:null,tokens=step===2?tokensText(e.initialBuyTokensBase??tx.tokensBase):null;
+ const total=fee!=null&&rent!=null?fee+rent+buy:mock?0:null,tokens=step===2&&buy>0?tokensText(e.initialBuyTokensBase??tx.tokensBase):null;
+ // step 1 of a two-step launch: the split is the next signature, not in this transaction
+ const splitTx=kind==='launch'&&(tx.splitTx===true||e.splitTx===true);
+ const splitTxt=str(tx.splitText)||str(view?.split?.text)||splitRows(view).rows.map(r=>`${r.pct} ${r.role==='submitter'?'you':r.role==='sub01'?'SUB-01':r.label}`).join(' / ');
  const warnings=[];
  if(!you)warnings.push('The fee payer is not your signed-in wallet. Do not sign.');
- if(!only)warnings.push(`This transaction calls a program that is not part of a ${step===2?'dev buy':'launch'}. Do not sign it; tell a SUBZERONE admin.`);
- if(step===2&&num(tx.signers)!=null&&num(tx.signers)!==1)warnings.push('The dev buy is signed by your wallet alone; this one asks for another signer. Do not sign it.');
+ if(!only)warnings.push(`This transaction calls a program that is not part of a ${kind==='split'?'fee split':step===2?'dev buy':'launch'}. Do not sign it; tell a SUBZERONE admin.`);
+ if(step===2&&num(tx.signers)!=null&&num(tx.signers)!==1)warnings.push(`The ${kind==='split'?'fee split':'dev buy'} is signed by your wallet alone; this one asks for another signer. Do not sign it.`);
+ if(splitTx&&num(tx.signers)!=null&&num(tx.signers)!==2&&!mock)warnings.push('The coin is created by your wallet and the new mint key; this one asks for other signers. Do not sign it.');
  if(e.simulation&&e.simulation.ok===false&&!mock)warnings.push(`The simulation failed: ${str(e.simulation.err)||'unknown reason'}. The network would reject it.`);
  const split=splitRows(view);
  const capped=buyMax!=null&&buyMax>buy?` (capped at ${solText(buyMax)} in the transaction)`:'';
- const doesNot=step===2?['No token approvals or delegations.','No token transfers from your wallet.',
+ const doesNot=kind==='split'?['No token approvals or delegations.','No token transfers from your wallet.',
+   `Writes the creator-fee split (${splitTxt}) on chain and locks it: after this nobody can change it, not you and not SUBZERONE.`,
+   buy>0?`Your dev buy of ${solText(buy)} is included${capped}: if the price moved more than ${DEV_BUY_SLIPPAGE_PCT}% since this quote, the whole step fails, nothing is locked or bought, and you can try again.`:'No buy in this transaction.',
+   mock?'Nothing leaves your wallet: you sign a labelled text message.':`The SOL that leaves your wallet: the network fee and the rent of the fee-sharing account${buy>0?`, your new token account and the dev buy${capped}`:''}.`]
+  :step===2?['No token approvals or delegations.','No token transfers from your wallet.',
    `Buys ${tokens?`exactly ${tokens} tokens`:'your coin'} for ${solText(buy)}${capped}: if the price moved more than ${DEV_BUY_SLIPPAGE_PCT}% since this quote, it fails and your SOL stays in your wallet.`,
    mock?'Nothing leaves your wallet: you sign a labelled text message.':`The SOL that leaves your wallet: the network fee, the rent of your new token account and the dev buy${capped}.`]
-  :['No token approvals or delegations.','No token transfers from your wallet.',buy>0?`Your dev buy of ${solText(buy)} is included: you pay it and the tokens land in your wallet.`:next?`No buy in this transaction: your dev buy of ${next.sol} is step 2, a second signature right after.`:'No initial buy.',
+  :['No token approvals or delegations.','No token transfers from your wallet.',...(splitTx?[`No fee split in this transaction: step 2, a second signature right after, writes and locks it (${splitTxt}). Until then nothing is shared or locked.`]:[]),buy>0?`Your dev buy of ${solText(buy)} is included: you pay it and the tokens land in your wallet.`:next?`No buy in this transaction: your dev buy of ${next.sol} is step 2, a second signature right after.`:'No initial buy.',
    mock?'Nothing leaves your wallet: you sign a labelled text message.':buy>0?`The SOL that leaves your wallet: the network fee, the rent for the new accounts and the dev buy${capped}.`:'The only SOL that leaves your wallet is the network fee and the rent for the new accounts.'];
- return {mock,step,resumed:tx.resumed===true,network:str(tx.network)||(mock?'mock':'unknown'),feePayer:str(tx.feePayer),you,mint:str(tx.mint),programs,flagged:programs.some(p=>p.flag)||!only,
+ return {mock,step,kind,splitTx,splitText:splitTxt,withBuy:kind==='split'&&buy>0,resumed:tx.resumed===true,network:str(tx.network)||(mock?'mock':'unknown'),feePayer:str(tx.feePayer),you,mint:str(tx.mint),programs,flagged:programs.some(p=>p.flag)||!only,
   writable:num(tx.accountsWritable)??0,signers:num(tx.signers)??1,bytes:num(tx.txBytes),validUntil:num(tx.lastValidBlockHeight),tokens,devBuyNext:next,
   cost:{fee:solText(fee),rent:solText(rent),buy:buy>0?solText(buy):null,buyMax:buy>0&&buyMax!=null&&buyMax>buy?solText(buyMax):null,total:solText(total)??(mock?'0 SOL':'unknown'),simulated:e.simulation?.ok===true&&!e.simulation?.mock,balance:solText(e.signerBalanceLamports)},
   split,canSign:you&&only&&warnings.length===0&&!!(mock?tx.messageHash:tx.txBase64),warnings,doesNot};
@@ -243,6 +294,10 @@ const CODES={sub01_wallet_missing:"SUB-01's fee wallet is not configured on the 
  intent_exists:'A launch attempt is already in progress.',config_changed:'The launch configuration changed; it is being prepared again.',already_launched:'This project is already launched.',
  landed_unverified:'An earlier transaction landed but failed verification; an admin must resolve it first.',no_intent:'No transaction is waiting for a signature.',not_signer:'This wallet is not the one the transaction was built for.',
  no_dev_buy:'This launch has no separate dev buy.',not_launched:'The coin is not launched yet: the dev buy comes right after the launch.',no_curve:'The coin is not visible on the network yet. Try again in a few seconds.',
+ split_pending:'Lock the fee split first (step 2): the dev buy comes with it or right after it.',already_locked:'The fee split is already locked on chain.',
+ split_mismatch:'The fee split does not match the approved one. Nothing was signed or sent; a SUBZERONE admin has to look at it.',no_split_step:'This launch locked its fee split in the creation transaction.',
+ split_exists:'A fee-sharing config already exists for this coin on chain; it is being checked.',creator_changed:'The coin\'s creator on chain is not your wallet any more; an admin has to look at it.',
+ curve_complete:'The coin already left pump.fun\'s bonding curve.',
  not_owner:'Only the author can do this.',own_project:'A reviewer cannot clear their own project.',forbidden:'Only a SUBZERONE reviewer can do this.',sign_in:'Sign in with your wallet first.',
  rejected:'The network rejected the transaction before it ran. Nothing was created.',bad_signed_tx:'The wallet returned something other than the reviewed transaction. Nothing was sent.',
  x_not_configured:'X is not connected to this server yet.',x_not_connected:'Connect the X account first.',bad_text:'A post is 1–280 characters.',rate_limited:'Slow down a little.',not_found:'Not found, or not yours.'};
